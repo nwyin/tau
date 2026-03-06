@@ -1,12 +1,10 @@
 //! Mirrors: packages/agent/test/agent.test.ts
 //! Unit tests for the Agent class.
-//!
-//! Tests that require a mock stream function are #[ignore] until stream_fn
-//! injection is wired into Agent / AgentLoopConfig.
 
 mod common;
 use common::*;
 
+use ai::stream::assistant_message_event_stream;
 use agent::agent::{Agent, AgentOptions, AgentStateInit, QueueMode};
 use agent::types::{AgentMessage, ThinkingLevel};
 use std::sync::Arc;
@@ -25,6 +23,7 @@ fn creates_agent_with_default_state() {
         }),
         convert_to_llm: None,
         transform_context: None,
+        stream_fn: None,
         steering_mode: None,
         follow_up_mode: None,
         session_id: None,
@@ -177,18 +176,75 @@ fn abort_does_not_panic_when_not_streaming() {
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-#[ignore = "needs stream_fn injection on Agent"]
 async fn prompt_throws_when_already_streaming() {
-    // Start a long-running prompt (backed by a mock stream that never resolves),
-    // then call prompt() again — should return an error.
-    // After asserting the error, abort and wait for the first prompt.
-    todo!("needs stream_fn injection")
+    let sender = Arc::new(std::sync::Mutex::new(None));
+    let sender_ref = Arc::clone(&sender);
+    let agent = Arc::new(Agent::new(AgentOptions {
+        stream_fn: Some(stream_fn_once(move |_model, _context, _options| {
+            let (tx, stream) = assistant_message_event_stream();
+            *sender_ref.lock().unwrap() = Some(tx);
+            stream
+        })),
+        ..default_opts()
+    }));
+
+    let first_prompt = {
+        let agent = Arc::clone(&agent);
+        tokio::spawn(async move { agent.prompt("First message").await })
+    };
+
+    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    assert!(agent.with_state(|s| s.is_streaming));
+
+    let err = agent.prompt("Second message").await.unwrap_err();
+    assert!(err.to_string().contains("already streaming"));
+
+    let msg = mock_assistant_message("done");
+    if let Some(tx) = sender.lock().unwrap().as_mut() {
+        tx.push(ai::types::AssistantMessageEvent::Start { partial: msg.clone() });
+        tx.push(ai::types::AssistantMessageEvent::Done {
+            reason: msg.stop_reason.clone(),
+            message: msg,
+        });
+    }
+
+    first_prompt.await.unwrap().unwrap();
 }
 
 #[tokio::test]
-#[ignore = "needs stream_fn injection on Agent"]
 async fn continue_throws_when_already_streaming() {
-    todo!("needs stream_fn injection")
+    let sender = Arc::new(std::sync::Mutex::new(None));
+    let sender_ref = Arc::clone(&sender);
+    let agent = Arc::new(Agent::new(AgentOptions {
+        stream_fn: Some(stream_fn_once(move |_model, _context, _options| {
+            let (tx, stream) = assistant_message_event_stream();
+            *sender_ref.lock().unwrap() = Some(tx);
+            stream
+        })),
+        ..default_opts()
+    }));
+
+    let first_prompt = {
+        let agent = Arc::clone(&agent);
+        tokio::spawn(async move { agent.prompt("First message").await })
+    };
+
+    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    assert!(agent.with_state(|s| s.is_streaming));
+
+    let err = agent.continue_().await.unwrap_err();
+    assert!(err.to_string().contains("already streaming"));
+
+    let msg = mock_assistant_message("done");
+    if let Some(tx) = sender.lock().unwrap().as_mut() {
+        tx.push(ai::types::AssistantMessageEvent::Start { partial: msg.clone() });
+        tx.push(ai::types::AssistantMessageEvent::Done {
+            reason: msg.stop_reason.clone(),
+            message: msg,
+        });
+    }
+
+    first_prompt.await.unwrap().unwrap();
 }
 
 // ---------------------------------------------------------------------------
@@ -196,29 +252,76 @@ async fn continue_throws_when_already_streaming() {
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-#[ignore = "needs stream_fn injection on Agent"]
 async fn continue_processes_queued_follow_up_after_assistant_turn() {
-    // Agent has user+assistant in messages, follow_up queued.
-    // continue() should process the follow-up and produce a new assistant message.
-    todo!("needs stream_fn injection")
+    let agent = Agent::new(AgentOptions {
+        stream_fn: Some(stream_fn_from_messages(vec![mock_assistant_message("Processed")])),
+        ..default_opts()
+    });
+
+    agent.replace_messages(vec![
+        user_message("Initial"),
+        AgentMessage::Llm(ai::types::Message::Assistant(mock_assistant_message("Initial response"))),
+    ]);
+    agent.follow_up(user_message("Queued follow-up"));
+
+    agent.continue_().await.unwrap();
+
+    agent.with_state(|s| {
+        assert!(s.messages.iter().any(|message| matches!(
+            message,
+            AgentMessage::Llm(ai::types::Message::User(msg))
+                if matches!(&msg.content, ai::types::UserContent::Text(text) if text == "Queued follow-up")
+        )));
+        assert_eq!(s.messages.last().unwrap().role(), "assistant");
+    });
 }
 
 #[tokio::test]
-#[ignore = "needs stream_fn injection on Agent"]
 async fn continue_one_at_a_time_steering_from_assistant_tail() {
-    // Two steering messages queued.
-    // continue() with one-at-a-time mode: each steering triggers exactly one LLM call.
-    // Total: 2 LLM calls, 2 new assistant messages.
-    todo!("needs stream_fn injection")
+    let responses = vec![mock_assistant_message("Processed 1"), mock_assistant_message("Processed 2")];
+    let agent = Agent::new(AgentOptions {
+        steering_mode: Some(QueueMode::OneAtATime),
+        stream_fn: Some(stream_fn_from_messages(responses)),
+        ..default_opts()
+    });
+
+    agent.replace_messages(vec![
+        user_message("Initial"),
+        AgentMessage::Llm(ai::types::Message::Assistant(mock_assistant_message("Initial response"))),
+    ]);
+
+    agent.steer(user_message("Steering 1"));
+    agent.steer(user_message("Steering 2"));
+
+    agent.continue_().await.unwrap();
+
+    agent.with_state(|s| {
+        let recent_roles: Vec<_> = s.messages.iter().rev().take(4).map(|m| m.role().to_string()).collect();
+        assert_eq!(recent_roles.into_iter().rev().collect::<Vec<_>>(), vec!["user", "assistant", "user", "assistant"]);
+    });
 }
 
 #[tokio::test]
-#[ignore = "needs stream_fn injection on Agent"]
 async fn session_id_forwarded_to_stream_fn() {
-    // Agent constructed with session_id = "session-abc".
-    // Mock stream_fn captures the session_id from options.
-    // Assert it matches; then change it and assert the new value.
-    todo!("needs stream_fn injection")
+    let seen = Arc::new(std::sync::Mutex::new(vec![]));
+    let seen_ref = Arc::clone(&seen);
+    let mut agent = Agent::new(AgentOptions {
+        session_id: Some("session-abc".into()),
+        stream_fn: Some(stream_fn_once(move |_model, _context, options| {
+            seen_ref.lock().unwrap().push(options.and_then(|opts| opts.base.session_id.clone()));
+            instant_stream(mock_assistant_message("ok"))
+        })),
+        ..default_opts()
+    });
+
+    agent.prompt("hello").await.unwrap();
+    agent.set_session_id(Some("session-def".into()));
+    agent.prompt("hello again").await.unwrap();
+
+    assert_eq!(
+        *seen.lock().unwrap(),
+        vec![Some("session-abc".to_string()), Some("session-def".to_string())]
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -230,6 +333,7 @@ fn default_opts() -> AgentOptions {
         initial_state: Some(AgentStateInit { model: Some(mock_model()), ..Default::default() }),
         convert_to_llm: None,
         transform_context: None,
+        stream_fn: None,
         steering_mode: None,
         follow_up_mode: None,
         session_id: None,

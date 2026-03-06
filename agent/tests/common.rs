@@ -1,8 +1,9 @@
 //! Shared test helpers for agent tests.
 
 use ai::types::{AssistantMessage, ContentBlock, StopReason, Usage};
-use ai::stream::{AssistantMessageEventSender, AssistantMessageEventStream, assistant_message_event_stream};
-use agent::types::{AgentMessage, AgentContext};
+use ai::stream::{AssistantMessageEventStream, assistant_message_event_stream};
+use agent::types::{AgentContext, AgentMessage, StreamAssistantFn};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 pub fn mock_model() -> ai::types::Model {
@@ -79,8 +80,37 @@ pub fn empty_context() -> AgentContext {
 pub fn instant_stream(msg: AssistantMessage) -> AssistantMessageEventStream {
     let (mut tx, stream) = assistant_message_event_stream();
     tokio::spawn(async move {
+        tx.push(ai::types::AssistantMessageEvent::Start { partial: msg.clone() });
         let reason = msg.stop_reason.clone();
         tx.push(ai::types::AssistantMessageEvent::Done { reason, message: msg });
     });
     stream
+}
+
+pub fn pending_stream() -> AssistantMessageEventStream {
+    let (_tx, stream) = assistant_message_event_stream();
+    stream
+}
+
+pub fn stream_fn_once(
+    f: impl Fn(ai::types::Model, ai::types::Context, Option<ai::types::SimpleStreamOptions>) -> AssistantMessageEventStream
+        + Send
+        + Sync
+        + 'static,
+) -> StreamAssistantFn {
+    Arc::new(move |model, context, options| Ok(f(model, context, options)))
+}
+
+pub fn stream_fn_from_messages(messages: Vec<AssistantMessage>) -> StreamAssistantFn {
+    let messages = Arc::new(messages);
+    let index = Arc::new(AtomicUsize::new(0));
+
+    stream_fn_once(move |_model, _context, _options| {
+        let i = index.fetch_add(1, Ordering::SeqCst);
+        let msg = messages
+            .get(i)
+            .cloned()
+            .unwrap_or_else(|| messages.last().cloned().expect("at least one mock message"));
+        instant_stream(msg)
+    })
 }

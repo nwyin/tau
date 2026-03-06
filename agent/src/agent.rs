@@ -8,10 +8,10 @@ use anyhow::{anyhow, Result};
 use futures::StreamExt;
 use tokio_util::sync::CancellationToken;
 
-use crate::loop_::{agent_loop, agent_loop_continue};
+use crate::loop_::agent_loop;
 use crate::types::{
     AgentContext, AgentEvent, AgentLoopConfig, AgentMessage, AgentState, AgentTool, ConvertToLlmFn,
-    GetApiKeyFn, GetMessagesFn, ThinkingLevel, TransformContextFn,
+    GetApiKeyFn, GetMessagesFn, StreamAssistantFn, ThinkingLevel, TransformContextFn,
 };
 
 // ---------------------------------------------------------------------------
@@ -22,6 +22,7 @@ pub struct AgentOptions {
     pub initial_state: Option<AgentStateInit>,
     pub convert_to_llm: Option<ConvertToLlmFn>,
     pub transform_context: Option<TransformContextFn>,
+    pub stream_fn: Option<StreamAssistantFn>,
     pub steering_mode: Option<QueueMode>,
     pub follow_up_mode: Option<QueueMode>,
     pub session_id: Option<String>,
@@ -57,6 +58,7 @@ pub struct Agent {
 
     convert_to_llm: ConvertToLlmFn,
     transform_context: Option<TransformContextFn>,
+    stream_fn: Option<StreamAssistantFn>,
 
     steering_queue: Arc<Mutex<VecDeque<AgentMessage>>>,
     follow_up_queue: Arc<Mutex<VecDeque<AgentMessage>>>,
@@ -102,6 +104,7 @@ impl Agent {
             listeners: Arc::new(Mutex::new(vec![])),
             convert_to_llm: opts.convert_to_llm.unwrap_or_else(default_convert_to_llm),
             transform_context: opts.transform_context,
+            stream_fn: opts.stream_fn,
             steering_queue: Arc::new(Mutex::new(VecDeque::new())),
             follow_up_queue: Arc::new(Mutex::new(VecDeque::new())),
             steering_mode: opts.steering_mode.unwrap_or_default(),
@@ -141,6 +144,10 @@ impl Agent {
 
     pub fn set_tools(&self, tools: Vec<Arc<dyn AgentTool>>) {
         self.state.lock().unwrap().tools = tools;
+    }
+
+    pub fn set_session_id(&mut self, session_id: Option<String>) {
+        self.session_id = session_id;
     }
 
     pub fn append_message(&self, msg: AgentMessage) {
@@ -306,7 +313,9 @@ impl Agent {
         let context = self.build_context();
         let config = self.build_config();
 
-        let mut stream = agent_loop_continue(context, Arc::new(config), Some(ct));
+        // Agent-level continue needs to handle queued messages from an assistant tail,
+        // which is naturally supported by agent_loop with an empty prompt list.
+        let mut stream = agent_loop(vec![], context, Arc::new(config), Some(ct));
         self.drain_stream(&mut stream).await;
 
         Ok(())
@@ -403,6 +412,7 @@ impl Agent {
             simple_options: simple_opts,
             convert_to_llm: Arc::clone(&self.convert_to_llm),
             transform_context: self.transform_context.clone(),
+            stream_fn: self.stream_fn.clone(),
             get_api_key: self.get_api_key.clone(),
             get_steering_messages: Some(get_steering),
             get_follow_up_messages: Some(get_follow_up),

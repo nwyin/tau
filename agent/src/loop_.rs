@@ -241,7 +241,12 @@ async fn stream_assistant_response(
     let mut opts = config.simple_options.clone();
     opts.base.api_key = api_key.or(opts.base.api_key.clone());
 
-    let event_stream = match ai::stream_simple(&config.model, &llm_context, Some(&opts)) {
+    let stream_result = match &config.stream_fn {
+        Some(stream_fn) => (stream_fn)(config.model.clone(), llm_context.clone(), Some(opts.clone())),
+        None => ai::stream_simple(&config.model, &llm_context, Some(&opts)),
+    };
+
+    let event_stream = match stream_result {
         Ok(s) => s,
         Err(e) => {
             let msg = AssistantMessage::zero_usage(

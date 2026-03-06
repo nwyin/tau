@@ -1,17 +1,17 @@
 //! Mirrors: packages/agent/test/agent-loop.test.ts
 //! Unit tests for agentLoop and agentLoopContinue using mock streams.
-//!
-//! NOTE: These tests require a `stream_fn` injection point on AgentLoopConfig
-//! (analogous to the TS `streamFn` parameter). That plumbing is not yet
-//! implemented — tests are marked #[ignore] until it is.
 
 mod common;
 use common::*;
 
+use agent::loop_::{agent_loop, agent_loop_continue};
 use agent::types::{AgentContext, AgentEvent, AgentLoopConfig, AgentMessage};
-use ai::types::{Message, StopReason};
+use ai::types::{ContentBlock, Message, StopReason, UserBlock};
 use futures::StreamExt;
+use serde_json::{json, Value};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
+use tokio_util::sync::CancellationToken;
 
 fn identity_convert(messages: Vec<AgentMessage>) -> agent::types::BoxFuture<anyhow::Result<Vec<Message>>> {
     Box::pin(async move {
@@ -25,6 +25,7 @@ fn base_config() -> AgentLoopConfig {
         simple_options: ai::types::SimpleStreamOptions::default(),
         convert_to_llm: Arc::new(|msgs| identity_convert(msgs)),
         transform_context: None,
+        stream_fn: None,
         get_api_key: None,
         get_steering_messages: None,
         get_follow_up_messages: None,
@@ -35,67 +36,287 @@ fn base_config() -> AgentLoopConfig {
 // agentLoop
 // ---------------------------------------------------------------------------
 
+fn final_messages(events: &[AgentEvent]) -> Vec<AgentMessage> {
+    events
+        .iter()
+        .find_map(|event| match event {
+            AgentEvent::AgentEnd { messages } => Some(messages.clone()),
+            _ => None,
+        })
+        .expect("AgentEnd event")
+}
+
 #[tokio::test]
-#[ignore = "needs stream_fn injection on AgentLoopConfig"]
 async fn emits_events_with_agent_message_types() {
     let context = empty_context();
     let prompt = user_message("Hello");
 
-    // TODO: inject mock stream function that returns instant_stream(mock_assistant_message("Hi there!"))
-    // let stream = agent::loop_::agent_loop(vec![prompt], context, Arc::new(base_config()), None);
+    let mut config = base_config();
+    config.stream_fn = Some(stream_fn_from_messages(vec![mock_assistant_message("Hi there!")]));
 
-    // let mut events = vec![];
-    // while let Some(event) = stream.next().await { events.push(event); }
-    // let messages = stream.result().await;
+    let mut stream = agent_loop(vec![prompt], context, Arc::new(config), None);
+    let mut events = vec![];
+    while let Some(event) = stream.next().await {
+        events.push(event);
+    }
 
-    // assert_eq!(messages.len(), 2);
-    // assert_eq!(messages[0].role(), "user");
-    // assert_eq!(messages[1].role(), "assistant");
+    let messages = final_messages(&events);
+    assert_eq!(messages.len(), 2);
+    assert_eq!(messages[0].role(), "user");
+    assert_eq!(messages[1].role(), "assistant");
 
-    // let types: Vec<_> = events.iter().map(|e| event_type(e)).collect();
-    // assert!(types.contains(&"agent_start"));
-    // assert!(types.contains(&"turn_start"));
-    // assert!(types.contains(&"message_start"));
-    // assert!(types.contains(&"message_end"));
-    // assert!(types.contains(&"turn_end"));
-    // assert!(types.contains(&"agent_end"));
-    todo!("needs stream_fn injection")
+    let types: Vec<_> = events.iter().map(event_type).collect();
+    assert!(types.contains(&"agent_start"));
+    assert!(types.contains(&"turn_start"));
+    assert!(types.contains(&"message_start"));
+    assert!(types.contains(&"message_end"));
+    assert!(types.contains(&"turn_end"));
+    assert!(types.contains(&"agent_end"));
 }
 
 #[tokio::test]
-#[ignore = "needs stream_fn injection on AgentLoopConfig"]
 async fn custom_message_types_filtered_by_convert_to_llm() {
-    // Custom "notification" messages should be filtered out in convert_to_llm
-    // and never sent to the LLM.
-    todo!("needs stream_fn injection")
+    let mut context = empty_context();
+    context.messages.push(AgentMessage::Custom {
+        role: "notification".into(),
+        data: json!({ "text": "ignore me" }),
+    });
+
+    let seen_roles = Arc::new(std::sync::Mutex::new(vec![]));
+    let roles_ref = Arc::clone(&seen_roles);
+    let mut config = base_config();
+    config.convert_to_llm = Arc::new(move |messages| {
+        let roles_ref = Arc::clone(&roles_ref);
+        Box::pin(async move {
+            *roles_ref.lock().unwrap() = messages.iter().map(|m| m.role().to_string()).collect();
+            Ok(messages.into_iter().filter_map(|m| m.as_message().cloned()).collect())
+        })
+    });
+    config.stream_fn = Some(stream_fn_from_messages(vec![mock_assistant_message("Response")]));
+
+    let mut stream = agent_loop(vec![user_message("Hello")], context, Arc::new(config), None);
+    while stream.next().await.is_some() {}
+
+    assert_eq!(*seen_roles.lock().unwrap(), vec!["notification".to_string(), "user".to_string()]);
 }
 
 #[tokio::test]
-#[ignore = "needs stream_fn injection on AgentLoopConfig"]
 async fn transform_context_applied_before_convert_to_llm() {
-    // transformContext should prune messages before convertToLlm sees them.
-    // After pruning to last 2, convertToLlm should only receive 2 messages.
-    todo!("needs stream_fn injection")
+    let context = AgentContext {
+        system_prompt: "You are helpful.".into(),
+        messages: vec![
+            user_message("old message 1"),
+            AgentMessage::Llm(Message::Assistant(mock_assistant_message("old response 1"))),
+            user_message("old message 2"),
+            AgentMessage::Llm(Message::Assistant(mock_assistant_message("old response 2"))),
+        ],
+        tools: vec![],
+    };
+
+    let transformed_roles = Arc::new(std::sync::Mutex::new(vec![]));
+    let converted_roles = Arc::new(std::sync::Mutex::new(vec![]));
+    let transformed_ref = Arc::clone(&transformed_roles);
+    let converted_ref = Arc::clone(&converted_roles);
+
+    let mut config = base_config();
+    config.transform_context = Some(Arc::new(move |messages, _| {
+        let transformed_ref = Arc::clone(&transformed_ref);
+        Box::pin(async move {
+            let pruned = messages.into_iter().rev().take(2).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>();
+            *transformed_ref.lock().unwrap() = pruned.iter().map(|m| m.role().to_string()).collect();
+            pruned
+        })
+    }));
+    config.convert_to_llm = Arc::new(move |messages| {
+        let converted_ref = Arc::clone(&converted_ref);
+        Box::pin(async move {
+            *converted_ref.lock().unwrap() = messages.iter().map(|m| m.role().to_string()).collect();
+            Ok(messages.into_iter().filter_map(|m| m.as_message().cloned()).collect())
+        })
+    });
+    config.stream_fn = Some(stream_fn_from_messages(vec![mock_assistant_message("Response")]));
+
+    let mut stream = agent_loop(vec![user_message("new message")], context, Arc::new(config), None);
+    while stream.next().await.is_some() {}
+
+    assert_eq!(*transformed_roles.lock().unwrap(), vec!["assistant".to_string(), "user".to_string()]);
+    assert_eq!(*converted_roles.lock().unwrap(), vec!["assistant".to_string(), "user".to_string()]);
 }
 
 #[tokio::test]
-#[ignore = "needs stream_fn injection on AgentLoopConfig"]
 async fn handles_tool_calls_and_results() {
-    // First LLM response: tool call to "echo" with value "hello"
-    // Tool executes: records "hello"
-    // Second LLM response: final text "done"
-    // Assertions: tool was executed, tool_execution_start/end events emitted, is_error=false
-    todo!("needs stream_fn injection")
+    let executed = Arc::new(std::sync::Mutex::new(vec![]));
+    struct RecordingEchoTool(Arc<std::sync::Mutex<Vec<String>>>);
+    impl agent::types::AgentTool for RecordingEchoTool {
+        fn name(&self) -> &str { "echo" }
+        fn label(&self) -> &str { "Echo" }
+        fn description(&self) -> &str { "Echo tool" }
+        fn parameters(&self) -> &Value {
+            static PARAMS: std::sync::OnceLock<Value> = std::sync::OnceLock::new();
+            PARAMS.get_or_init(|| json!({"type":"object","properties":{"value":{"type":"string"}}}))
+        }
+        fn execute(
+            &self,
+            _tool_call_id: String,
+            params: Value,
+            _signal: Option<CancellationToken>,
+            _on_update: Option<agent::types::ToolUpdateFn>,
+        ) -> agent::types::BoxFuture<anyhow::Result<agent::types::AgentToolResult>> {
+            let executed = Arc::clone(&self.0);
+            Box::pin(async move {
+                let value = params.get("value").and_then(Value::as_str).unwrap_or_default().to_string();
+                executed.lock().unwrap().push(value.clone());
+                Ok(agent::types::AgentToolResult {
+                    content: vec![UserBlock::Text { text: format!("echoed: {value}") }],
+                    details: Some(json!({ "value": value })),
+                })
+            })
+        }
+    }
+
+    let context = AgentContext {
+        system_prompt: String::new(),
+        messages: vec![],
+        tools: vec![Arc::new(RecordingEchoTool(Arc::clone(&executed)))],
+    };
+
+    let mut config = base_config();
+    config.stream_fn = Some(stream_fn_from_messages(vec![
+        mock_assistant_message_with_tool_call("tool-1", "echo", json!({ "value": "hello" })),
+        mock_assistant_message("done"),
+    ]));
+
+    let mut stream = agent_loop(vec![user_message("echo something")], context, Arc::new(config), None);
+    let mut events = vec![];
+    while let Some(event) = stream.next().await {
+        events.push(event);
+    }
+
+    assert_eq!(*executed.lock().unwrap(), vec!["hello".to_string()]);
+    assert!(events.iter().any(|e| matches!(e, AgentEvent::ToolExecutionStart { .. })));
+    assert!(events.iter().any(|e| matches!(e, AgentEvent::ToolExecutionEnd { is_error: false, .. })));
+
+    let messages = final_messages(&events);
+    assert!(matches!(messages.last(), Some(AgentMessage::Llm(Message::Assistant(msg))) if msg.content.iter().any(|b| matches!(b, ContentBlock::Text { text, .. } if text == "done"))));
 }
 
 #[tokio::test]
-#[ignore = "needs stream_fn injection on AgentLoopConfig"]
 async fn injects_steering_messages_and_skips_remaining_tool_calls() {
-    // First LLM: two tool calls ("first", "second")
-    // After first tool executes: steering message injected
-    // Second tool: skipped (is_error=true, "Skipped due to queued user message")
-    // Steering message appears in context on second LLM call
-    todo!("needs stream_fn injection")
+    let executed = Arc::new(std::sync::Mutex::new(vec![]));
+    struct RecordingEchoTool(Arc<std::sync::Mutex<Vec<String>>>);
+    impl agent::types::AgentTool for RecordingEchoTool {
+        fn name(&self) -> &str { "echo" }
+        fn label(&self) -> &str { "Echo" }
+        fn description(&self) -> &str { "Echo tool" }
+        fn parameters(&self) -> &Value {
+            static PARAMS: std::sync::OnceLock<Value> = std::sync::OnceLock::new();
+            PARAMS.get_or_init(|| json!({"type":"object","properties":{"value":{"type":"string"}}}))
+        }
+        fn execute(
+            &self,
+            _tool_call_id: String,
+            params: Value,
+            _signal: Option<CancellationToken>,
+            _on_update: Option<agent::types::ToolUpdateFn>,
+        ) -> agent::types::BoxFuture<anyhow::Result<agent::types::AgentToolResult>> {
+            let executed = Arc::clone(&self.0);
+            Box::pin(async move {
+                let value = params.get("value").and_then(Value::as_str).unwrap_or_default().to_string();
+                executed.lock().unwrap().push(value.clone());
+                Ok(agent::types::AgentToolResult {
+                    content: vec![UserBlock::Text { text: format!("ok:{value}") }],
+                    details: Some(json!({ "value": value })),
+                })
+            })
+        }
+    }
+
+    let queued_delivered = Arc::new(AtomicBool::new(false));
+    let queued_ref = Arc::clone(&queued_delivered);
+    let saw_interrupt = Arc::new(AtomicBool::new(false));
+    let interrupt_ref = Arc::clone(&saw_interrupt);
+    let call_index = Arc::new(AtomicUsize::new(0));
+    let call_index_ref = Arc::clone(&call_index);
+    let executed_for_queue = Arc::clone(&executed);
+
+    let mut config = base_config();
+    config.get_steering_messages = Some(Arc::new(move || {
+        let queued_ref = Arc::clone(&queued_ref);
+        let executed = Arc::clone(&executed_for_queue);
+        Box::pin(async move {
+            if executed.lock().unwrap().len() == 1 && !queued_ref.swap(true, Ordering::SeqCst) {
+                vec![user_message("interrupt")]
+            } else {
+                vec![]
+            }
+        })
+    }));
+    config.stream_fn = Some(stream_fn_once(move |_model, context, _options| {
+        let index = call_index_ref.fetch_add(1, Ordering::SeqCst);
+        if index == 1 {
+            let has_interrupt = context.messages.iter().any(|m| match m {
+                Message::User(msg) => matches!(&msg.content, ai::types::UserContent::Text(text) if text == "interrupt"),
+                _ => false,
+            });
+            interrupt_ref.store(has_interrupt, Ordering::SeqCst);
+        }
+
+        if index == 0 {
+            instant_stream(ai::types::AssistantMessage {
+                content: vec![
+                    ContentBlock::ToolCall {
+                        id: "tool-1".into(),
+                        name: "echo".into(),
+                        arguments: [("value".into(), json!("first"))].into_iter().collect(),
+                        thought_signature: None,
+                    },
+                    ContentBlock::ToolCall {
+                        id: "tool-2".into(),
+                        name: "echo".into(),
+                        arguments: [("value".into(), json!("second"))].into_iter().collect(),
+                        thought_signature: None,
+                    },
+                ],
+                stop_reason: StopReason::ToolUse,
+                ..mock_assistant_message("")
+            })
+        } else {
+            instant_stream(mock_assistant_message("done"))
+        }
+    }));
+
+    let context = AgentContext {
+        system_prompt: String::new(),
+        messages: vec![],
+        tools: vec![Arc::new(RecordingEchoTool(Arc::clone(&executed)))],
+    };
+
+    let mut stream = agent_loop(vec![user_message("start")], context, Arc::new(config), None);
+    let mut events = vec![];
+    while let Some(event) = stream.next().await {
+        events.push(event);
+    }
+
+    assert_eq!(*executed.lock().unwrap(), vec!["first".to_string()]);
+
+    let tool_ends: Vec<_> = events
+        .iter()
+        .filter_map(|event| match event {
+            AgentEvent::ToolExecutionEnd { is_error, result, .. } => Some((*is_error, result.clone())),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(tool_ends.len(), 2);
+    assert!(!tool_ends[0].0);
+    assert!(tool_ends[1].0);
+    assert!(matches!(&tool_ends[1].1.content[0], UserBlock::Text { text } if text.contains("Skipped due to queued user message")));
+
+    assert!(events.iter().any(|event| matches!(
+        event,
+        AgentEvent::MessageStart { message: AgentMessage::Llm(Message::User(msg)) }
+            if matches!(&msg.content, ai::types::UserContent::Text(text) if text == "interrupt")
+    )));
+    assert!(saw_interrupt.load(Ordering::SeqCst));
 }
 
 // ---------------------------------------------------------------------------
@@ -111,21 +332,72 @@ fn throws_when_context_has_no_messages() {
 }
 
 #[tokio::test]
-#[ignore = "needs stream_fn injection on AgentLoopConfig"]
 async fn continue_from_context_without_user_message_events() {
-    // Context has one user message already.
-    // agentLoopContinue should NOT emit message_start for the existing user message.
-    // Only the new assistant message should appear in events.
-    todo!("needs stream_fn injection")
+    let context = AgentContext {
+        system_prompt: "You are helpful.".into(),
+        messages: vec![user_message("Hello")],
+        tools: vec![],
+    };
+
+    let mut config = base_config();
+    config.stream_fn = Some(stream_fn_from_messages(vec![mock_assistant_message("Response")]));
+
+    let mut stream = agent_loop_continue(context, Arc::new(config), None);
+    let mut events = vec![];
+    while let Some(event) = stream.next().await {
+        events.push(event);
+    }
+
+    let messages = final_messages(&events);
+    assert_eq!(messages.len(), 1);
+    assert_eq!(messages[0].role(), "assistant");
+
+    let message_end_events: Vec<_> =
+        events.iter().filter(|event| matches!(event, AgentEvent::MessageEnd { .. })).collect();
+    assert_eq!(message_end_events.len(), 1);
+    assert!(matches!(message_end_events[0], AgentEvent::MessageEnd { message } if message.role() == "assistant"));
 }
 
 #[tokio::test]
-#[ignore = "needs stream_fn injection on AgentLoopConfig"]
 async fn continue_allows_custom_last_message_converted_by_convert_to_llm() {
-    // A custom message type as the last message in context.
-    // convertToLlm converts it to a user message.
-    // Should not throw, should produce an assistant response.
-    todo!("needs stream_fn injection")
+    let context = AgentContext {
+        system_prompt: "You are helpful.".into(),
+        messages: vec![AgentMessage::Custom {
+            role: "custom".into(),
+            data: json!({ "text": "Hook content" }),
+        }],
+        tools: vec![],
+    };
+
+    let mut config = base_config();
+    config.convert_to_llm = Arc::new(|messages| {
+        Box::pin(async move {
+            Ok(messages
+                .into_iter()
+                .filter_map(|message| match message {
+                    AgentMessage::Custom { data, .. } => {
+                        data.get("text").and_then(Value::as_str).map(|text| Message::User(ai::types::UserMessage::new(text)))
+                    }
+                    AgentMessage::Llm(message) => Some(message),
+                })
+                .collect())
+        })
+    });
+    config.stream_fn = Some(stream_fn_from_messages(vec![mock_assistant_message("Response to custom message")]));
+
+    let mut stream = agent_loop_continue(context, Arc::new(config), None);
+    let mut events = vec![];
+    while let Some(event) = stream.next().await {
+        events.push(event);
+    }
+
+    let messages = final_messages(&events);
+    assert_eq!(messages.len(), 1);
+    assert!(matches!(
+        &messages[0],
+        AgentMessage::Llm(Message::Assistant(msg))
+            if msg.content.iter().any(|block| matches!(block, ContentBlock::Text { text, .. } if text == "Response to custom message"))
+    ));
 }
 
 // ---------------------------------------------------------------------------

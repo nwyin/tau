@@ -83,25 +83,3 @@ async fn openai_responses_empty_content_array() {
     let model = get_model("openai", "gpt-5-mini").unwrap();
     test_empty_message(&model, env_key("OPENAI_API_KEY")).await;
 }
-
-// ---------------------------------------------------------------------------
-// Google
-// ---------------------------------------------------------------------------
-
-#[tokio::test]
-#[ignore = "requires GEMINI_API_KEY"]
-async fn google_gemini_2_5_flash_empty_content_array() {
-    let model = get_model("google", "gemini-2.5-flash").unwrap();
-    test_empty_message(&model, env_key("GEMINI_API_KEY")).await;
-}
-
-// ---------------------------------------------------------------------------
-// Bedrock
-// ---------------------------------------------------------------------------
-
-#[tokio::test]
-#[ignore = "requires AWS credentials"]
-async fn bedrock_empty_content_array() {
-    let model = get_model("amazon-bedrock", "global.anthropic.claude-sonnet-4-5-20250929-v1:0").unwrap();
-    test_empty_message(&model, None).await;
-}

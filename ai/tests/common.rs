@@ -1,5 +1,7 @@
 //! Shared test helpers.
 
+use std::sync::{Mutex, MutexGuard, OnceLock};
+
 pub fn env_key(var: &str) -> Option<String> {
     std::env::var(var).ok()
 }
@@ -38,4 +40,9 @@ pub fn create_assistant_message(text: &str) -> ai::types::AssistantMessage {
         error_message: None,
         timestamp: 0,
     }
+}
+
+pub fn registry_lock() -> MutexGuard<'static, ()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(())).lock().unwrap()
 }

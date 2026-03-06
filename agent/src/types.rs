@@ -2,8 +2,10 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
+use ai::stream::AssistantMessageEventStream;
 use ai::types::{
-    AssistantMessageEvent, Message, Model, SimpleStreamOptions, ToolResultMessage, UserBlock,
+    AssistantMessageEvent, Context as LlmContext, Message, Model, SimpleStreamOptions,
+    ToolResultMessage, UserBlock,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -145,11 +147,18 @@ pub type GetApiKeyFn =
 
 pub type GetMessagesFn = Arc<dyn Fn() -> BoxFuture<Vec<AgentMessage>> + Send + Sync>;
 
+pub type StreamAssistantFn = Arc<
+    dyn Fn(Model, LlmContext, Option<SimpleStreamOptions>) -> anyhow::Result<AssistantMessageEventStream>
+        + Send
+        + Sync,
+>;
+
 pub struct AgentLoopConfig {
     pub model: Model,
     pub simple_options: SimpleStreamOptions,
     pub convert_to_llm: ConvertToLlmFn,
     pub transform_context: Option<TransformContextFn>,
+    pub stream_fn: Option<StreamAssistantFn>,
     pub get_api_key: Option<GetApiKeyFn>,
     pub get_steering_messages: Option<GetMessagesFn>,
     pub get_follow_up_messages: Option<GetMessagesFn>,
