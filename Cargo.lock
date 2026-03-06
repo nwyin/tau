@@ -3,6 +3,34 @@
 version = 4
 
 [[package]]
+name = "agent"
+version = "0.1.0"
+dependencies = [
+ "ai",
+ "anyhow",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "ai"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "android_system_properties"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -69,31 +97,6 @@ dependencies = [
  "serde",
  "wasm-bindgen",
  "windows-link",
-]
-
-[[package]]
-name = "cli"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "core",
- "serde",
- "serde_json",
- "tokio",
-]
-
-[[package]]
-name = "core"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror",
- "tokio",
- "uuid",
 ]
 
 [[package]]

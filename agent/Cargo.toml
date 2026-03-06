@@ -1,15 +1,16 @@
 [package]
-name = "cli"
+name = "agent"
 version = "0.1.0"
 edition = "2021"
 
-[[bin]]
-name = "cli"
-path = "src/main.rs"
-
 [dependencies]
-core = { path = "../core" }
+ai = { path = "../ai" }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"

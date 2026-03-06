@@ -1,5 +1,5 @@
 [workspace]
-members = ["core", "cli"]
+members = ["ai", "agent"]
 resolver = "2"
 
 [workspace.dependencies]
