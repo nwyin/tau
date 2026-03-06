@@ -11,6 +11,9 @@ serde_json = { workspace = true }
 anyhow = { workspace = true }
 thiserror = { workspace = true }
 uuid = { workspace = true }
+futures = { workspace = true }
+tokio-util = { version = "0.7", features = ["rt"] }
+chrono = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"
