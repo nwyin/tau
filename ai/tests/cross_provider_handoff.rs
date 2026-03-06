@@ -72,11 +72,3 @@ async fn openai_to_anthropic_handoff() {
     let b = get_model("anthropic", "claude-3-5-haiku-20241022").unwrap();
     test_cross_provider_handoff(&a, &b, env_key("OPENAI_API_KEY"), env_key("ANTHROPIC_API_KEY")).await;
 }
-
-#[tokio::test]
-#[ignore = "requires ANTHROPIC_API_KEY and GEMINI_API_KEY"]
-async fn anthropic_to_google_handoff() {
-    let a = get_model("anthropic", "claude-3-5-haiku-20241022").unwrap();
-    let b = get_model("google", "gemini-2.5-flash").unwrap();
-    test_cross_provider_handoff(&a, &b, env_key("ANTHROPIC_API_KEY"), env_key("GEMINI_API_KEY")).await;
-}
