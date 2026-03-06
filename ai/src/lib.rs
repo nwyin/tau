@@ -1,3 +1,4 @@
+pub mod catalog;
 pub mod models;
 pub mod providers;
 pub mod stream;

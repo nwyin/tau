@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, OnceLock, RwLock};
 
 use crate::types::{Model, Usage};
 
@@ -7,13 +7,25 @@ use crate::types::{Model, Usage};
 // Model registry
 // ---------------------------------------------------------------------------
 
-#[derive(Default)]
 struct ModelRegistry {
     // provider -> model_id -> Model
     models: HashMap<String, HashMap<String, Arc<Model>>>,
 }
 
-static REGISTRY: std::sync::OnceLock<RwLock<ModelRegistry>> = std::sync::OnceLock::new();
+impl Default for ModelRegistry {
+    fn default() -> Self {
+        let mut reg = ModelRegistry { models: HashMap::new() };
+        for model in crate::catalog::builtin_models() {
+            reg.models
+                .entry(model.provider.clone())
+                .or_default()
+                .insert(model.id.clone(), Arc::new(model));
+        }
+        reg
+    }
+}
+
+static REGISTRY: OnceLock<RwLock<ModelRegistry>> = OnceLock::new();
 
 fn registry() -> &'static RwLock<ModelRegistry> {
     REGISTRY.get_or_init(|| RwLock::new(ModelRegistry::default()))
