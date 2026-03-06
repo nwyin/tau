@@ -1,17 +1,7 @@
-//! Shared test helpers — mirrors the TS test utility files (azure-utils, bedrock-utils, oauth).
+//! Shared test helpers.
 
 pub fn env_key(var: &str) -> Option<String> {
     std::env::var(var).ok()
-}
-
-pub fn has_azure_openai_credentials() -> bool {
-    std::env::var("AZURE_OPENAI_API_KEY").is_ok()
-        && std::env::var("AZURE_OPENAI_ENDPOINT").is_ok()
-}
-
-pub fn has_bedrock_credentials() -> bool {
-    std::env::var("AWS_ACCESS_KEY_ID").is_ok()
-        && std::env::var("AWS_SECRET_ACCESS_KEY").is_ok()
 }
 
 /// Build a minimal Model for use in tests that construct one manually.

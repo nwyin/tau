@@ -10,33 +10,13 @@ pub type Api = String;
 pub type Provider = String;
 
 pub mod known_api {
-    pub const OPENAI_COMPLETIONS: &str = "openai-completions";
     pub const OPENAI_RESPONSES: &str = "openai-responses";
-    pub const AZURE_OPENAI_RESPONSES: &str = "azure-openai-responses";
-    pub const OPENAI_CODEX_RESPONSES: &str = "openai-codex-responses";
     pub const ANTHROPIC_MESSAGES: &str = "anthropic-messages";
-    pub const BEDROCK_CONVERSE_STREAM: &str = "bedrock-converse-stream";
-    pub const GOOGLE_GENERATIVE_AI: &str = "google-generative-ai";
-    pub const GOOGLE_GEMINI_CLI: &str = "google-gemini-cli";
-    pub const GOOGLE_VERTEX: &str = "google-vertex";
 }
 
 pub mod known_provider {
-    pub const AMAZON_BEDROCK: &str = "amazon-bedrock";
     pub const ANTHROPIC: &str = "anthropic";
-    pub const GOOGLE: &str = "google";
-    pub const GOOGLE_GEMINI_CLI: &str = "google-gemini-cli";
-    pub const GOOGLE_ANTIGRAVITY: &str = "google-antigravity";
-    pub const GOOGLE_VERTEX: &str = "google-vertex";
     pub const OPENAI: &str = "openai";
-    pub const AZURE_OPENAI: &str = "azure-openai-responses";
-    pub const OPENAI_CODEX: &str = "openai-codex";
-    pub const GITHUB_COPILOT: &str = "github-copilot";
-    pub const XAI: &str = "xai";
-    pub const GROQ: &str = "groq";
-    pub const CEREBRAS: &str = "cerebras";
-    pub const OPENROUTER: &str = "openrouter";
-    pub const MISTRAL: &str = "mistral";
 }
 
 // ---------------------------------------------------------------------------

@@ -75,13 +75,6 @@ async fn anthropic_abort_signal() {
 }
 
 #[tokio::test]
-#[ignore = "requires GEMINI_API_KEY"]
-async fn google_abort_signal() {
-    let model = get_model("google", "gemini-2.5-flash").unwrap();
-    test_abort_signal(&model, env_key("GEMINI_API_KEY")).await;
-}
-
-#[tokio::test]
 #[ignore = "requires OPENAI_API_KEY"]
 async fn openai_completions_abort_signal() {
     let model = get_model("openai", "gpt-4o-mini").unwrap();
@@ -93,46 +86,4 @@ async fn openai_completions_abort_signal() {
 async fn openai_responses_abort_signal() {
     let model = get_model("openai", "gpt-5-mini").unwrap();
     test_abort_signal(&model, env_key("OPENAI_API_KEY")).await;
-}
-
-#[tokio::test]
-#[ignore = "requires XAI_API_KEY"]
-async fn xai_abort_signal() {
-    let model = get_model("xai", "grok-3-fast").unwrap();
-    test_abort_signal(&model, env_key("XAI_API_KEY")).await;
-}
-
-#[tokio::test]
-#[ignore = "requires MISTRAL_API_KEY"]
-async fn mistral_abort_signal() {
-    let model = get_model("mistral", "devstral-medium-latest").unwrap();
-    test_abort_signal(&model, env_key("MISTRAL_API_KEY")).await;
-}
-
-#[tokio::test]
-#[ignore = "requires AWS credentials"]
-async fn bedrock_abort_signal() {
-    let model = get_model("amazon-bedrock", "global.anthropic.claude-sonnet-4-5-20250929-v1:0").unwrap();
-    test_abort_signal(&model, None).await;
-}
-
-#[tokio::test]
-#[ignore = "requires GitHub Copilot OAuth token"]
-async fn github_copilot_abort_signal() {
-    let model = get_model("github-copilot", "gpt-4o").unwrap();
-    test_abort_signal(&model, None).await;
-}
-
-#[tokio::test]
-#[ignore = "requires Gemini CLI OAuth token"]
-async fn google_gemini_cli_abort_signal() {
-    let model = get_model("google-gemini-cli", "gemini-2.5-flash").unwrap();
-    test_abort_signal(&model, None).await;
-}
-
-#[tokio::test]
-#[ignore = "requires OpenAI Codex OAuth token"]
-async fn openai_codex_abort_signal() {
-    let model = get_model("openai-codex", "gpt-5.2-codex").unwrap();
-    test_abort_signal(&model, None).await;
 }

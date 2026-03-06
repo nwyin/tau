@@ -42,7 +42,7 @@ fn build_prefilled_messages() -> Vec<Message> {
             thought_signature: None,
         }],
         api: "openai-responses".into(),
-        provider: "github-copilot".into(),
+        provider: "openai".into(),
         model: "gpt-5.2-codex".into(),
         usage: ai::types::Usage {
             input: 100, output: 50, cache_read: 0, cache_write: 0, total_tokens: 150,
@@ -101,12 +101,12 @@ fn prefilled_messages_build_correctly() {
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-#[ignore = "requires OpenRouter API key"]
-async fn openrouter_handles_prefilled_long_pipe_id() {
-    let model = get_model("openrouter", "openai/gpt-5.2-codex").unwrap();
+#[ignore = "requires OPENAI_API_KEY"]
+async fn openai_handles_prefilled_long_pipe_id() {
+    let model = get_model("openai", "gpt-5-mini").unwrap();
     let messages = build_prefilled_messages();
     let mut opts = SimpleStreamOptions::default();
-    opts.base.api_key = env_key("OPENROUTER_API_KEY");
+    opts.base.api_key = env_key("OPENAI_API_KEY");
 
     let response = complete_simple(
         &model,
@@ -116,29 +116,4 @@ async fn openrouter_handles_prefilled_long_pipe_id() {
 
     assert_ne!(response.stop_reason, StopReason::Error, "Should not fail with call_id too long");
     assert!(response.error_message.is_none());
-}
-
-#[tokio::test]
-#[ignore = "requires OpenAI Codex OAuth token"]
-async fn openai_codex_handles_prefilled_long_pipe_id() {
-    let model = get_model("openai-codex", "gpt-5.2-codex").unwrap();
-    let messages = build_prefilled_messages();
-    let mut opts = SimpleStreamOptions::default();
-    // API key resolved from OAuth storage
-
-    let response = complete_simple(
-        &model,
-        &Context { system_prompt: Some("You are a helpful assistant.".into()), messages, tools: None },
-        Some(&opts),
-    ).await.unwrap();
-
-    assert_ne!(response.stop_reason, StopReason::Error);
-}
-
-#[tokio::test]
-#[ignore = "requires GitHub Copilot + OpenRouter OAuth tokens"]
-async fn github_copilot_to_openrouter_normalizes_pipe_id() {
-    // Step 1: generate tool call with github-copilot
-    // Step 2: complete with openrouter — should not fail
-    todo!("cross-provider live handoff test")
 }

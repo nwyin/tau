@@ -56,13 +56,6 @@ async fn test_tokens_on_abort(model: &ai::types::Model, api_key: Option<String>)
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-#[ignore = "requires GEMINI_API_KEY"]
-async fn google_tokens_on_abort() {
-    let model = get_model("google", "gemini-2.5-flash").unwrap();
-    test_tokens_on_abort(&model, env_key("GEMINI_API_KEY")).await;
-}
-
-#[tokio::test]
 #[ignore = "requires OPENAI_API_KEY"]
 async fn openai_completions_tokens_on_abort() {
     let model = get_model("openai", "gpt-4o-mini").unwrap();
@@ -83,44 +76,3 @@ async fn anthropic_tokens_on_abort() {
     test_tokens_on_abort(&model, env_key("ANTHROPIC_API_KEY")).await;
 }
 
-#[tokio::test]
-#[ignore = "requires XAI_API_KEY"]
-async fn xai_tokens_on_abort() {
-    let model = get_model("xai", "grok-3-fast").unwrap();
-    test_tokens_on_abort(&model, env_key("XAI_API_KEY")).await;
-}
-
-#[tokio::test]
-#[ignore = "requires MISTRAL_API_KEY"]
-async fn mistral_tokens_on_abort() {
-    let model = get_model("mistral", "devstral-medium-latest").unwrap();
-    test_tokens_on_abort(&model, env_key("MISTRAL_API_KEY")).await;
-}
-
-#[tokio::test]
-#[ignore = "requires AWS credentials"]
-async fn bedrock_tokens_on_abort() {
-    let model = get_model("amazon-bedrock", "global.anthropic.claude-sonnet-4-5-20250929-v1:0").unwrap();
-    test_tokens_on_abort(&model, None).await;
-}
-
-#[tokio::test]
-#[ignore = "requires GitHub Copilot OAuth token"]
-async fn github_copilot_gpt_4o_tokens_on_abort() {
-    let model = get_model("github-copilot", "gpt-4o").unwrap();
-    test_tokens_on_abort(&model, None).await;
-}
-
-#[tokio::test]
-#[ignore = "requires Gemini CLI OAuth token"]
-async fn google_gemini_cli_tokens_on_abort() {
-    let model = get_model("google-gemini-cli", "gemini-2.5-flash").unwrap();
-    test_tokens_on_abort(&model, None).await;
-}
-
-#[tokio::test]
-#[ignore = "requires OpenAI Codex OAuth token"]
-async fn openai_codex_tokens_on_abort() {
-    let model = get_model("openai-codex", "gpt-5.2-codex").unwrap();
-    test_tokens_on_abort(&model, None).await;
-}

@@ -21,19 +21,18 @@ fn returns_false_for_non_opus_anthropic_models() {
 }
 
 #[test]
-fn returns_false_for_opus_4_6_on_openai_completions_api() {
+fn returns_false_for_opus_4_6_on_non_anthropic_api() {
     // Opus 4.6 on a non-anthropic-messages API should not support xhigh.
-    // Construct the model directly since openrouter is not in our catalog.
     let model = ai::types::Model {
-        id: "anthropic/claude-opus-4.6".into(),
+        id: "claude-opus-4-6".into(),
         name: "Claude Opus 4.6".into(),
-        api: ai::types::known_api::OPENAI_COMPLETIONS.into(),
-        provider: "openrouter".into(),
-        base_url: "https://openrouter.ai/api/v1".into(),
+        api: ai::types::known_api::OPENAI_RESPONSES.into(),
+        provider: "openai".into(),
+        base_url: "https://api.openai.com/v1".into(),
         reasoning: true,
         input: vec!["text".into(), "image".into()],
         cost: ai::types::ModelCost { input: 5.0, output: 25.0, cache_read: 0.5, cache_write: 6.25 },
-        context_window: 1_000_000,
+        context_window: 200_000,
         max_tokens: 128_000,
         headers: None,
         compat: None,

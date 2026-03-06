@@ -83,23 +83,3 @@ async fn openai_responses_tool_call_without_result() {
     test_tool_call_without_result(&model, env_key("OPENAI_API_KEY")).await;
 }
 
-#[tokio::test]
-#[ignore = "requires GEMINI_API_KEY"]
-async fn google_tool_call_without_result() {
-    let model = get_model("google", "gemini-2.5-flash").unwrap();
-    test_tool_call_without_result(&model, env_key("GEMINI_API_KEY")).await;
-}
-
-#[tokio::test]
-#[ignore = "requires MISTRAL_API_KEY"]
-async fn mistral_tool_call_without_result() {
-    let model = get_model("mistral", "devstral-medium-latest").unwrap();
-    test_tool_call_without_result(&model, env_key("MISTRAL_API_KEY")).await;
-}
-
-#[tokio::test]
-#[ignore = "requires AWS credentials"]
-async fn bedrock_tool_call_without_result() {
-    let model = get_model("amazon-bedrock", "global.anthropic.claude-sonnet-4-5-20250929-v1:0").unwrap();
-    test_tool_call_without_result(&model, None).await;
-}
