@@ -1,0 +1,11 @@
+Create a Flask app that displays a list of books from a SQLite database.
+
+1. Create a SQLite database `books.db` with a `books` table (id INTEGER PRIMARY KEY, title TEXT, author TEXT, year INTEGER). Insert 5 sample rows with real book data.
+2. Create `app.py` with a Flask app that connects to the database and renders the books in an HTML table at the `/` route. Use a Jinja2 template.
+3. Create the template in `templates/books.html` with basic CSS styling (readable table with borders, alternating row colors).
+4. Add a `/api/books` JSON endpoint that returns all books as a JSON array.
+5. Write a test file `test_app.py` using pytest that:
+   - Tests GET `/` returns 200 and contains a book title in the HTML
+   - Tests GET `/api/books` returns 200 and the JSON array has 5 items
+   - Tests each book in the JSON response has keys: id, title, author, year
+6. Install dependencies (`pip install flask pytest`) and run `python -m pytest test_app.py -v`. Confirm all tests pass.
