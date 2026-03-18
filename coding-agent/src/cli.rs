@@ -23,4 +23,16 @@ pub struct Cli {
     /// Write JSON performance stats to this file at end of run
     #[arg(long, value_name = "PATH")]
     pub stats_json: Option<String>,
+
+    /// Resume a specific session by ID
+    #[arg(long, value_name = "ID")]
+    pub session: Option<String>,
+
+    /// Resume the most recent session
+    #[arg(long, conflicts_with = "session")]
+    pub resume: bool,
+
+    /// Run without session persistence (ephemeral)
+    #[arg(long, conflicts_with_all = ["session", "resume"])]
+    pub no_session: bool,
 }

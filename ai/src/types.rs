@@ -199,6 +199,10 @@ pub enum UserBlock {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserMessage {
+    // Message uses #[serde(tag = "role")], which adds the role tag automatically.
+    // skip_serializing avoids duplicate "role" keys; default handles the tag being
+    // stripped by serde before the inner struct is deserialized.
+    #[serde(default, skip_serializing)]
     pub role: String, // always "user"
     pub content: UserContent,
     pub timestamp: i64,
@@ -216,6 +220,7 @@ impl UserMessage {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AssistantMessage {
+    #[serde(default, skip_serializing)]
     pub role: String, // always "assistant"
     pub content: Vec<ContentBlock>,
     pub api: Api,
@@ -264,6 +269,7 @@ impl AssistantMessage {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolResultMessage {
+    #[serde(default, skip_serializing)]
     pub role: String, // always "toolResult"
     #[serde(rename = "toolCallId")]
     pub tool_call_id: String,

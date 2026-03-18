@@ -1,4 +1,5 @@
 use std::io::{self, BufRead, Write};
+use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
@@ -10,6 +11,7 @@ use anyhow::{anyhow, Result};
 use clap::Parser;
 
 use coding_agent::cli::Cli;
+use coding_agent::session::{SessionFile, SessionManager};
 use coding_agent::tools::all_tools;
 
 fn emit_stats(stats: Option<&AgentStats>, print_stats: bool, stats_json_path: Option<&str>) {
@@ -25,6 +27,11 @@ fn emit_stats(stats: Option<&AgentStats>, print_stats: bool, stats_json_path: Op
             }
         }
     }
+}
+
+fn default_session_dir() -> PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+    PathBuf::from(home).join(".tau").join("sessions")
 }
 
 #[tokio::main]
@@ -60,6 +67,49 @@ async fn main() -> Result<()> {
         .ok_or_else(|| anyhow!("Model '{}' not found in registry", model_id))?;
     let model = (*model).clone();
 
+    // --- Session setup ---
+    let session_mgr = SessionManager::new(default_session_dir());
+
+    // Determine session mode and load any pre-existing messages
+    let (initial_messages, session_file_opt) = if let Some(ref id) = cli.session {
+        // Resume specific session
+        let messages = session_mgr.load(id).map_err(|e| {
+            eprintln!("Error: {}", e);
+            e
+        })?;
+        let sf = session_mgr.open(id)?;
+        eprintln!(
+            "[session] Resuming session {} ({} messages)",
+            id,
+            messages.len()
+        );
+        (messages, Some(sf))
+    } else if cli.resume {
+        // Resume most recent session
+        match session_mgr.latest()? {
+            Some(id) => {
+                let messages = session_mgr.load(&id)?;
+                let sf = session_mgr.open(&id)?;
+                eprintln!(
+                    "[session] Resuming session {} ({} messages)",
+                    id,
+                    messages.len()
+                );
+                (messages, Some(sf))
+            }
+            None => {
+                eprintln!("[session] No previous session found, starting fresh");
+                (vec![], None)
+            }
+        }
+    } else if cli.no_session {
+        // Explicitly ephemeral
+        (vec![], None)
+    } else {
+        // Default: ephemeral (no persistence unless --session/--resume)
+        (vec![], None)
+    };
+
     // Build agent
     let tools = all_tools();
     let agent = Agent::new(AgentOptions {
@@ -93,8 +143,16 @@ async fn main() -> Result<()> {
         (None, None)
     };
 
+    // Load pre-existing messages into agent state
+    if !initial_messages.is_empty() {
+        agent.replace_messages(initial_messages);
+    }
+
     // Subscribe to events
-    let _event_handler = agent.subscribe(|event| match event {
+    let session_file_arc: Option<Arc<SessionFile>> = session_file_opt.map(Arc::new);
+    let session_for_save = session_file_arc.clone();
+
+    let _event_handler = agent.subscribe(move |event| match event {
         AgentEvent::MessageUpdate {
             assistant_event, ..
         } => match assistant_event.as_ref() {
@@ -108,6 +166,13 @@ async fn main() -> Result<()> {
             }
             _ => {}
         },
+        AgentEvent::MessageEnd { message } => {
+            if let Some(ref sf) = session_for_save {
+                if let Err(e) = sf.append(message) {
+                    eprintln!("Warning: failed to save message to session: {}", e);
+                }
+            }
+        }
         AgentEvent::ToolExecutionStart { tool_name, .. } => {
             eprintln!("[tool: {}]", tool_name);
         }

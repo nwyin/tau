@@ -16,6 +16,8 @@ serde_json = { workspace = true }
 anyhow = { workspace = true }
 tokio-util = { version = "0.7", features = ["rt"] }
 clap = { version = "4", features = ["derive"] }
+chrono = { workspace = true }
+uuid = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"

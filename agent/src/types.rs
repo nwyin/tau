@@ -45,11 +45,14 @@ impl ThinkingLevel {
 // AgentMessage — Message extended with a custom escape hatch
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", content = "inner")]
 pub enum AgentMessage {
     /// Standard LLM message (user / assistant / toolResult).
+    #[serde(rename = "llm")]
     Llm(Message),
     /// Application-defined message that is invisible to the LLM.
+    #[serde(rename = "custom")]
     Custom { role: String, data: Value },
 }
 

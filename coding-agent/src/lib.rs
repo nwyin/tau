@@ -1,4 +1,5 @@
 pub mod cli;
+pub mod session;
 pub mod tools;
 
 pub use tools::all_tools;
