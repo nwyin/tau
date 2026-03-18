@@ -12,11 +12,9 @@ coding-agent   built-in tools (bash, file read/write) + REPL/CLI
 
 ## Current state
 
-- **ai**: OpenAI Responses provider implemented. Anthropic and Kimi are TODO stubs. Model catalog covers ~60 models across three providers.
-- **agent**: Feature-complete port of pi-mono's agent loop. `stream_fn` injection for testing, tool wiring to LLM context, full event system.
-- **coding-agent**: Three tools (BashTool, FileReadTool, FileWriteTool), interactive REPL, headless `--prompt` mode (in progress).
-
-Tests: ~120 passing, 8 ignored (live API smoke tests gated by `OPENAI_API_KEY` + `RUN_LIVE_PROVIDER_TESTS=1`).
+- **ai**: OpenAI Responses and Anthropic Messages providers implemented. Kimi is a TODO stub. Model catalog covers ~65 models across three providers. Property-based tests (proptest) for SSE parser and type serde.
+- **agent**: Feature-complete port of pi-mono's agent loop. `stream_fn` injection for testing, tool wiring to LLM context, full event system. Performance instrumentation via `AgentStats` subscriber.
+- **coding-agent**: Four tools (BashTool, FileReadTool, FileWriteTool, FileEditTool), interactive REPL, headless `--prompt` mode, JSONL session persistence (`--session`/`--resume`).
 
 ---
 
@@ -51,7 +49,9 @@ Top-level `stream()`, `stream_simple()`, `complete()`, `complete_simple()` look 
 
 **Implemented:** OpenAI Responses (`ai/src/providers/openai_responses.rs`). Full SSE parsing, tool call ID normalization, reasoning effort clamping, cost calculation, service tier multipliers.
 
-**TODO stubs:** Anthropic Messages, Kimi.
+**Implemented:** Anthropic Messages (`ai/src/providers/anthropic.rs`). Native JSON streaming, thinking support (budget-based and adaptive), tool argument accumulation, stop reason mapping.
+
+**TODO stub:** Kimi.
 
 ### Model registry + catalog (`models.rs`, `catalog.rs`)
 
@@ -96,19 +96,23 @@ Wraps the loop with state management:
 - **BashTool** — runs shell commands via `sh -c`. Timeout support, cancellation, output truncation (2000 lines / 30KB), exit code reporting.
 - **FileReadTool** — reads text files with offset/limit. Line numbering, binary detection, truncation with continuation hints.
 - **FileWriteTool** — writes files, creates parent dirs.
+- **FileEditTool** — exact-match string replacement (`old_string` → `new_string`). Requires exactly 1 match. Reports helpful context on miss.
 
 All implement `AgentTool` and are collected via `coding_agent::tools::all_tools()`.
 
 ### CLI modes
 
 - **REPL** (default): interactive `> ` prompt loop. Streams text deltas to stdout, tool events to stderr.
-- **Headless** (`--prompt "..."`, in progress): non-interactive mode for benchmarks and scripting. Agent loops autonomously until done, then exits.
+- **Headless** (`--prompt "..."`): non-interactive mode for benchmarks and scripting. Agent loops autonomously until done, then exits.
+- **Session persistence**: `--session <id>` resumes a session, `--resume` picks up the most recent. Sessions stored as JSONL in `~/.tau/sessions/`.
+- **Stats**: `--stats` prints token/cost/latency summary to stderr. `--stats-json <path>` writes machine-readable JSON.
 
 ### Usage
 
 ```
 OPENAI_API_KEY=sk-... cargo run -p coding-agent
 OPENAI_API_KEY=sk-... cargo run -p coding-agent -- --prompt "List all Rust files"
+ANTHROPIC_API_KEY=sk-... cargo run -p coding-agent -- --model claude-sonnet-4-6 --prompt "Explain this repo"
 ```
 
 ---
@@ -128,8 +132,10 @@ OPENAI_API_KEY=sk-... cargo run -p coding-agent -- --prompt "List all Rust files
 
 **Why not port all of pi-mono's coding-agent?** pi-mono's `packages/coding-agent` is ~120 source files — TUI, session branching, compaction, extensions, skills, themes, RPC, OAuth, and package management. tau needs tools that let an LLM interact with the filesystem and shell, a way to run it, and good enough quality to benchmark. Everything else is optional.
 
-**Why only OpenAI?** tau targets OpenAI, Anthropic, and Kimi. OpenAI was implemented first because the Responses API is well-documented and covers the broadest model selection. Anthropic and Kimi are TODO stubs.
+**Why OpenAI and Anthropic first?** These two cover the models that matter most for benchmarking. OpenAI was implemented first (well-documented Responses API), Anthropic second (validates the provider abstraction with a meaningfully different wire format). Kimi is a TODO stub.
 
 **Live API test policy.** Live provider tests require double opt-in: `OPENAI_API_KEY` + `RUN_LIVE_PROVIDER_TESTS=1`. Unit tests are fully offline and deterministic. Fixture-based contract tests validate provider wire formats without network calls. See `docs/test-migration-todo.md`.
 
 **No proxy, no web UI.** pi-mono supports browser-based agents via a CORS proxy (`streamProxy`) and a Lit web component library. tau is local-only — agents run on the machine, call providers directly. This is a deliberate scope cut.
+
+**Benchmarking as a first-class concern.** tau is designed to be benchmarked — `--prompt` mode, `--stats` instrumentation, and the `benchmarks/` directory exist from early on. The goal is not just to build a harness but to measure how harness design affects model performance. See `docs/benchmarking.md`.
