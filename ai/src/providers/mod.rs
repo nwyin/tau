@@ -1,3 +1,8 @@
+pub mod openai_responses;
+pub mod openai_responses_shared;
+mod anthropic;
+mod kimi;
+
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
@@ -61,6 +66,15 @@ pub fn unregister_api_provider(api: &str) {
 pub fn clear_api_providers() {
     let mut reg = registry().write().unwrap();
     reg.providers.clear();
+}
+
+// ---------------------------------------------------------------------------
+// Built-in provider registration
+// ---------------------------------------------------------------------------
+
+/// Register all built-in providers. Call once at startup.
+pub fn register_builtin_providers() {
+    register_api_provider(Arc::new(openai_responses::OpenAIResponsesProvider::new()));
 }
 
 // ---------------------------------------------------------------------------
