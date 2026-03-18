@@ -35,7 +35,12 @@ fn openai_model() -> Model {
         base_url: "https://api.openai.com/v1".into(),
         reasoning: false,
         input: vec!["text".into(), "image".into()],
-        cost: ModelCost { input: 1.0, output: 3.0, cache_read: 0.1, cache_write: 0.0 },
+        cost: ModelCost {
+            input: 1.0,
+            output: 3.0,
+            cache_read: 0.1,
+            cache_write: 0.0,
+        },
         context_window: 128_000,
         max_tokens: 4_096,
         headers: None,
@@ -52,7 +57,12 @@ fn reasoning_model() -> Model {
         base_url: "https://api.openai.com/v1".into(),
         reasoning: true,
         input: vec!["text".into()],
-        cost: ModelCost { input: 5.0, output: 15.0, cache_read: 0.5, cache_write: 0.0 },
+        cost: ModelCost {
+            input: 5.0,
+            output: 15.0,
+            cache_read: 0.5,
+            cache_write: 0.0,
+        },
         context_window: 200_000,
         max_tokens: 64_000,
         headers: None,
@@ -83,7 +93,10 @@ async fn run_sse_events(
         api: model.api.clone(),
         provider: model.provider.clone(),
         model: model.id.clone(),
-        usage: Usage { cost: Cost::default(), ..Default::default() },
+        usage: Usage {
+            cost: Cost::default(),
+            ..Default::default()
+        },
         stop_reason: StopReason::Stop,
         error_message: None,
         timestamp: 0,
@@ -223,7 +236,9 @@ fn inv1_tool_result_becomes_function_call_output() {
             role: "toolResult".into(),
             tool_call_id: "call_abc|fc_xyz".into(),
             tool_name: "my_tool".into(),
-            content: vec![UserBlock::Text { text: "the result".into() }],
+            content: vec![UserBlock::Text {
+                text: "the result".into(),
+            }],
             details: None,
             is_error: false,
             timestamp: 0,
@@ -239,13 +254,11 @@ fn inv1_tool_result_becomes_function_call_output() {
 
 #[test]
 fn inv1_tools_convert_to_function_format() {
-    let tools = vec![
-        Tool {
-            name: "search".into(),
-            description: "Search the web".into(),
-            parameters: json!({ "type": "object", "properties": {} }),
-        },
-    ];
+    let tools = vec![Tool {
+        name: "search".into(),
+        description: "Search the web".into(),
+        parameters: json!({ "type": "object", "properties": {} }),
+    }];
     let result = convert_responses_tools(&tools);
     assert_eq!(result.len(), 1);
     assert_eq!(result[0]["type"], "function");
@@ -289,9 +302,10 @@ async fn inv2_text_streaming_lifecycle() {
     let (output, _) = run_sse_events(events, &model, None).await;
     assert_eq!(output.stop_reason, StopReason::Stop);
     assert_eq!(output.usage.output, 5);
-    assert!(output.content.iter().any(
-        |b| matches!(b, ContentBlock::Text { text, .. } if text == "Hello World")
-    ));
+    assert!(output
+        .content
+        .iter()
+        .any(|b| matches!(b, ContentBlock::Text { text, .. } if text == "Hello World")));
 }
 
 #[tokio::test]
@@ -325,9 +339,13 @@ async fn inv2_thinking_streaming_lifecycle() {
         |b| matches!(b, ContentBlock::Thinking { thinking, .. } if thinking.contains("step 1"))
     ));
     // thinking_signature should be set
-    assert!(output.content.iter().any(
-        |b| matches!(b, ContentBlock::Thinking { thinking_signature: Some(_), .. })
-    ));
+    assert!(output.content.iter().any(|b| matches!(
+        b,
+        ContentBlock::Thinking {
+            thinking_signature: Some(_),
+            ..
+        }
+    )));
 }
 
 #[tokio::test]
@@ -366,9 +384,7 @@ async fn inv2_tool_call_streaming_lifecycle() {
 #[tokio::test]
 async fn inv2_error_event_produces_error() {
     let model = openai_model();
-    let events = vec![
-        json!({ "type": "error", "code": 429, "message": "Rate limit exceeded" }),
-    ];
+    let events = vec![json!({ "type": "error", "code": 429, "message": "Rate limit exceeded" })];
 
     let mut output = AssistantMessage {
         role: "assistant".into(),
@@ -391,9 +407,7 @@ async fn inv2_error_event_produces_error() {
 #[tokio::test]
 async fn inv2_response_failed_produces_error() {
     let model = openai_model();
-    let events = vec![
-        json!({ "type": "response.failed", "response": {} }),
-    ];
+    let events = vec![json!({ "type": "response.failed", "response": {} })];
 
     let mut output = AssistantMessage {
         role: "assistant".into(),
@@ -588,11 +602,15 @@ fn inv3_failing_issue_1022_id_normalizes() {
     assert!(!parts[1].ends_with('_'));
     // Verify no chars outside [a-zA-Z0-9_-]
     assert!(
-        parts[0].chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-'),
+        parts[0]
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-'),
         "call_id has invalid chars"
     );
     assert!(
-        parts[1].chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-'),
+        parts[1]
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-'),
         "item_id has invalid chars"
     );
 }
@@ -670,13 +688,31 @@ fn inv5_flex_tier_halves_cost() {
         cache_read: 200,
         cache_write: 0,
         total_tokens: 1700,
-        cost: Cost { input: 1.0, output: 1.5, cache_read: 0.2, cache_write: 0.0, total: 2.7 },
+        cost: Cost {
+            input: 1.0,
+            output: 1.5,
+            cache_read: 0.2,
+            cache_write: 0.0,
+            total: 2.7,
+        },
     };
     apply_service_tier_pricing(&mut usage, Some("flex"));
-    assert!((usage.cost.input - 0.5).abs() < 1e-9, "input: {}", usage.cost.input);
-    assert!((usage.cost.output - 0.75).abs() < 1e-9, "output: {}", usage.cost.output);
+    assert!(
+        (usage.cost.input - 0.5).abs() < 1e-9,
+        "input: {}",
+        usage.cost.input
+    );
+    assert!(
+        (usage.cost.output - 0.75).abs() < 1e-9,
+        "output: {}",
+        usage.cost.output
+    );
     assert!((usage.cost.cache_read - 0.1).abs() < 1e-9);
-    assert!((usage.cost.total - 1.35).abs() < 1e-9, "total: {}", usage.cost.total);
+    assert!(
+        (usage.cost.total - 1.35).abs() < 1e-9,
+        "total: {}",
+        usage.cost.total
+    );
 }
 
 #[test]
@@ -687,17 +723,33 @@ fn inv5_priority_tier_doubles_cost() {
         cache_read: 0,
         cache_write: 0,
         total_tokens: 150,
-        cost: Cost { input: 1.0, output: 0.5, cache_read: 0.0, cache_write: 0.0, total: 1.5 },
+        cost: Cost {
+            input: 1.0,
+            output: 0.5,
+            cache_read: 0.0,
+            cache_write: 0.0,
+            total: 1.5,
+        },
     };
     apply_service_tier_pricing(&mut usage, Some("priority"));
     assert!((usage.cost.input - 2.0).abs() < 1e-9);
     assert!((usage.cost.output - 1.0).abs() < 1e-9);
-    assert!((usage.cost.total - 3.0).abs() < 1e-9, "total: {}", usage.cost.total);
+    assert!(
+        (usage.cost.total - 3.0).abs() < 1e-9,
+        "total: {}",
+        usage.cost.total
+    );
 }
 
 #[test]
 fn inv5_default_tier_is_no_op() {
-    let original_cost = Cost { input: 1.0, output: 0.5, cache_read: 0.0, cache_write: 0.0, total: 1.5 };
+    let original_cost = Cost {
+        input: 1.0,
+        output: 0.5,
+        cache_read: 0.0,
+        cache_write: 0.0,
+        total: 1.5,
+    };
     let mut usage = Usage {
         input: 100,
         output: 50,
@@ -853,7 +905,9 @@ async fn integration_simple_text_completion() {
 
     assert_eq!(response.stop_reason, StopReason::Stop);
     assert!(response.error_message.is_none());
-    assert!(response.content.iter().any(|b| matches!(b, ContentBlock::Text { text, .. } if text.to_lowercase().contains("hello"))));
+    assert!(response.content.iter().any(
+        |b| matches!(b, ContentBlock::Text { text, .. } if text.to_lowercase().contains("hello"))
+    ));
 
     clear_api_providers();
 }
@@ -872,7 +926,9 @@ async fn integration_tool_call_round_trip() {
     let response = complete_simple(
         &model,
         &Context {
-            system_prompt: Some("You are a helpful assistant. Use the provided tools when asked.".into()),
+            system_prompt: Some(
+                "You are a helpful assistant. Use the provided tools when asked.".into(),
+            ),
             messages: vec![Message::User(UserMessage {
                 role: "user".into(),
                 content: UserContent::Text("Use the echo tool to echo 'test123'".into()),
@@ -894,7 +950,10 @@ async fn integration_tool_call_round_trip() {
     .unwrap();
 
     assert_eq!(response.stop_reason, StopReason::ToolUse);
-    assert!(response.content.iter().any(|b| matches!(b, ContentBlock::ToolCall { name, .. } if name == "echo")));
+    assert!(response
+        .content
+        .iter()
+        .any(|b| matches!(b, ContentBlock::ToolCall { name, .. } if name == "echo")));
 
     clear_api_providers();
 }

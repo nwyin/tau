@@ -44,7 +44,13 @@ pub fn normalize_tool_call_id(id: &str, provider: &str) -> String {
 
     let sanitize = |s: &str| -> String {
         s.chars()
-            .map(|c| if c.is_ascii_alphanumeric() || c == '_' || c == '-' { c } else { '_' })
+            .map(|c| {
+                if c.is_ascii_alphanumeric() || c == '_' || c == '-' {
+                    c
+                } else {
+                    '_'
+                }
+            })
             .collect()
     };
 
@@ -81,12 +87,8 @@ fn short_hash(s: &str) -> String {
         h1 = h1.wrapping_mul(2654435761).wrapping_add(h1 ^ c);
         h2 = h2.wrapping_mul(1597334677).wrapping_add(h2 ^ c);
     }
-    h1 = (h1 ^ (h1 >> 16))
-        .wrapping_mul(2246822507)
-        ^ (h2 ^ (h2 >> 13)).wrapping_mul(3266489909);
-    h2 = (h2 ^ (h2 >> 16))
-        .wrapping_mul(2246822507)
-        ^ (h1 ^ (h1 >> 13)).wrapping_mul(3266489909);
+    h1 = (h1 ^ (h1 >> 16)).wrapping_mul(2246822507) ^ (h2 ^ (h2 >> 13)).wrapping_mul(3266489909);
+    h2 = (h2 ^ (h2 >> 16)).wrapping_mul(2246822507) ^ (h1 ^ (h1 >> 13)).wrapping_mul(3266489909);
     format!("{}{}", radix36(h2), radix36(h1))
 }
 
@@ -120,7 +122,11 @@ pub fn convert_responses_messages(model: &Model, context: &Context) -> Vec<Value
 
     // System / developer prompt
     if let Some(ref sys) = context.system_prompt {
-        let role = if model.reasoning { "developer" } else { "system" };
+        let role = if model.reasoning {
+            "developer"
+        } else {
+            "system"
+        };
         messages.push(json!({ "role": role, "content": sys }));
     }
 
@@ -163,15 +169,17 @@ pub fn convert_responses_messages(model: &Model, context: &Context) -> Vec<Value
             }
 
             Message::Assistant(a) => {
-                let is_different_model = a.model != model.id
-                    && a.provider == model.provider
-                    && a.api == model.api;
+                let is_different_model =
+                    a.model != model.id && a.provider == model.provider && a.api == model.api;
 
                 let mut output: Vec<Value> = Vec::new();
 
                 for block in &a.content {
                     match block {
-                        ContentBlock::Thinking { thinking_signature: Some(sig), .. } => {
+                        ContentBlock::Thinking {
+                            thinking_signature: Some(sig),
+                            ..
+                        } => {
                             // Restore as a reasoning item using the stored signature JSON
                             if let Ok(reasoning_item) = serde_json::from_str::<Value>(sig) {
                                 output.push(reasoning_item);
@@ -180,7 +188,10 @@ pub fn convert_responses_messages(model: &Model, context: &Context) -> Vec<Value
                         ContentBlock::Thinking { .. } => {
                             // No signature — skip (e.g. cross-provider thinking)
                         }
-                        ContentBlock::Text { text, text_signature } => {
+                        ContentBlock::Text {
+                            text,
+                            text_signature,
+                        } => {
                             let id = match text_signature {
                                 Some(sig) if sig.len() <= 64 => sig.clone(),
                                 Some(sig) => format!("msg_{}", short_hash(sig)),
@@ -194,7 +205,12 @@ pub fn convert_responses_messages(model: &Model, context: &Context) -> Vec<Value
                                 "id": id,
                             }));
                         }
-                        ContentBlock::ToolCall { id, name, arguments, .. } => {
+                        ContentBlock::ToolCall {
+                            id,
+                            name,
+                            arguments,
+                            ..
+                        } => {
                             let normalized = normalize_tool_call_id(id, &a.provider);
                             let mut call_id_str = normalized.clone();
                             let mut item_id_opt: Option<String> = None;
@@ -246,11 +262,18 @@ pub fn convert_responses_messages(model: &Model, context: &Context) -> Vec<Value
                     .collect::<Vec<_>>()
                     .join("\n");
 
-                let has_images = tr.content.iter().any(|c| matches!(c, UserBlock::Image { .. }));
+                let has_images = tr
+                    .content
+                    .iter()
+                    .any(|c| matches!(c, UserBlock::Image { .. }));
                 let has_text = !text_result.is_empty();
 
                 // call_id is the part before `|`
-                let call_id = tr.tool_call_id.split('|').next().unwrap_or(&tr.tool_call_id);
+                let call_id = tr
+                    .tool_call_id
+                    .split('|')
+                    .next()
+                    .unwrap_or(&tr.tool_call_id);
 
                 messages.push(json!({
                     "type": "function_call_output",
@@ -480,8 +503,7 @@ pub async fn process_sse_events(
                     reasoning_summary.push_str(&delta);
 
                     // Update the last thinking block
-                    if let Some(ContentBlock::Thinking { thinking, .. }) =
-                        output.content.last_mut()
+                    if let Some(ContentBlock::Thinking { thinking, .. }) = output.content.last_mut()
                     {
                         *thinking = reasoning_summary.clone();
                     }
@@ -500,8 +522,7 @@ pub async fn process_sse_events(
                     // Add paragraph separator between summary parts
                     let delta = "\n\n".to_string();
                     reasoning_summary.push_str(&delta);
-                    if let Some(ContentBlock::Thinking { thinking, .. }) =
-                        output.content.last_mut()
+                    if let Some(ContentBlock::Thinking { thinking, .. }) = output.content.last_mut()
                     {
                         *thinking = reasoning_summary.clone();
                     }
@@ -635,8 +656,10 @@ pub async fn process_sse_events(
                                 .and_then(|v| v.as_str())
                                 .map(|s| s.to_string());
 
-                            if let Some(ContentBlock::Text { text, text_signature }) =
-                                output.content.last_mut()
+                            if let Some(ContentBlock::Text {
+                                text,
+                                text_signature,
+                            }) = output.content.last_mut()
                             {
                                 *text = final_text.clone();
                                 *text_signature = msg_id;
@@ -735,18 +758,18 @@ pub async fn process_sse_events(
                 calculate_cost(model, &mut output.usage);
 
                 // Apply service tier: prefer the tier from the response, fall back to param
-                let response_tier = response
-                    .get("service_tier")
-                    .and_then(|v| v.as_str());
+                let response_tier = response.get("service_tier").and_then(|v| v.as_str());
                 let effective_tier = response_tier.or(service_tier);
                 apply_service_tier_pricing(&mut output.usage, effective_tier);
 
-                output.stop_reason = map_stop_reason(
-                    response.get("status").and_then(|v| v.as_str()),
-                );
+                output.stop_reason =
+                    map_stop_reason(response.get("status").and_then(|v| v.as_str()));
 
                 // If any tool call is present and stop reason is stop → toolUse
-                if output.content.iter().any(|b| matches!(b, ContentBlock::ToolCall { .. }))
+                if output
+                    .content
+                    .iter()
+                    .any(|b| matches!(b, ContentBlock::ToolCall { .. }))
                     && output.stop_reason == StopReason::Stop
                 {
                     output.stop_reason = StopReason::ToolUse;
@@ -791,7 +814,10 @@ mod tests {
 
     #[test]
     fn normalize_cross_provider_passthrough() {
-        assert_eq!(normalize_tool_call_id("toolu_abc|extra", "anthropic"), "toolu_abc|extra");
+        assert_eq!(
+            normalize_tool_call_id("toolu_abc|extra", "anthropic"),
+            "toolu_abc|extra"
+        );
     }
 
     #[test]
@@ -799,7 +825,11 @@ mod tests {
         let result = normalize_tool_call_id("call_abc|item_xyz", "openai");
         let parts: Vec<&str> = result.split('|').collect();
         assert_eq!(parts[0], "call_abc");
-        assert!(parts[1].starts_with("fc"), "item_id must start with fc, got: {}", parts[1]);
+        assert!(
+            parts[1].starts_with("fc"),
+            "item_id must start with fc, got: {}",
+            parts[1]
+        );
     }
 
     #[test]

@@ -9,8 +9,7 @@ use futures::StreamExt;
 use serde_json::{json, Value};
 
 use crate::providers::openai_responses_shared::{
-    clamp_reasoning_effort, convert_responses_messages,
-    convert_responses_tools, process_sse_events,
+    clamp_reasoning_effort, convert_responses_messages, convert_responses_tools, process_sse_events,
 };
 use crate::providers::ApiProvider;
 use crate::stream::{assistant_message_event_stream, AssistantMessageEventStream};
@@ -94,13 +93,12 @@ pub fn build_request_body(model: &Model, context: &Context, opts: &OpenAIRequest
         None
     };
 
-    let prompt_cache_retention: Option<&str> = if *cache_retention == CacheRetention::Long
-        && model.base_url.contains("api.openai.com")
-    {
-        Some("24h")
-    } else {
-        None
-    };
+    let prompt_cache_retention: Option<&str> =
+        if *cache_retention == CacheRetention::Long && model.base_url.contains("api.openai.com") {
+            Some("24h")
+        } else {
+            None
+        };
 
     let mut body = json!({
         "model": model.id,
@@ -235,7 +233,9 @@ fn stream_openai_responses(
         }
 
         // Emit Start event
-        tx.push(AssistantMessageEvent::Start { partial: output.clone() });
+        tx.push(AssistantMessageEvent::Start {
+            partial: output.clone(),
+        });
 
         // Parse SSE stream
         let service_tier_str = opts.service_tier.clone();
@@ -304,8 +304,7 @@ async fn collect_sse_events(response: reqwest::Response) -> Result<Vec<Value>> {
                     let line = buffer[..pos].trim_end_matches('\r').to_string();
                     buffer = buffer[pos + 1..].to_string();
 
-                    if line.starts_with("data: ") {
-                        let data = &line[6..];
+                    if let Some(data) = line.strip_prefix("data: ") {
                         if data == "[DONE]" {
                             return Ok(events);
                         }
@@ -404,7 +403,13 @@ impl ApiProvider for OpenAIResponsesProvider {
             extra_headers: base.headers.clone(),
         };
 
-        stream_openai_responses(self.client.clone(), model.clone(), context.clone(), api_key, opts)
+        stream_openai_responses(
+            self.client.clone(),
+            model.clone(),
+            context.clone(),
+            api_key,
+            opts,
+        )
     }
 
     fn stream_simple(
