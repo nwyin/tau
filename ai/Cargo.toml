@@ -18,3 +18,8 @@ reqwest = { version = "0.12", features = ["json", "stream"] }
 tempfile = "3"
 tokio-util = { version = "0.7", features = ["rt"] }
 proptest = "1"
+criterion = { workspace = true }
+
+[[bench]]
+name = "sse_parsing"
+harness = false
