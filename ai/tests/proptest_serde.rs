@@ -85,11 +85,7 @@ fn arb_unicode(max_chars: usize) -> impl Strategy<Value = String> {
 
 /// Mixed strategy — either printable ASCII or arbitrary Unicode.
 fn arb_text(max_len: usize) -> BoxedStrategy<String> {
-    prop_oneof![
-        arb_ascii(max_len),
-        arb_unicode(max_len),
-    ]
-    .boxed()
+    prop_oneof![arb_ascii(max_len), arb_unicode(max_len),].boxed()
 }
 
 // ---------------------------------------------------------------------------
@@ -103,22 +99,25 @@ fn arb_tool_args() -> impl Strategy<Value = HashMap<String, Value>> {
 fn arb_content_block() -> impl Strategy<Value = ContentBlock> {
     prop_oneof![
         // Text variant
-        (arb_text(500), prop::option::of(arb_ascii(100))).prop_map(
-            |(text, text_signature)| ContentBlock::Text { text, text_signature }
-        ),
-
+        (arb_text(500), prop::option::of(arb_ascii(100))).prop_map(|(text, text_signature)| {
+            ContentBlock::Text {
+                text,
+                text_signature,
+            }
+        }),
         // Thinking variant (with optional signature and optional redacted flag)
         (
             arb_text(500),
             prop::option::of(arb_ascii(100)),
             prop::option::of(any::<bool>()),
         )
-            .prop_map(|(thinking, thinking_signature, redacted)| ContentBlock::Thinking {
-                thinking,
-                thinking_signature,
-                redacted,
-            }),
-
+            .prop_map(
+                |(thinking, thinking_signature, redacted)| ContentBlock::Thinking {
+                    thinking,
+                    thinking_signature,
+                    redacted,
+                }
+            ),
         // Image variant (base64-ish data + one of four common MIME types)
         (
             "[A-Za-z0-9+/=]{0,120}",
@@ -130,7 +129,6 @@ fn arb_content_block() -> impl Strategy<Value = ContentBlock> {
             ],
         )
             .prop_map(|(data, mime_type)| ContentBlock::Image { data, mime_type }),
-
         // ToolCall variant (deeply-nested args covered by arb_json_value)
         (
             "[a-zA-Z0-9_-]{1,50}",
@@ -138,12 +136,14 @@ fn arb_content_block() -> impl Strategy<Value = ContentBlock> {
             arb_tool_args(),
             prop::option::of(arb_ascii(100)),
         )
-            .prop_map(|(id, name, arguments, thought_signature)| ContentBlock::ToolCall {
-                id,
-                name,
-                arguments,
-                thought_signature,
-            }),
+            .prop_map(
+                |(id, name, arguments, thought_signature)| ContentBlock::ToolCall {
+                    id,
+                    name,
+                    arguments,
+                    thought_signature,
+                }
+            ),
     ]
 }
 

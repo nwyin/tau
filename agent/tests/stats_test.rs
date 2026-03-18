@@ -111,9 +111,7 @@ fn inv1_token_totals_equal_sum_of_turns() {
         tool_results: vec![],
     });
 
-    h(&AgentEvent::AgentEnd {
-        messages: vec![],
-    });
+    h(&AgentEvent::AgentEnd { messages: vec![] });
 
     let json = stats.json();
     let totals = &json["totals"];
@@ -200,7 +198,10 @@ fn inv4_json_has_expected_keys() {
     let stats = AgentStats::new();
     // Even with no events, json() must produce valid output with expected keys
     let json = stats.json();
-    assert!(json.get("total_duration").is_some(), "INV-4: total_duration");
+    assert!(
+        json.get("total_duration").is_some(),
+        "INV-4: total_duration"
+    );
     assert!(json.get("turns").is_some(), "INV-4: turns");
     assert!(json.get("totals").is_some(), "INV-4: totals");
     // ttft_secs is present (may be null)

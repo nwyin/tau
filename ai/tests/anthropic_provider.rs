@@ -8,8 +8,8 @@ use common::{env_key, registry_lock};
 
 use ai::models::get_model;
 use ai::providers::anthropic::{
-    build_request_body, convert_anthropic_messages, convert_anthropic_tools,
-    map_stop_reason, process_anthropic_events, AnthropicRequestOptions,
+    build_request_body, convert_anthropic_messages, convert_anthropic_tools, map_stop_reason,
+    process_anthropic_events, AnthropicRequestOptions,
 };
 use ai::providers::{clear_api_providers, complete_simple, register_builtin_providers};
 use ai::stream::assistant_message_event_stream;
@@ -90,10 +90,7 @@ fn non_xhigh_reasoning_model() -> Model {
     }
 }
 
-async fn run_anthropic_events(
-    events: Vec<serde_json::Value>,
-    model: &Model,
-) -> AssistantMessage {
+async fn run_anthropic_events(events: Vec<serde_json::Value>, model: &Model) -> AssistantMessage {
     let mut output = AssistantMessage {
         role: "assistant".into(),
         content: Vec::new(),
@@ -162,7 +159,9 @@ fn inv1_user_image_preserved_for_image_capable_model() {
         messages: vec![Message::User(UserMessage {
             role: "user".into(),
             content: UserContent::Blocks(vec![
-                UserBlock::Text { text: "Describe this:".into() },
+                UserBlock::Text {
+                    text: "Describe this:".into(),
+                },
                 UserBlock::Image {
                     data: "base64data==".into(),
                     mime_type: "image/png".into(),
@@ -253,7 +252,9 @@ fn inv2_tool_result_becomes_user_message_with_tool_result_block() {
             role: "toolResult".into(),
             tool_call_id: "toolu_abc123".into(),
             tool_name: "search".into(),
-            content: vec![UserBlock::Text { text: "result text".into() }],
+            content: vec![UserBlock::Text {
+                text: "result text".into(),
+            }],
             details: None,
             is_error: false,
             timestamp: 0,
@@ -279,7 +280,9 @@ fn inv2_error_tool_result_sets_is_error() {
             role: "toolResult".into(),
             tool_call_id: "toolu_xyz".into(),
             tool_name: "bash".into(),
-            content: vec![UserBlock::Text { text: "Command not found".into() }],
+            content: vec![UserBlock::Text {
+                text: "Command not found".into(),
+            }],
             details: None,
             is_error: true,
             timestamp: 0,
@@ -314,7 +317,10 @@ fn inv2_thinking_block_with_signature_preserved() {
     };
     let (_sys, msgs) = convert_anthropic_messages(&model, &context);
     assert_eq!(msgs[0]["content"][0]["type"], "thinking");
-    assert_eq!(msgs[0]["content"][0]["thinking"], "I should think about this");
+    assert_eq!(
+        msgs[0]["content"][0]["thinking"],
+        "I should think about this"
+    );
     assert_eq!(msgs[0]["content"][0]["signature"], "sig_abc");
 }
 
@@ -331,7 +337,10 @@ fn inv2_thinking_block_without_signature_skipped() {
                     thinking_signature: None, // no signature → skip
                     redacted: None,
                 },
-                ContentBlock::Text { text: "answer".into(), text_signature: None },
+                ContentBlock::Text {
+                    text: "answer".into(),
+                    text_signature: None,
+                },
             ],
             api: "anthropic-messages".into(),
             provider: "anthropic".into(),
@@ -360,7 +369,9 @@ fn inv2_tool_results_merge_into_same_user_turn() {
                 role: "toolResult".into(),
                 tool_call_id: "toolu_1".into(),
                 tool_name: "tool_a".into(),
-                content: vec![UserBlock::Text { text: "result a".into() }],
+                content: vec![UserBlock::Text {
+                    text: "result a".into(),
+                }],
                 details: None,
                 is_error: false,
                 timestamp: 0,
@@ -369,7 +380,9 @@ fn inv2_tool_results_merge_into_same_user_turn() {
                 role: "toolResult".into(),
                 tool_call_id: "toolu_2".into(),
                 tool_name: "tool_b".into(),
-                content: vec![UserBlock::Text { text: "result b".into() }],
+                content: vec![UserBlock::Text {
+                    text: "result b".into(),
+                }],
                 details: None,
                 is_error: false,
                 timestamp: 0,
@@ -378,7 +391,11 @@ fn inv2_tool_results_merge_into_same_user_turn() {
         tools: None,
     };
     let (_sys, msgs) = convert_anthropic_messages(&model, &context);
-    assert_eq!(msgs.len(), 1, "tool results should merge into one user message");
+    assert_eq!(
+        msgs.len(),
+        1,
+        "tool results should merge into one user message"
+    );
     assert_eq!(msgs[0]["content"].as_array().unwrap().len(), 2);
     assert_eq!(msgs[0]["content"][0]["tool_use_id"], "toolu_1");
     assert_eq!(msgs[0]["content"][1]["tool_use_id"], "toolu_2");
@@ -420,7 +437,10 @@ fn inv3_none_is_stop() {
 
 #[test]
 fn inv3_unknown_value_is_stop_no_panic() {
-    assert_eq!(map_stop_reason(Some("some_future_reason")), StopReason::Stop);
+    assert_eq!(
+        map_stop_reason(Some("some_future_reason")),
+        StopReason::Stop
+    );
 }
 
 // =============================================================================
@@ -464,9 +484,10 @@ async fn inv4_text_only_streaming() {
     assert_eq!(output.stop_reason, StopReason::Stop);
     assert_eq!(output.usage.input, 20);
     assert_eq!(output.usage.output, 3);
-    assert!(output.content.iter().any(
-        |b| matches!(b, ContentBlock::Text { text, .. } if text == "Hello world!")
-    ));
+    assert!(output
+        .content
+        .iter()
+        .any(|b| matches!(b, ContentBlock::Text { text, .. } if text == "Hello world!")));
 }
 
 #[tokio::test]
@@ -607,9 +628,10 @@ async fn inv4_unknown_event_type_skipped_no_panic() {
 
     let output = run_anthropic_events(events, &model).await;
     assert_eq!(output.stop_reason, StopReason::Stop);
-    assert!(output.content.iter().any(
-        |b| matches!(b, ContentBlock::Text { text, .. } if text == "ok")
-    ));
+    assert!(output
+        .content
+        .iter()
+        .any(|b| matches!(b, ContentBlock::Text { text, .. } if text == "ok")));
 }
 
 #[tokio::test]
@@ -669,10 +691,22 @@ async fn inv5_cost_calculated_from_usage() {
 
     let output = run_anthropic_events(events, &model).await;
     // 1M input @ $0.8/M = $0.80
-    assert!((output.usage.cost.input - 0.8).abs() < 1e-9, "input cost: {}", output.usage.cost.input);
+    assert!(
+        (output.usage.cost.input - 0.8).abs() < 1e-9,
+        "input cost: {}",
+        output.usage.cost.input
+    );
     // 1M output @ $4.0/M = $4.00
-    assert!((output.usage.cost.output - 4.0).abs() < 1e-9, "output cost: {}", output.usage.cost.output);
-    assert!((output.usage.cost.total - 4.8).abs() < 1e-9, "total: {}", output.usage.cost.total);
+    assert!(
+        (output.usage.cost.output - 4.0).abs() < 1e-9,
+        "output cost: {}",
+        output.usage.cost.output
+    );
+    assert!(
+        (output.usage.cost.total - 4.8).abs() < 1e-9,
+        "total: {}",
+        output.usage.cost.total
+    );
 }
 
 #[tokio::test]
@@ -702,10 +736,22 @@ async fn inv5_cache_costs_calculated_separately() {
 
     let output = run_anthropic_events(events, &model).await;
     // 1M cache_read @ $0.08/M = $0.08
-    assert!((output.usage.cost.cache_read - 0.08).abs() < 1e-9, "cache_read: {}", output.usage.cost.cache_read);
+    assert!(
+        (output.usage.cost.cache_read - 0.08).abs() < 1e-9,
+        "cache_read: {}",
+        output.usage.cost.cache_read
+    );
     // 1M cache_write @ $1.0/M = $1.00
-    assert!((output.usage.cost.cache_write - 1.0).abs() < 1e-9, "cache_write: {}", output.usage.cost.cache_write);
-    assert!((output.usage.cost.total - 1.08).abs() < 1e-9, "total: {}", output.usage.cost.total);
+    assert!(
+        (output.usage.cost.cache_write - 1.0).abs() < 1e-9,
+        "cache_write: {}",
+        output.usage.cost.cache_write
+    );
+    assert!(
+        (output.usage.cost.total - 1.08).abs() < 1e-9,
+        "total: {}",
+        output.usage.cost.total
+    );
 }
 
 // =============================================================================
@@ -785,7 +831,11 @@ fn request_body_no_tools_key_when_empty() {
 #[test]
 fn request_body_thinking_config_for_reasoning_model() {
     let model = non_xhigh_reasoning_model(); // non-xhigh → budget-based
-    let context = Context { system_prompt: None, messages: vec![], tools: None };
+    let context = Context {
+        system_prompt: None,
+        messages: vec![],
+        tools: None,
+    };
     let opts = AnthropicRequestOptions {
         thinking_config: Some(json!({ "type": "enabled", "budget_tokens": 5000 })),
         ..Default::default()
@@ -798,7 +848,11 @@ fn request_body_thinking_config_for_reasoning_model() {
 #[test]
 fn request_body_adaptive_thinking_for_opus_46() {
     let model = reasoning_model(); // claude-opus-4-6 → xhigh → adaptive
-    let context = Context { system_prompt: None, messages: vec![], tools: None };
+    let context = Context {
+        system_prompt: None,
+        messages: vec![],
+        tools: None,
+    };
     let opts = AnthropicRequestOptions {
         thinking_config: Some(json!({ "type": "adaptive" })),
         ..Default::default()
@@ -821,7 +875,11 @@ async fn missing_api_key_emits_error_event() {
     // (we pass an explicit empty key to force the error path)
     let provider = AnthropicProvider::new();
     let model = anthropic_model();
-    let context = Context { system_prompt: None, messages: vec![], tools: None };
+    let context = Context {
+        system_prompt: None,
+        messages: vec![],
+        tools: None,
+    };
     let mut opts = ai::types::StreamOptions::default();
     opts.api_key = Some(String::new()); // empty → will fall back to env var
 

@@ -176,8 +176,7 @@ fn handle_event(s: &mut StatsInner, event: &AgentEvent) {
         } => {
             if !s.first_token_captured {
                 if let AssistantMessageEvent::TextDelta { .. } = assistant_event.as_ref() {
-                    s.first_token_time =
-                        s.start_time.map(|t| t.elapsed()).or(Some(Duration::ZERO));
+                    s.first_token_time = s.start_time.map(|t| t.elapsed()).or(Some(Duration::ZERO));
                     s.first_token_captured = true;
                 }
             }

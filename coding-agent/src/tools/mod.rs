@@ -14,5 +14,10 @@ pub use file_write::FileWriteTool;
 
 /// Return all built-in tools as a list ready to pass to the agent.
 pub fn all_tools() -> Vec<Arc<dyn AgentTool>> {
-    vec![BashTool::arc(), FileEditTool::arc(), FileReadTool::arc(), FileWriteTool::arc()]
+    vec![
+        BashTool::arc(),
+        FileEditTool::arc(),
+        FileReadTool::arc(),
+        FileWriteTool::arc(),
+    ]
 }

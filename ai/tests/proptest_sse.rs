@@ -80,11 +80,11 @@ fn build_stream(
 
 #[derive(Debug, Clone)]
 enum SseLine {
-    ValidData(usize),  // data: {"seq":<n>}
-    MalformedData,     // data: {NOT_JSON!!
-    Comment,           // : comment
-    EventLine,         // event: something
-    Empty,             // (blank)
+    ValidData(usize), // data: {"seq":<n>}
+    MalformedData,    // data: {NOT_JSON!!
+    Comment,          // : comment
+    EventLine,        // event: something
+    Empty,            // (blank)
 }
 
 fn arb_sse_line() -> impl Strategy<Value = SseLine> {

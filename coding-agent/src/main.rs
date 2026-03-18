@@ -63,11 +63,13 @@ async fn main() -> Result<()> {
     // Resolve API key based on model provider
     let api_key = match model.provider.as_str() {
         "anthropic" => std::env::var("ANTHROPIC_API_KEY").map_err(|_| {
-            anyhow!("ANTHROPIC_API_KEY not set (required for model '{}')", model_id)
+            anyhow!(
+                "ANTHROPIC_API_KEY not set (required for model '{}')",
+                model_id
+            )
         })?,
-        _ => std::env::var("OPENAI_API_KEY").map_err(|_| {
-            anyhow!("OPENAI_API_KEY not set (required for model '{}')", model_id)
-        })?,
+        _ => std::env::var("OPENAI_API_KEY")
+            .map_err(|_| anyhow!("OPENAI_API_KEY not set (required for model '{}')", model_id))?,
     };
 
     // --- Session setup ---

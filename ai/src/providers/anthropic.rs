@@ -10,7 +10,9 @@ use serde_json::{json, Value};
 
 use crate::models::{calculate_cost, supports_xhigh};
 use crate::providers::ApiProvider;
-use crate::stream::{assistant_message_event_stream, AssistantMessageEventSender, AssistantMessageEventStream};
+use crate::stream::{
+    assistant_message_event_stream, AssistantMessageEventSender, AssistantMessageEventStream,
+};
 use crate::types::{
     AssistantMessage, AssistantMessageEvent, ContentBlock, Context, Cost, Message, Model,
     SimpleStreamOptions, StopReason, StreamOptions, ThinkingBudgets, ThinkingLevel, Tool, Usage,
@@ -83,7 +85,10 @@ pub fn map_stop_reason(reason: Option<&str>) -> StopReason {
 ///
 /// Returns `(system_prompt, messages_array)`.
 /// Consecutive messages of the same role are merged (Anthropic requires alternating roles).
-pub fn convert_anthropic_messages(model: &Model, context: &Context) -> (Option<String>, Vec<Value>) {
+pub fn convert_anthropic_messages(
+    model: &Model,
+    context: &Context,
+) -> (Option<String>, Vec<Value>) {
     let system_prompt = context.system_prompt.clone();
     let mut messages: Vec<Value> = Vec::new();
 
@@ -95,7 +100,9 @@ pub fn convert_anthropic_messages(model: &Model, context: &Context) -> (Option<S
                     UserContent::Blocks(blocks) => blocks
                         .iter()
                         .filter_map(|b| match b {
-                            UserBlock::Text { text } => Some(json!({ "type": "text", "text": text })),
+                            UserBlock::Text { text } => {
+                                Some(json!({ "type": "text", "text": text }))
+                            }
                             UserBlock::Image { data, mime_type } => {
                                 if model.input.iter().any(|i| i == "image") {
                                     Some(json!({
@@ -165,7 +172,12 @@ pub fn convert_anthropic_messages(model: &Model, context: &Context) -> (Option<S
                         ContentBlock::Thinking { .. } => {
                             // No signature (cross-provider thinking) — skip
                         }
-                        ContentBlock::ToolCall { id, name, arguments, .. } => {
+                        ContentBlock::ToolCall {
+                            id,
+                            name,
+                            arguments,
+                            ..
+                        } => {
                             content.push(json!({
                                 "type": "tool_use",
                                 "id": id,
@@ -263,7 +275,11 @@ pub struct AnthropicRequestOptions {
 }
 
 /// Build the request body JSON for the Anthropic Messages API.
-pub fn build_request_body(model: &Model, context: &Context, opts: &AnthropicRequestOptions) -> Value {
+pub fn build_request_body(
+    model: &Model,
+    context: &Context,
+    opts: &AnthropicRequestOptions,
+) -> Value {
     let (system_prompt, messages) = convert_anthropic_messages(model, context);
 
     let max_tokens = opts
@@ -438,7 +454,10 @@ pub async fn process_anthropic_events(
 
                 if let Some(state) = blocks.get_mut(&index) {
                     match state {
-                        BlockState::Text { text, content_index } => {
+                        BlockState::Text {
+                            text,
+                            content_index,
+                        } => {
                             if delta["type"] == "text_delta" {
                                 let d = delta["text"].as_str().unwrap_or("").to_string();
                                 text.push_str(&d);
@@ -468,9 +487,8 @@ pub async fn process_anthropic_events(
                                     let d = delta["thinking"].as_str().unwrap_or("").to_string();
                                     thinking.push_str(&d);
                                     let new_thinking = thinking.clone();
-                                    if let Some(ContentBlock::Thinking {
-                                        thinking: bt, ..
-                                    }) = output.content.get_mut(ci)
+                                    if let Some(ContentBlock::Thinking { thinking: bt, .. }) =
+                                        output.content.get_mut(ci)
                                     {
                                         *bt = new_thinking;
                                     }
@@ -481,18 +499,20 @@ pub async fn process_anthropic_events(
                                     });
                                 }
                                 Some("signature_delta") => {
-                                    let d =
-                                        delta["signature"].as_str().unwrap_or("").to_string();
+                                    let d = delta["signature"].as_str().unwrap_or("").to_string();
                                     signature.push_str(&d);
                                 }
                                 _ => {}
                             }
                         }
 
-                        BlockState::ToolUse { json, content_index, .. } => {
+                        BlockState::ToolUse {
+                            json,
+                            content_index,
+                            ..
+                        } => {
                             if delta["type"] == "input_json_delta" {
-                                let d =
-                                    delta["partial_json"].as_str().unwrap_or("").to_string();
+                                let d = delta["partial_json"].as_str().unwrap_or("").to_string();
                                 json.push_str(&d);
                                 let ci = *content_index;
                                 tx.push(AssistantMessageEvent::ToolCallDelta {
@@ -513,7 +533,10 @@ pub async fn process_anthropic_events(
 
                 if let Some(state) = blocks.remove(&index) {
                     match state {
-                        BlockState::Text { text, content_index } => {
+                        BlockState::Text {
+                            text,
+                            content_index,
+                        } => {
                             if let Some(ContentBlock::Text { text: bt, .. }) =
                                 output.content.get_mut(content_index)
                             {
@@ -552,7 +575,12 @@ pub async fn process_anthropic_events(
                             });
                         }
 
-                        BlockState::ToolUse { id, name, json, content_index } => {
+                        BlockState::ToolUse {
+                            id,
+                            name,
+                            json,
+                            content_index,
+                        } => {
                             let arguments: HashMap<String, Value> =
                                 serde_json::from_str(&json).unwrap_or_default();
                             let tool_call = ContentBlock::ToolCall {
@@ -596,7 +624,9 @@ pub async fn process_anthropic_events(
 
             "error" => {
                 let error_type = event["error"]["type"].as_str().unwrap_or("unknown");
-                let error_msg = event["error"]["message"].as_str().unwrap_or("unknown error");
+                let error_msg = event["error"]["message"]
+                    .as_str()
+                    .unwrap_or("unknown error");
                 return Err(anyhow::anyhow!("{}: {}", error_type, error_msg));
             }
 
@@ -631,10 +661,8 @@ async fn collect_anthropic_sse_events(response: reqwest::Response) -> Result<Vec
                     if let Some(data) = line.strip_prefix("data: ") {
                         match serde_json::from_str::<Value>(data) {
                             Ok(v) => {
-                                let is_stop = v
-                                    .get("type")
-                                    .and_then(|t| t.as_str())
-                                    == Some("message_stop");
+                                let is_stop =
+                                    v.get("type").and_then(|t| t.as_str()) == Some("message_stop");
                                 events.push(v);
                                 if is_stop {
                                     return Ok(events);
@@ -749,9 +777,7 @@ fn stream_anthropic_messages(
             }
         };
 
-        if let Err(e) =
-            process_anthropic_events(events, &mut output, &mut tx, &model).await
-        {
+        if let Err(e) = process_anthropic_events(events, &mut output, &mut tx, &model).await {
             output.stop_reason = StopReason::Error;
             output.error_message = Some(e.to_string());
             tx.push(AssistantMessageEvent::Error {
