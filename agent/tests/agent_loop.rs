@@ -504,10 +504,18 @@ struct SimpleTool {
 }
 
 impl agent::types::AgentTool for SimpleTool {
-    fn name(&self) -> &str { self.tool_name }
-    fn label(&self) -> &str { "unused-label" }
-    fn description(&self) -> &str { self.tool_desc }
-    fn parameters(&self) -> &Value { &self.tool_params }
+    fn name(&self) -> &str {
+        self.tool_name
+    }
+    fn label(&self) -> &str {
+        "unused-label"
+    }
+    fn description(&self) -> &str {
+        self.tool_desc
+    }
+    fn parameters(&self) -> &Value {
+        &self.tool_params
+    }
     fn execute(
         &self,
         _id: String,
@@ -516,7 +524,10 @@ impl agent::types::AgentTool for SimpleTool {
         _on_update: Option<agent::types::ToolUpdateFn>,
     ) -> agent::types::BoxFuture<anyhow::Result<agent::types::AgentToolResult>> {
         Box::pin(async {
-            Ok(agent::types::AgentToolResult { content: vec![], details: None })
+            Ok(agent::types::AgentToolResult {
+                content: vec![],
+                details: None,
+            })
         })
     }
 }
@@ -556,16 +567,30 @@ async fn tool_definitions_wired_to_llm_context() {
     while stream.next().await.is_some() {}
 
     let guard = captured.lock().unwrap();
-    let tools = guard.as_ref().expect("tools should be Some when tools are registered");
+    let tools = guard
+        .as_ref()
+        .expect("tools should be Some when tools are registered");
     assert_eq!(tools.len(), 2);
 
-    let a = tools.iter().find(|t| t.name == "tool_a").expect("tool_a in context");
+    let a = tools
+        .iter()
+        .find(|t| t.name == "tool_a")
+        .expect("tool_a in context");
     assert_eq!(a.description, "First tool");
-    assert_eq!(a.parameters, json!({"type":"object","properties":{"x":{"type":"number"}}}));
+    assert_eq!(
+        a.parameters,
+        json!({"type":"object","properties":{"x":{"type":"number"}}})
+    );
 
-    let b = tools.iter().find(|t| t.name == "tool_b").expect("tool_b in context");
+    let b = tools
+        .iter()
+        .find(|t| t.name == "tool_b")
+        .expect("tool_b in context");
     assert_eq!(b.description, "Second tool");
-    assert_eq!(b.parameters, json!({"type":"object","properties":{"y":{"type":"string"}}}));
+    assert_eq!(
+        b.parameters,
+        json!({"type":"object","properties":{"y":{"type":"string"}}})
+    );
 }
 
 #[tokio::test]
@@ -592,7 +617,10 @@ async fn no_tools_sends_none_to_llm_context() {
 
     let guard = captured.lock().unwrap();
     let tools_opt = guard.as_ref().expect("stream_fn was called");
-    assert!(tools_opt.is_none(), "tools must be None when agent has no tools registered");
+    assert!(
+        tools_opt.is_none(),
+        "tools must be None when agent has no tools registered"
+    );
 }
 
 #[tokio::test]
@@ -608,9 +636,15 @@ async fn tool_definitions_present_during_round_trip() {
         executed: Arc<std::sync::Mutex<bool>>,
     }
     impl agent::types::AgentTool for RoundTripTool {
-        fn name(&self) -> &str { "roundtrip" }
-        fn label(&self) -> &str { "Round Trip" }
-        fn description(&self) -> &str { "A round-trip test tool" }
+        fn name(&self) -> &str {
+            "roundtrip"
+        }
+        fn label(&self) -> &str {
+            "Round Trip"
+        }
+        fn description(&self) -> &str {
+            "A round-trip test tool"
+        }
         fn parameters(&self) -> &Value {
             static P: std::sync::OnceLock<Value> = std::sync::OnceLock::new();
             P.get_or_init(|| json!({"type":"object"}))
@@ -642,8 +676,7 @@ async fn tool_definitions_present_during_round_trip() {
         if idx == 0 {
             // Capture tool names from the first context call
             if let Some(tools) = &context.tools {
-                *names_ref.lock().unwrap() =
-                    tools.iter().map(|t| t.name.clone()).collect();
+                *names_ref.lock().unwrap() = tools.iter().map(|t| t.name.clone()).collect();
             }
             instant_stream(mock_assistant_message_with_tool_call(
                 "rt-1",
@@ -658,7 +691,9 @@ async fn tool_definitions_present_during_round_trip() {
     let context = AgentContext {
         system_prompt: String::new(),
         messages: vec![],
-        tools: vec![Arc::new(RoundTripTool { executed: executed_ref })],
+        tools: vec![Arc::new(RoundTripTool {
+            executed: executed_ref,
+        })],
     };
 
     let mut stream = agent_loop(vec![user_message("go")], context, Arc::new(config), None);
@@ -669,7 +704,11 @@ async fn tool_definitions_present_during_round_trip() {
         "tool execute() must have been called"
     );
     let names = captured_tool_names.lock().unwrap().clone();
-    assert_eq!(names, vec!["roundtrip".to_string()], "tool definition must be in LLM context");
+    assert_eq!(
+        names,
+        vec!["roundtrip".to_string()],
+        "tool definition must be in LLM context"
+    );
 }
 
 // ---------------------------------------------------------------------------
