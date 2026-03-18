@@ -2,6 +2,7 @@ use std::io::{self, BufRead, Write};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
+use agent::stats::AgentStats;
 use agent::types::AgentEvent;
 use agent::{Agent, AgentOptions, AgentStateInit};
 use ai::types::AssistantMessageEvent;
@@ -11,9 +12,29 @@ use clap::Parser;
 use coding_agent::cli::Cli;
 use coding_agent::tools::all_tools;
 
+fn emit_stats(stats: Option<&AgentStats>, print_stats: bool, stats_json_path: Option<&str>) {
+    if let Some(s) = stats {
+        if print_stats {
+            eprintln!("\n{}", s.summary());
+        }
+        if let Some(path) = stats_json_path {
+            let json = s.json();
+            match std::fs::write(path, json.to_string()) {
+                Ok(_) => {}
+                Err(e) => eprintln!("Warning: failed to write stats JSON to {}: {}", path, e),
+            }
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
+
+    // Capture flags before cli fields are moved
+    let print_stats = cli.stats;
+    let stats_json_path = cli.stats_json.clone();
+    let prompt_arg = cli.prompt.clone();
 
     // Check for API key first
     let api_key = std::env::var("OPENAI_API_KEY").map_err(|_| {
@@ -62,6 +83,15 @@ async fn main() -> Result<()> {
         transport: None,
         max_retry_delay_ms: None,
     });
+
+    // Set up stats collection if requested
+    let (stats, _stats_unsub) = if print_stats || stats_json_path.is_some() {
+        let s = AgentStats::new();
+        let unsub = agent.subscribe(s.handler());
+        (Some(s), Some(unsub))
+    } else {
+        (None, None)
+    };
 
     // Subscribe to events
     let _event_handler = agent.subscribe(|event| match event {
@@ -115,11 +145,14 @@ async fn main() -> Result<()> {
         }
     });
 
-    if let Some(ref prompt_arg) = cli.prompt {
+    if let Some(ref prompt_text_arg) = prompt_arg {
         // Non-interactive mode: resolve prompt, run once, exit
-        let prompt_text = coding_agent::resolve_prompt_text(prompt_arg)?;
+        let prompt_text = coding_agent::resolve_prompt_text(prompt_text_arg)?;
 
         let result = agent.prompt(prompt_text).await;
+
+        // Emit stats after run
+        emit_stats(stats.as_ref(), print_stats, stats_json_path.as_deref());
 
         let exit_code = if result.is_err() || abort_count.load(Ordering::SeqCst) > 0 {
             1

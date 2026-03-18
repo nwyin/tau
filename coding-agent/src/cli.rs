@@ -15,4 +15,12 @@ pub struct Cli {
     /// Override the default system prompt
     #[arg(long)]
     pub system_prompt: Option<String>,
+
+    /// Print human-readable performance stats to stderr at end of run
+    #[arg(long)]
+    pub stats: bool,
+
+    /// Write JSON performance stats to this file at end of run
+    #[arg(long, value_name = "PATH")]
+    pub stats_json: Option<String>,
 }
