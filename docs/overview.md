@@ -1,15 +1,22 @@
 # Codebase Overview
 
-This is a Rust port of the foundational layers of pi-mono — specifically `packages/ai` and `packages/agent`. It exists as a harness to explore what a Rust implementation of the agent stack feels like, what the pain points are, and whether the architecture translates cleanly.
+tau is a Rust agent harness inspired by pi-mono's architecture. It ports the foundational layers (`packages/ai` and `packages/agent`) and adds a minimal `coding-agent` harness on top.
 
-The two crates mirror the two lowest layers of pi-mono's dependency graph:
+The design is intentionally layered so that `agent` stays generic — different harnesses can be built on top for different agent types (coding, data, research, etc.).
 
 ```
-ai     ←  packages/ai       (LLM streaming primitives)
-agent  ←  packages/agent    (agent loop abstraction)
+ai             LLM streaming primitives (providers, models, event streams)
+agent          generic agent loop (tools, steering, follow-ups, events)
+coding-agent   built-in tools (bash, file read/write) + REPL/CLI
 ```
 
-The third layer, `packages/coding-agent` (CLI, tools, sessions), is not yet ported.
+## Current state
+
+- **ai**: OpenAI Responses provider implemented. Anthropic and Kimi are TODO stubs. Model catalog covers ~60 models across three providers.
+- **agent**: Feature-complete port of pi-mono's agent loop. `stream_fn` injection for testing, tool wiring to LLM context, full event system.
+- **coding-agent**: Three tools (BashTool, FileReadTool, FileWriteTool), interactive REPL, headless `--prompt` mode (in progress).
+
+Tests: ~120 passing, 8 ignored (live API smoke tests gated by `OPENAI_API_KEY` + `RUN_LIVE_PROVIDER_TESTS=1`).
 
 ---
 
@@ -17,43 +24,38 @@ The third layer, `packages/coding-agent` (CLI, tools, sessions), is not yet port
 
 ### Type system (`types.rs`)
 
-The core types map closely to pi-mono's. A few translation notes:
+Core types map closely to pi-mono's:
 
-- `Model<TApi>` is a generic in TS (the `api` field narrows the type). In Rust, `Model` is a plain struct with `api: String`, and `known_api` provides string constants (`ANTHROPIC_MESSAGES`, `OPENAI_RESPONSES`, etc.) for use at call sites.
-- `ContentBlock` and `Message` use `#[serde(tag = "type")]` and `#[serde(tag = "role")]` — the same tagged-union shape as the TS JSON representation.
-- `UserContent` is either plain text or a `Vec<UserBlock>` (text or image), matching pi-mono's `UserContent = string | UserBlock[]`.
-- `AssistantMessageEvent` covers the full lifecycle of a streaming response: `Start → TextDelta* → Done/Error`. The `is_terminal()` method identifies when the stream is finished.
-- `SimpleStreamOptions` wraps the reasoning/thinking level, API key, session ID, transport, etc. — all the knobs that sit above the raw wire options.
+- `Model` — plain struct with `api: String` (vs TS generic `Model<TApi>`). `known_api` module provides string constants (`OPENAI_RESPONSES`, `ANTHROPIC_MESSAGES`, etc.).
+- `ContentBlock` and `Message` — `#[serde(tag = "type")]` / `#[serde(tag = "role")]` tagged unions matching the JSON wire format.
+- `UserContent` — either plain text or `Vec<UserBlock>` (text/image).
+- `AssistantMessageEvent` — streaming lifecycle: `Start → TextDelta* → Done/Error`. `is_terminal()` detects stream end.
+- `SimpleStreamOptions` — reasoning level, API key, session ID, transport, thinking budgets.
 
 ### EventStream (`stream.rs`)
 
-pi-mono's `EventStream` is a push-based async iterable backed by an internal queue and a waiting-consumer array. The Rust port maps this to:
-
-- `mpsc::unbounded_channel` — the queue; `push()` on the sender maps to calling the TS `push()` method
-- `oneshot::channel` — the "result" resolution; in TS this is a `Promise` exposed via `stream.result()`
-- `EventStreamSender<T>` holds an `is_complete: fn(&T) -> bool` predicate; when a terminal event is pushed, it automatically resolves the oneshot before sending through the channel
-
-`AssistantMessageEventStream` is a thin specialisation where `is_complete` is `AssistantMessageEvent::is_terminal()`. Consumers get both a `Stream` interface (for event-by-event processing) and an `async fn result()` (to just await the final message).
+- `mpsc::unbounded_channel` — the event queue
+- `oneshot::channel` — result resolution (TS `stream.result()`)
+- `EventStreamSender<T>` — auto-resolves oneshot when terminal event is pushed
+- `AssistantMessageEventStream` — specialization for assistant message events
 
 ### Provider registry (`providers.rs`)
 
-pi-mono registers API implementations (e.g. `AnthropicMessagesProvider`, `OpenAIResponsesProvider`) against an API string key. The Rust port is structurally identical: a global `OnceLock<RwLock<Registry>>` keyed on `api: &str`, with `register_api_provider` / `get_api_provider`.
+Global `OnceLock<RwLock<Registry>>` keyed on API string. `register_api_provider()` / `get_api_provider()`.
 
-The `ApiProvider` trait exposes two methods:
-- `stream()` — raw, provider-specific options
-- `stream_simple()` — normalized options (handles the reasoning/thinking abstraction)
+`ApiProvider` trait:
+- `stream()` — raw options
+- `stream_simple()` — normalized options with reasoning abstraction
 
-Top-level `stream()`, `stream_simple()`, `complete()`, `complete_simple()` functions mirror pi-mono's `stream.ts` exports: they look up the provider by `model.api` and delegate.
+Top-level `stream()`, `stream_simple()`, `complete()`, `complete_simple()` look up provider by `model.api` and delegate.
 
-**No provider implementations exist yet.** The registry is wired but empty. Any call through it will return a `No API provider registered` error. This is the biggest gap between the skeleton and something runnable.
+**Implemented:** OpenAI Responses (`ai/src/providers/openai_responses.rs`). Full SSE parsing, tool call ID normalization, reasoning effort clamping, cost calculation, service tier multipliers.
+
+**TODO stubs:** Anthropic Messages, Kimi.
 
 ### Model registry + catalog (`models.rs`, `catalog.rs`)
 
-The model registry is a two-level map: `provider → model_id → Arc<Model>`. It auto-populates from `catalog.rs` on first access (via `ModelRegistry::default()`).
-
-The catalog is scoped to three providers — **anthropic**, **openai**, **kimi-coding** — rather than the full pi-mono set (~13 providers, ~800+ models). This is intentional: the full `models.generated.ts` is 13K lines generated from an external source; maintaining a Rust equivalent at full scale isn't the point. The catalog exists to make pure unit tests pass (e.g. `supports_xhigh`) without live API calls.
-
-`supports_xhigh()` mirrors pi-mono's logic: true for `gpt-5.2`/`gpt-5.3` model IDs, or for `anthropic-messages` API with an `opus-4-6`/`opus-4.6` model ID. OpenRouter's opus 4.6 (which uses `openai-completions`) correctly returns false.
+Two-level map: `provider → model_id → Arc<Model>`. Auto-populates from catalog on first access. Scoped to anthropic, openai, kimi-coding (~60 models).
 
 ---
 
@@ -61,74 +63,72 @@ The catalog is scoped to three providers — **anthropic**, **openai**, **kimi-c
 
 ### Type system (`types.rs`)
 
-The key divergence from pi-mono here is `AgentMessage`:
-
-```rust
-pub enum AgentMessage {
-    Llm(Message),
-    Custom { role: String, data: Value },
-}
-```
-
-In pi-mono, `AgentMessage` is defined via TypeScript declaration merging — applications augment the `CustomAgentMessages` interface to add their own message types. Rust has no equivalent, so `AgentMessage::Custom` is an open-ended escape hatch carrying a role string and a raw JSON value.
-
-`AgentTool` is a trait with an async `execute()`:
-
-```rust
-fn execute(&self, id: String, params: Value, signal: Option<CancellationToken>, on_update: Option<ToolUpdateFn>)
-    -> BoxFuture<Result<AgentToolResult>>;
-```
-
-This matches pi-mono's `AgentTool.execute()` signature. Tools are held as `Vec<Arc<dyn AgentTool>>`.
-
-`AgentLoopConfig` holds the four function-pointer hooks that pi-mono passes into the loop:
-- `convert_to_llm` — filter/transform `AgentMessage` → `Message` before sending to the LLM
-- `transform_context` — prune/reorder the full message history
-- `get_steering_messages` — inject user-queued messages mid-loop
-- `get_follow_up_messages` — re-enter the loop after it would otherwise finish
+- `AgentMessage` — `Llm(Message)` or `Custom { role, data }` (open-ended escape hatch replacing TS declaration merging)
+- `AgentTool` trait — `name()`, `label()`, `description()`, `parameters()` (JSON Schema), `execute()` (async). Held as `Vec<Arc<dyn AgentTool>>`.
+- `AgentLoopConfig` — function-pointer hooks: `convert_to_llm`, `transform_context`, `get_steering_messages`, `get_follow_up_messages`, `stream_fn`
+- `AgentEvent` — full lifecycle: `AgentStart/End`, `TurnStart/End`, `MessageStart/Update/End`, `ToolExecutionStart/Update/End`
 
 ### Agent loop (`loop_.rs`)
 
-`agent_loop` and `agent_loop_continue` mirror pi-mono's exports exactly. Both spawn a Tokio task and return an `AgentEventStream` (an `EventStream<AgentEvent>` that terminates on `AgentEvent::AgentEnd`).
+Two-level loop:
+- **Outer**: checks for follow-up messages, re-enters if queued
+- **Inner**: streams assistant response → executes tool calls → checks steering → repeats
 
-The core `run_loop` implements the two-level loop from pi-mono:
-- **Outer loop**: checks for follow-up messages; re-enters if any are queued
-- **Inner loop**: streams one assistant response, executes tool calls, checks for steering messages after each tool, repeats if there are pending messages
+`stream_assistant_response` applies `transform_context` → `convert_to_llm` → provider stream (or injected `stream_fn`). Tool definitions are converted from `AgentTool` to `ai::Tool` and sent to the LLM.
 
-Steering mid-tool-execution skips remaining tools with `is_error: true` and `"Skipped due to queued user message."` — matching the TS behavior that allows user interruptions to preempt in-flight tool sequences.
-
-`stream_assistant_response` applies `transform_context` → `convert_to_llm` → `ai::stream_simple`, then drives the event stream, translating `AssistantMessageEvent`s into `AgentEvent`s.
+Steering mid-tool-execution skips remaining tools with `is_error: true`.
 
 ### Agent struct (`agent.rs`)
 
-`Agent` wraps the loop with:
+Wraps the loop with state management:
 - `Arc<Mutex<AgentState>>` — model, tools, messages, streaming flag
-- Two `VecDeque` queues (steering, follow-up) with `QueueMode::OneAtATime | All`
-- A listener list for `AgentEvent` subscriptions (mirrors pi-mono's `subscribe()`)
+- Steering/follow-up `VecDeque` queues with `QueueMode::OneAtATime | All`
+- Event subscriptions via `subscribe()`
 - `CancellationToken` for `abort()`
-- `build_config()` closes over the queues to produce `AgentLoopConfig` callbacks
+- `prompt()` / `continue_()` entry points
 
-`prompt()` → `run_loop()` → `agent_loop()` → `drain_stream()`. Each event updates state (appending messages, tracking pending tool calls, clearing `is_streaming` on `AgentEnd`) then fires all listeners.
+---
+
+## `coding-agent` — minimal coding harness
+
+### Tools
+
+- **BashTool** — runs shell commands via `sh -c`. Timeout support, cancellation, output truncation (2000 lines / 30KB), exit code reporting.
+- **FileReadTool** — reads text files with offset/limit. Line numbering, binary detection, truncation with continuation hints.
+- **FileWriteTool** — writes files, creates parent dirs.
+
+All implement `AgentTool` and are collected via `coding_agent::tools::all_tools()`.
+
+### CLI modes
+
+- **REPL** (default): interactive `> ` prompt loop. Streams text deltas to stdout, tool events to stderr.
+- **Headless** (`--prompt "..."`, in progress): non-interactive mode for benchmarks and scripting. Agent loops autonomously until done, then exits.
+
+### Usage
+
+```
+OPENAI_API_KEY=sk-... cargo run -p coding-agent
+OPENAI_API_KEY=sk-... cargo run -p coding-agent -- --prompt "List all Rust files"
+```
 
 ---
 
 ## Tests
 
-Tests are ported from pi-mono's test suites with two conventions:
-
-- **Live API tests** are `#[ignore = "requires ANTHROPIC_API_KEY"]` etc. They exist as full implementations ready to run when credentials are present.
-- **Pure unit tests** run without any credentials: `supports_xhigh`, `tool_call_id_normalization` (3 tests for ID normalization logic), agent state/queue management (12 tests), and `agent_loop_continue` panic behavior.
-
-Tests requiring mock stream injection (`stream_fn` on `AgentLoopConfig`) are `#[ignore = "needs stream_fn injection"]`. This is the second biggest gap — without it, the agent loop tests that verify event sequences, tool execution, and steering behavior can't run.
+- **Offline unit tests** (~120): type system, stream mechanics, agent loop, tool execution, SSE parsing, message conversion. All run without credentials.
+- **Live smoke tests** (8 `#[ignore]`): require both API key AND `RUN_LIVE_PROVIDER_TESTS=1`. Double opt-in gate.
+- **Fixture-based contract tests**: SSE response fixtures in `ai/tests/fixtures/` validate provider behavior without network calls.
+- **Mock stream injection**: `stream_fn` on `AgentLoopConfig` allows full agent loop testing without any provider.
 
 ---
 
-## Gaps and natural next steps
+## Gaps and next steps
 
-In rough priority order:
+See `docs/roadmap.md` for the full roadmap.
 
-1. **Provider implementations** — at minimum `anthropic-messages` and `openai-responses`. This is what makes the `#[ignore]` live tests runnable and validates that the streaming pipeline actually works end-to-end.
-
-2. **`stream_fn` injection on `AgentLoopConfig`** — adds a `stream_fn: Option<StreamFn>` field that `stream_assistant_response` uses in place of `ai::stream_simple`. Unlocks all the mock-based agent loop tests without live API calls.
-
-3. **`coding-agent` tier** — tools (bash, file read/write, search), session management, compaction. This is where the actual agent behavior lives in pi-mono.
+Key items:
+1. **Anthropic/Kimi providers** — TODO stubs exist, implementation deferred
+2. **`--prompt` headless mode** — in progress, enables benchmark integration
+3. **Session persistence** — JSONL storage for cross-restart continuity
+4. **More tools** — grep, find, edit (diff-based) for richer coding agent
+5. **Benchmark integration** — terminal-bench adapter to measure harness quality
