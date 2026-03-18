@@ -4,7 +4,7 @@
 //! Live API tests are marked #[ignore = "requires OPENAI_API_KEY"].
 
 mod common;
-use common::{env_key, mock_model, registry_lock};
+use common::{env_key, registry_lock};
 
 use ai::models::get_model;
 use ai::providers::openai_responses::{build_request_body, OpenAIRequestOptions};

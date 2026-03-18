@@ -1,4 +1,5 @@
 //! Shared test helpers.
+#![allow(dead_code)]
 
 use std::sync::{Mutex, MutexGuard, OnceLock};
 

@@ -1,4 +1,5 @@
 //! Shared test helpers for agent tests.
+#![allow(dead_code)]
 
 use agent::types::{AgentContext, AgentMessage, StreamAssistantFn};
 use ai::stream::{assistant_message_event_stream, AssistantMessageEventStream};
@@ -99,11 +100,6 @@ pub fn instant_stream(msg: AssistantMessage) -> AssistantMessageEventStream {
             message: msg,
         });
     });
-    stream
-}
-
-pub fn pending_stream() -> AssistantMessageEventStream {
-    let (_tx, stream) = assistant_message_event_stream();
     stream
 }
 
