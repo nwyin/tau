@@ -17,8 +17,10 @@ Scope: `tau` intentionally targets only OpenAI, Anthropic, and Kimi. Missing tes
 - [x] Port state update / event coverage into `tau/agent/tests/e2e.rs`.
 - [x] Port multi-turn context retention coverage into `tau/agent/tests/e2e.rs`.
 - [x] Keep provider matrix limited to OpenAI / Anthropic / Kimi as `tau` support evolves.
-- [ ] Provider implementations still need to be registered in `tau/ai` before these live e2e tests can execute.
-- [ ] Agent tool definitions still need conversion into `ai::Tool` in `stream_assistant_response()` before live tool-execution e2e can pass.
+- [x] Agent tool definitions wired through to LLM context in `stream_assistant_response()` (commit `48ba375`).
+- [x] OpenAI Responses provider implemented and registered (commit `cac395b`).
+- [ ] Anthropic provider not yet implemented (TODO stub only).
+- [ ] Kimi provider not yet implemented (TODO stub only).
 
 ## 3. High-value AI regression ports
 
@@ -37,6 +39,21 @@ Scope: `tau` intentionally targets only OpenAI, Anthropic, and Kimi. Missing tes
 - [x] Decide whether `openai-completions` compatibility tests belong in `tau`'s minimal scope.
 Decision: keep generic stream-contract coverage, but do not chase broad `openai-completions` compatibility parity unless `tau` grows a concrete completions implementation.
 
-## 5. Deferred by design
+## 5. Live API test policy
+
+Established 2026-03-18. Live provider tests require double opt-in: both the API key (e.g. `OPENAI_API_KEY`) AND `RUN_LIVE_PROVIDER_TESTS=1`.
+
+Pared from 33 `#[ignore]` tests to 8 (commit `22b00fe`):
+- 2 in `agent/tests/e2e.rs` — `openai_basic_prompt`, `openai_tool_execution`
+- 2 in `ai/tests/cross_provider_handoff.rs` — cross-provider history forwarding
+- 1 in `ai/tests/tool_call_id_normalization.rs` — live OpenAI ID format validation
+- 3 in `ai/tests/openai_responses_provider.rs` — provider integration smoke tests
+
+Deleted test files (all were live-only, no offline tests): `abort.rs`, `tokens.rs`, `total_tokens.rs`, `empty.rs`, `tool_call_without_result.rs`. Deleted 13 Anthropic/Kimi agent e2e stubs (no providers exist).
+
+Fixture-based contract tests in `ai/tests/openai_responses_provider.rs` provide offline coverage for SSE parsing, message conversion, tool call ID normalization, reasoning effort, and cost calculation.
+
+## 6. Deferred by design
 
 - [ ] Leave non-target-provider ports out unless `tau` expands beyond OpenAI / Anthropic / Kimi.
+- [ ] Anthropic and Kimi provider implementations deferred — TODO stubs in `ai/src/providers/`.
