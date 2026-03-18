@@ -292,7 +292,7 @@ async fn anthropic_basic_prompt() {
 }
 
 #[tokio::test]
-#[ignore = "requires ANTHROPIC_API_KEY, registered anthropic provider, and AgentTool -> ai::Tool wiring"]
+#[ignore = "requires ANTHROPIC_API_KEY and registered anthropic provider"]
 async fn anthropic_tool_execution() {
     let model = get_model("anthropic", "claude-3-5-haiku-20241022").unwrap();
     tool_execution((*model).clone()).await;
@@ -327,7 +327,7 @@ async fn openai_basic_prompt() {
 }
 
 #[tokio::test]
-#[ignore = "requires OPENAI_API_KEY, registered openai provider, and AgentTool -> ai::Tool wiring"]
+#[ignore = "requires OPENAI_API_KEY and registered openai provider"]
 async fn openai_tool_execution() {
     let model = get_model("openai", "gpt-4o-mini").unwrap();
     tool_execution((*model).clone()).await;
@@ -362,7 +362,7 @@ async fn kimi_basic_prompt() {
 }
 
 #[tokio::test]
-#[ignore = "requires KIMI_API_KEY, registered kimi provider, and AgentTool -> ai::Tool wiring"]
+#[ignore = "requires KIMI_API_KEY and registered kimi provider"]
 async fn kimi_tool_execution() {
     let model = get_model("kimi-coding", "kimi-k2-thinking").unwrap();
     tool_execution((*model).clone()).await;

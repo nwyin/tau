@@ -225,10 +225,25 @@ async fn stream_assistant_response(
         }
     };
 
+    let tools = if context.tools.is_empty() {
+        None
+    } else {
+        Some(
+            context
+                .tools
+                .iter()
+                .map(|t| ai::types::Tool {
+                    name: t.name().to_string(),
+                    description: t.description().to_string(),
+                    parameters: t.parameters().clone(),
+                })
+                .collect(),
+        )
+    };
     let llm_context = ai::types::Context {
         system_prompt: Some(context.system_prompt.clone()),
         messages: llm_messages,
-        tools: None, // TODO: convert AgentTool -> ai::Tool
+        tools,
     };
 
     // Resolve API key

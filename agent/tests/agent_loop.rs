@@ -401,6 +401,186 @@ async fn continue_allows_custom_last_message_converted_by_convert_to_llm() {
 }
 
 // ---------------------------------------------------------------------------
+// Tool definition wiring tests
+// ---------------------------------------------------------------------------
+
+/// A minimal AgentTool whose parameters are stored directly on the struct.
+struct SimpleTool {
+    tool_name: &'static str,
+    tool_desc: &'static str,
+    tool_params: Value,
+}
+
+impl agent::types::AgentTool for SimpleTool {
+    fn name(&self) -> &str { self.tool_name }
+    fn label(&self) -> &str { "unused-label" }
+    fn description(&self) -> &str { self.tool_desc }
+    fn parameters(&self) -> &Value { &self.tool_params }
+    fn execute(
+        &self,
+        _id: String,
+        _params: Value,
+        _signal: Option<tokio_util::sync::CancellationToken>,
+        _on_update: Option<agent::types::ToolUpdateFn>,
+    ) -> agent::types::BoxFuture<anyhow::Result<agent::types::AgentToolResult>> {
+        Box::pin(async {
+            Ok(agent::types::AgentToolResult { content: vec![], details: None })
+        })
+    }
+}
+
+#[tokio::test]
+async fn tool_definitions_wired_to_llm_context() {
+    // INV-1: When agent has tools, LLM context receives matching tool definitions.
+    // INV-3: label/execute are not present in the ai::types::Tool (only name/desc/params).
+    let captured: Arc<std::sync::Mutex<Option<Vec<ai::types::Tool>>>> =
+        Arc::new(std::sync::Mutex::new(None));
+    let captured_ref = Arc::clone(&captured);
+
+    let mut config = base_config();
+    config.stream_fn = Some(stream_fn_once(move |_model, context, _options| {
+        *captured_ref.lock().unwrap() = context.tools.clone();
+        instant_stream(mock_assistant_message("done"))
+    }));
+
+    let context = AgentContext {
+        system_prompt: String::new(),
+        messages: vec![],
+        tools: vec![
+            Arc::new(SimpleTool {
+                tool_name: "tool_a",
+                tool_desc: "First tool",
+                tool_params: json!({"type":"object","properties":{"x":{"type":"number"}}}),
+            }),
+            Arc::new(SimpleTool {
+                tool_name: "tool_b",
+                tool_desc: "Second tool",
+                tool_params: json!({"type":"object","properties":{"y":{"type":"string"}}}),
+            }),
+        ],
+    };
+
+    let mut stream = agent_loop(vec![user_message("go")], context, Arc::new(config), None);
+    while stream.next().await.is_some() {}
+
+    let guard = captured.lock().unwrap();
+    let tools = guard.as_ref().expect("tools should be Some when tools are registered");
+    assert_eq!(tools.len(), 2);
+
+    let a = tools.iter().find(|t| t.name == "tool_a").expect("tool_a in context");
+    assert_eq!(a.description, "First tool");
+    assert_eq!(a.parameters, json!({"type":"object","properties":{"x":{"type":"number"}}}));
+
+    let b = tools.iter().find(|t| t.name == "tool_b").expect("tool_b in context");
+    assert_eq!(b.description, "Second tool");
+    assert_eq!(b.parameters, json!({"type":"object","properties":{"y":{"type":"string"}}}));
+}
+
+#[tokio::test]
+async fn no_tools_sends_none_to_llm_context() {
+    // INV-2: When agent has no tools, context.tools is None (not Some([])).
+    let captured: Arc<std::sync::Mutex<Option<Option<Vec<ai::types::Tool>>>>> =
+        Arc::new(std::sync::Mutex::new(None));
+    let captured_ref = Arc::clone(&captured);
+
+    let mut config = base_config();
+    config.stream_fn = Some(stream_fn_once(move |_model, context, _options| {
+        *captured_ref.lock().unwrap() = Some(context.tools.clone());
+        instant_stream(mock_assistant_message("done"))
+    }));
+
+    let context = AgentContext {
+        system_prompt: String::new(),
+        messages: vec![],
+        tools: vec![], // no tools
+    };
+
+    let mut stream = agent_loop(vec![user_message("go")], context, Arc::new(config), None);
+    while stream.next().await.is_some() {}
+
+    let guard = captured.lock().unwrap();
+    let tools_opt = guard.as_ref().expect("stream_fn was called");
+    assert!(tools_opt.is_none(), "tools must be None when agent has no tools registered");
+}
+
+#[tokio::test]
+async fn tool_definitions_present_during_round_trip() {
+    // Critical path: tool defs sent to LLM, tool call received, tool executed.
+    let executed = Arc::new(std::sync::Mutex::new(false));
+    let executed_ref = Arc::clone(&executed);
+    let captured_tool_names: Arc<std::sync::Mutex<Vec<String>>> =
+        Arc::new(std::sync::Mutex::new(vec![]));
+    let names_ref = Arc::clone(&captured_tool_names);
+
+    struct RoundTripTool {
+        executed: Arc<std::sync::Mutex<bool>>,
+    }
+    impl agent::types::AgentTool for RoundTripTool {
+        fn name(&self) -> &str { "roundtrip" }
+        fn label(&self) -> &str { "Round Trip" }
+        fn description(&self) -> &str { "A round-trip test tool" }
+        fn parameters(&self) -> &Value {
+            static P: std::sync::OnceLock<Value> = std::sync::OnceLock::new();
+            P.get_or_init(|| json!({"type":"object"}))
+        }
+        fn execute(
+            &self,
+            _id: String,
+            _params: Value,
+            _signal: Option<tokio_util::sync::CancellationToken>,
+            _on_update: Option<agent::types::ToolUpdateFn>,
+        ) -> agent::types::BoxFuture<anyhow::Result<agent::types::AgentToolResult>> {
+            let ex = Arc::clone(&self.executed);
+            Box::pin(async move {
+                *ex.lock().unwrap() = true;
+                Ok(agent::types::AgentToolResult {
+                    content: vec![UserBlock::Text { text: "ok".into() }],
+                    details: None,
+                })
+            })
+        }
+    }
+
+    let call_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let count_ref = Arc::clone(&call_count);
+
+    let mut config = base_config();
+    config.stream_fn = Some(stream_fn_once(move |_model, context, _options| {
+        let idx = count_ref.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        if idx == 0 {
+            // Capture tool names from the first context call
+            if let Some(tools) = &context.tools {
+                *names_ref.lock().unwrap() =
+                    tools.iter().map(|t| t.name.clone()).collect();
+            }
+            instant_stream(mock_assistant_message_with_tool_call(
+                "rt-1",
+                "roundtrip",
+                json!({}),
+            ))
+        } else {
+            instant_stream(mock_assistant_message("complete"))
+        }
+    }));
+
+    let context = AgentContext {
+        system_prompt: String::new(),
+        messages: vec![],
+        tools: vec![Arc::new(RoundTripTool { executed: executed_ref })],
+    };
+
+    let mut stream = agent_loop(vec![user_message("go")], context, Arc::new(config), None);
+    while stream.next().await.is_some() {}
+
+    assert!(
+        *executed.lock().unwrap(),
+        "tool execute() must have been called"
+    );
+    let names = captured_tool_names.lock().unwrap().clone();
+    assert_eq!(names, vec!["roundtrip".to_string()], "tool definition must be in LLM context");
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
