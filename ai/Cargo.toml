@@ -23,3 +23,7 @@ criterion = { workspace = true }
 [[bench]]
 name = "sse_parsing"
 harness = false
+
+[[bench]]
+name = "message_serde"
+harness = false
