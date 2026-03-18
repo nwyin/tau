@@ -6,25 +6,37 @@ use agent::types::AgentEvent;
 use agent::{Agent, AgentOptions, AgentStateInit};
 use ai::types::AssistantMessageEvent;
 use anyhow::{anyhow, Result};
+use clap::Parser;
 
+use coding_agent::cli::Cli;
 use coding_agent::tools::all_tools;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let cli = Cli::parse();
+
     // Check for API key first
     let api_key = std::env::var("OPENAI_API_KEY").map_err(|_| {
         eprintln!("Error: OPENAI_API_KEY environment variable is not set.");
         anyhow!("OPENAI_API_KEY not set")
     })?;
 
+    // Resolve model: --model flag > OPENAI_MODEL env > default
+    let model_id = cli
+        .model
+        .or_else(|| std::env::var("OPENAI_MODEL").ok())
+        .unwrap_or_else(|| "gpt-4o-mini".to_string());
+
+    let system_prompt = cli.system_prompt.unwrap_or_else(|| {
+        "You are a coding assistant. You can run bash commands, read files, and write files. Be concise.".to_string()
+    });
+
     // Register providers
     ai::register_builtin_providers();
 
     // Resolve model
-    let model_id = std::env::var("OPENAI_MODEL").unwrap_or_else(|_| "gpt-4o-mini".to_string());
     let model = ai::models::get_model("openai", &model_id)
         .ok_or_else(|| anyhow!("Model '{}' not found in registry", model_id))?;
-
     let model = (*model).clone();
 
     // Build agent
@@ -32,9 +44,7 @@ async fn main() -> Result<()> {
     let agent = Agent::new(AgentOptions {
         initial_state: Some(AgentStateInit {
             model: Some(model),
-            system_prompt: Some(
-                "You are a coding assistant. You can run bash commands, read files, and write files. Be concise.".to_string(),
-            ),
+            system_prompt: Some(system_prompt),
             tools: Some(tools),
             thinking_level: None,
         }),
@@ -54,7 +64,7 @@ async fn main() -> Result<()> {
     });
 
     // Subscribe to events
-    let _unsubscribe = agent.subscribe(move |event| match event {
+    let _event_handler = agent.subscribe(|event| match event {
         AgentEvent::MessageUpdate {
             assistant_event, ..
         } => match assistant_event.as_ref() {
@@ -105,31 +115,46 @@ async fn main() -> Result<()> {
         }
     });
 
-    // REPL loop
-    let stdin = io::stdin();
-    loop {
-        print!("> ");
-        io::stdout().flush()?;
+    if let Some(ref prompt_arg) = cli.prompt {
+        // Non-interactive mode: resolve prompt, run once, exit
+        let prompt_text = coding_agent::resolve_prompt_text(prompt_arg)?;
 
-        let mut line = String::new();
-        match stdin.lock().read_line(&mut line) {
-            Ok(0) => break, // EOF
-            Ok(_) => {}
-            Err(e) => {
-                eprintln!("Error reading input: {}", e);
-                break;
+        let result = agent.prompt(prompt_text).await;
+
+        let exit_code = if result.is_err() || abort_count.load(Ordering::SeqCst) > 0 {
+            1
+        } else {
+            0
+        };
+
+        std::process::exit(exit_code);
+    } else {
+        // REPL loop
+        let stdin = io::stdin();
+        loop {
+            print!("> ");
+            io::stdout().flush()?;
+
+            let mut line = String::new();
+            match stdin.lock().read_line(&mut line) {
+                Ok(0) => break, // EOF
+                Ok(_) => {}
+                Err(e) => {
+                    eprintln!("Error reading input: {}", e);
+                    break;
+                }
             }
-        }
 
-        let input = line.trim().to_string();
-        if input.is_empty() {
-            continue;
-        }
+            let input = line.trim().to_string();
+            if input.is_empty() {
+                continue;
+            }
 
-        abort_count.store(0, Ordering::SeqCst);
+            abort_count.store(0, Ordering::SeqCst);
 
-        if let Err(e) = agent.prompt(input).await {
-            eprintln!("Error: {}", e);
+            if let Err(e) = agent.prompt(input).await {
+                eprintln!("Error: {}", e);
+            }
         }
     }
 
