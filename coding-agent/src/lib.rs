@@ -1,5 +1,6 @@
 pub mod cli;
 pub mod session;
+pub mod system_prompt;
 pub mod tools;
 
 pub use tools::all_tools;

@@ -49,10 +49,6 @@ async fn main() -> Result<()> {
         .or_else(|| std::env::var("TAU_MODEL").ok())
         .unwrap_or_else(|| "gpt-4o-mini".to_string());
 
-    let system_prompt = cli.system_prompt.unwrap_or_else(|| {
-        "You are a coding assistant. You can run bash commands, read files, and write files. Be concise.".to_string()
-    });
-
     // Register providers and resolve model
     ai::register_builtin_providers();
 
@@ -117,6 +113,14 @@ async fn main() -> Result<()> {
 
     // Build agent
     let tools = all_tools();
+    let system_prompt = cli.system_prompt.unwrap_or_else(|| {
+        coding_agent::system_prompt::build_system_prompt(
+            &tools,
+            &std::env::current_dir()
+                .unwrap_or_else(|_| std::path::PathBuf::from("."))
+                .to_string_lossy(),
+        )
+    });
     let agent = Agent::new(AgentOptions {
         initial_state: Some(AgentStateInit {
             model: Some(model),
