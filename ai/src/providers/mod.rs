@@ -1,4 +1,4 @@
-mod anthropic;
+pub mod anthropic;
 mod kimi;
 pub mod openai_responses;
 pub mod openai_responses_shared;
@@ -75,6 +75,7 @@ pub fn clear_api_providers() {
 /// Register all built-in providers. Call once at startup.
 pub fn register_builtin_providers() {
     register_api_provider(Arc::new(openai_responses::OpenAIResponsesProvider::new()));
+    register_api_provider(Arc::new(anthropic::AnthropicProvider::new()));
 }
 
 // ---------------------------------------------------------------------------
