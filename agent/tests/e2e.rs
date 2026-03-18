@@ -23,7 +23,10 @@ async fn basic_prompt(model: ai::types::Model) {
         ..default_agent_opts_no_model()
     });
 
-    agent.prompt("What is 2+2? Answer with just the number.").await.unwrap();
+    agent
+        .prompt("What is 2+2? Answer with just the number.")
+        .await
+        .unwrap();
 
     agent.with_state(|s| {
         assert!(!s.is_streaming);
@@ -35,7 +38,10 @@ async fn basic_prompt(model: ai::types::Model) {
             agent::types::AgentMessage::Llm(Message::Assistant(message)) => message,
             other => panic!("expected assistant message, got {}", other.role()),
         };
-        assert!(assistant.content.iter().any(|block| matches!(block, ai::types::ContentBlock::Text { .. })));
+        assert!(assistant
+            .content
+            .iter()
+            .any(|block| matches!(block, ai::types::ContentBlock::Text { .. })));
     });
 }
 
@@ -82,7 +88,10 @@ impl AgentTool for CalculateTool {
         Box::pin(async move {
             let a = params.get("a").and_then(Value::as_f64).unwrap_or_default();
             let b = params.get("b").and_then(Value::as_f64).unwrap_or_default();
-            let operation = params.get("operation").and_then(Value::as_str).unwrap_or("add");
+            let operation = params
+                .get("operation")
+                .and_then(Value::as_str)
+                .unwrap_or("add");
 
             let result = match operation {
                 "add" => a + b,
@@ -93,7 +102,9 @@ impl AgentTool for CalculateTool {
             };
 
             Ok(AgentToolResult {
-                content: vec![UserBlock::Text { text: format!("{result}") }],
+                content: vec![UserBlock::Text {
+                    text: format!("{result}"),
+                }],
                 details: Some(json!({ "result": result })),
             })
         })
@@ -178,7 +189,9 @@ async fn abort_execution(model: ai::types::Model) {
         let agent = Arc::clone(&agent);
         tokio::spawn(async move {
             agent
-                .prompt("Write a long answer counting from 1 to 5000 with commentary between numbers.")
+                .prompt(
+                    "Write a long answer counting from 1 to 5000 with commentary between numbers.",
+                )
                 .await
         })
     };
@@ -276,7 +289,10 @@ async fn multi_turn_conversation(model: ai::types::Model) {
             other => panic!("expected assistant message, got {}", other.role()),
         };
 
-        assert!(last_text.contains("alice"), "expected Alice in final response: {last_text}");
+        assert!(
+            last_text.contains("alice"),
+            "expected Alice in final response: {last_text}"
+        );
     });
 }
 

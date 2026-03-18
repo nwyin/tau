@@ -44,7 +44,9 @@ impl EchoToolNameProvider {
 
         let (mut tx, stream) = assistant_message_event_stream();
         tokio::spawn(async move {
-            tx.push(ai::types::AssistantMessageEvent::Start { partial: message.clone() });
+            tx.push(ai::types::AssistantMessageEvent::Start {
+                partial: message.clone(),
+            });
             tx.push(ai::types::AssistantMessageEvent::Done {
                 reason: message.stop_reason.clone(),
                 message,
@@ -72,7 +74,10 @@ impl ApiProvider for EchoToolNameProvider {
             .into_iter()
             .map(|tool| tool.name)
             .collect();
-        self.seen_tool_names.lock().unwrap().push(tool_names.clone());
+        self.seen_tool_names
+            .lock()
+            .unwrap()
+            .push(tool_names.clone());
         self.stream_with_tool_name(tool_names.first().cloned().unwrap_or_else(|| "none".into()))
     }
 
@@ -110,9 +115,13 @@ async fn assert_tool_name_round_trips(name: &str) {
     register_api_provider(provider.clone());
 
     let model = mock_model("test-anthropic-tools", "anthropic");
-    let response = complete(&model, &context_with_tool(name), Some(&ai::types::StreamOptions::default()))
-        .await
-        .unwrap();
+    let response = complete(
+        &model,
+        &context_with_tool(name),
+        Some(&ai::types::StreamOptions::default()),
+    )
+    .await
+    .unwrap();
 
     let seen = provider.seen_tool_names.lock().unwrap();
     assert_eq!(seen.as_slice(), &[vec![name.to_string()]]);

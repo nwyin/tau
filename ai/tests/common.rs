@@ -16,7 +16,12 @@ pub fn mock_model(api: &str, provider: &str) -> ai::types::Model {
         base_url: "https://example.invalid".into(),
         reasoning: false,
         input: vec!["text".into()],
-        cost: ai::types::ModelCost { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
+        cost: ai::types::ModelCost {
+            input: 0.0,
+            output: 0.0,
+            cache_read: 0.0,
+            cache_write: 0.0,
+        },
         context_window: 8192,
         max_tokens: 2048,
         headers: None,
@@ -31,7 +36,10 @@ pub fn create_usage() -> ai::types::Usage {
 pub fn create_assistant_message(text: &str) -> ai::types::AssistantMessage {
     ai::types::AssistantMessage {
         role: "assistant".into(),
-        content: vec![ai::types::ContentBlock::Text { text: text.into(), text_signature: None }],
+        content: vec![ai::types::ContentBlock::Text {
+            text: text.into(),
+            text_signature: None,
+        }],
         api: "openai-responses".into(),
         provider: "openai".into(),
         model: "mock".into(),

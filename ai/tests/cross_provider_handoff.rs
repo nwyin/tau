@@ -28,7 +28,9 @@ async fn test_cross_provider_handoff(
         tools: None,
     };
 
-    let response_a = complete_simple(model_a, &ctx_a, Some(&opts_a)).await.unwrap();
+    let response_a = complete_simple(model_a, &ctx_a, Some(&opts_a))
+        .await
+        .unwrap();
     assert_ne!(response_a.stop_reason, StopReason::Error);
 
     // Hand off to model B, including model A's response in history
@@ -49,7 +51,9 @@ async fn test_cross_provider_handoff(
         tools: None,
     };
 
-    let response_b = complete_simple(model_b, &ctx_b, Some(&opts_b)).await.unwrap();
+    let response_b = complete_simple(model_b, &ctx_b, Some(&opts_b))
+        .await
+        .unwrap();
     assert_ne!(response_b.stop_reason, StopReason::Error);
 }
 
@@ -62,7 +66,13 @@ async fn test_cross_provider_handoff(
 async fn anthropic_to_openai_handoff() {
     let a = get_model("anthropic", "claude-3-5-haiku-20241022").unwrap();
     let b = get_model("openai", "gpt-4o-mini").unwrap();
-    test_cross_provider_handoff(&a, &b, env_key("ANTHROPIC_API_KEY"), env_key("OPENAI_API_KEY")).await;
+    test_cross_provider_handoff(
+        &a,
+        &b,
+        env_key("ANTHROPIC_API_KEY"),
+        env_key("OPENAI_API_KEY"),
+    )
+    .await;
 }
 
 #[tokio::test]
@@ -70,5 +80,11 @@ async fn anthropic_to_openai_handoff() {
 async fn openai_to_anthropic_handoff() {
     let a = get_model("openai", "gpt-4o-mini").unwrap();
     let b = get_model("anthropic", "claude-3-5-haiku-20241022").unwrap();
-    test_cross_provider_handoff(&a, &b, env_key("OPENAI_API_KEY"), env_key("ANTHROPIC_API_KEY")).await;
+    test_cross_provider_handoff(
+        &a,
+        &b,
+        env_key("OPENAI_API_KEY"),
+        env_key("ANTHROPIC_API_KEY"),
+    )
+    .await;
 }

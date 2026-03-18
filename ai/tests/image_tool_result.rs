@@ -27,7 +27,9 @@ impl CapturingImageProvider {
         let message = create_assistant_message("red circle");
         let (mut tx, stream) = assistant_message_event_stream();
         tokio::spawn(async move {
-            tx.push(ai::types::AssistantMessageEvent::Start { partial: message.clone() });
+            tx.push(ai::types::AssistantMessageEvent::Start {
+                partial: message.clone(),
+            });
             tx.push(ai::types::AssistantMessageEvent::Done {
                 reason: message.stop_reason.clone(),
                 message,
@@ -98,7 +100,9 @@ async fn tool_result_with_only_image_reaches_provider_unchanged() {
         mime_type: "image/png".into(),
     }]);
 
-    let response = complete(&model, &context, Some(&ai::types::StreamOptions::default())).await.unwrap();
+    let response = complete(&model, &context, Some(&ai::types::StreamOptions::default()))
+        .await
+        .unwrap();
     assert_eq!(response.role, "assistant");
 
     let seen = provider.seen_contexts.lock().unwrap();
@@ -132,7 +136,9 @@ async fn tool_result_with_text_and_image_reaches_provider_unchanged() {
         },
     ]);
 
-    let response = complete(&model, &context, Some(&ai::types::StreamOptions::default())).await.unwrap();
+    let response = complete(&model, &context, Some(&ai::types::StreamOptions::default()))
+        .await
+        .unwrap();
     assert_eq!(response.role, "assistant");
 
     let seen = provider.seen_contexts.lock().unwrap();

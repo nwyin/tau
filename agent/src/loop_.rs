@@ -3,7 +3,9 @@
 use std::sync::Arc;
 
 use ai::stream::event_stream;
-use ai::types::{AssistantMessage, ContentBlock, Message, StopReason, ToolResultMessage, UserBlock};
+use ai::types::{
+    AssistantMessage, ContentBlock, Message, StopReason, ToolResultMessage, UserBlock,
+};
 use futures::StreamExt;
 use tokio_util::sync::CancellationToken;
 
@@ -59,7 +61,14 @@ pub fn agent_loop(
         }
 
         let mut new_messages = new_messages;
-        run_loop(&mut current_context, &mut new_messages, &config, cancel.clone(), &mut tx).await;
+        run_loop(
+            &mut current_context,
+            &mut new_messages,
+            &config,
+            cancel.clone(),
+            &mut tx,
+        )
+        .await;
     });
 
     stream
@@ -71,7 +80,10 @@ pub fn agent_loop_continue(
     config: Arc<AgentLoopConfig>,
     cancel: Option<CancellationToken>,
 ) -> AgentEventStream {
-    assert!(!context.messages.is_empty(), "Cannot continue: no messages in context");
+    assert!(
+        !context.messages.is_empty(),
+        "Cannot continue: no messages in context"
+    );
     assert!(
         context.messages.last().map(|m| m.role()) != Some("assistant"),
         "Cannot continue from role: assistant"
@@ -86,7 +98,14 @@ pub fn agent_loop_continue(
         tx.push(AgentEvent::AgentStart);
         tx.push(AgentEvent::TurnStart);
 
-        run_loop(&mut current_context, &mut new_messages, &config, cancel, &mut tx).await;
+        run_loop(
+            &mut current_context,
+            &mut new_messages,
+            &config,
+            cancel,
+            &mut tx,
+        )
+        .await;
     });
 
     stream
@@ -120,8 +139,12 @@ async fn run_loop(
             // Inject pending (steering) messages
             if !pending.is_empty() {
                 for msg in pending.drain(..) {
-                    tx.push(AgentEvent::MessageStart { message: msg.clone() });
-                    tx.push(AgentEvent::MessageEnd { message: msg.clone() });
+                    tx.push(AgentEvent::MessageStart {
+                        message: msg.clone(),
+                    });
+                    tx.push(AgentEvent::MessageEnd {
+                        message: msg.clone(),
+                    });
                     context.messages.push(msg.clone());
                     new_messages.push(msg);
                 }
@@ -134,9 +157,17 @@ async fn run_loop(
             new_messages.push(AgentMessage::Llm(Message::Assistant(assistant_msg.clone())));
 
             // Terminal stop reasons
-            if matches!(assistant_msg.stop_reason, StopReason::Error | StopReason::Aborted) {
-                tx.push(AgentEvent::TurnEnd { message: AgentMessage::Llm(Message::Assistant(assistant_msg.clone())), tool_results: vec![] });
-                tx.push(AgentEvent::AgentEnd { messages: new_messages.clone() });
+            if matches!(
+                assistant_msg.stop_reason,
+                StopReason::Error | StopReason::Aborted
+            ) {
+                tx.push(AgentEvent::TurnEnd {
+                    message: AgentMessage::Llm(Message::Assistant(assistant_msg.clone())),
+                    tool_results: vec![],
+                });
+                tx.push(AgentEvent::AgentEnd {
+                    messages: new_messages.clone(),
+                });
                 return;
             }
 
@@ -152,19 +183,16 @@ async fn run_loop(
 
             let mut tool_results = vec![];
             if has_tool_calls {
-                let exec = execute_tool_calls(
-                    &context.tools,
-                    &assistant_msg,
-                    cancel.clone(),
-                    tx,
-                    config,
-                )
-                .await;
+                let exec =
+                    execute_tool_calls(&context.tools, &assistant_msg, cancel.clone(), tx, config)
+                        .await;
                 tool_results = exec.tool_results;
                 steering_after_tools = exec.steering;
 
                 for tr in &tool_results {
-                    context.messages.push(AgentMessage::Llm(Message::ToolResult(tr.clone())));
+                    context
+                        .messages
+                        .push(AgentMessage::Llm(Message::ToolResult(tr.clone())));
                     new_messages.push(AgentMessage::Llm(Message::ToolResult(tr.clone())));
                 }
             }
@@ -192,7 +220,9 @@ async fn run_loop(
         break;
     }
 
-    tx.push(AgentEvent::AgentEnd { messages: new_messages.clone() });
+    tx.push(AgentEvent::AgentEnd {
+        messages: new_messages.clone(),
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -215,7 +245,7 @@ async fn stream_assistant_response(
     // Convert to LLM messages
     let llm_messages = match (config.convert_to_llm)(messages).await {
         Ok(m) => m,
-        Err(e) => {
+        Err(_e) => {
             return AssistantMessage::zero_usage(
                 &config.model.api,
                 &config.model.provider,
@@ -257,21 +287,29 @@ async fn stream_assistant_response(
     opts.base.api_key = api_key.or(opts.base.api_key.clone());
 
     let stream_result = match &config.stream_fn {
-        Some(stream_fn) => (stream_fn)(config.model.clone(), llm_context.clone(), Some(opts.clone())),
+        Some(stream_fn) => (stream_fn)(
+            config.model.clone(),
+            llm_context.clone(),
+            Some(opts.clone()),
+        ),
         None => ai::stream_simple(&config.model, &llm_context, Some(&opts)),
     };
 
     let event_stream = match stream_result {
         Ok(s) => s,
-        Err(e) => {
+        Err(_e) => {
             let msg = AssistantMessage::zero_usage(
                 &config.model.api,
                 &config.model.provider,
                 &config.model.id,
                 StopReason::Error,
             );
-            tx.push(AgentEvent::MessageStart { message: AgentMessage::Llm(Message::Assistant(msg.clone())) });
-            tx.push(AgentEvent::MessageEnd { message: AgentMessage::Llm(Message::Assistant(msg.clone())) });
+            tx.push(AgentEvent::MessageStart {
+                message: AgentMessage::Llm(Message::Assistant(msg.clone())),
+            });
+            tx.push(AgentEvent::MessageEnd {
+                message: AgentMessage::Llm(Message::Assistant(msg.clone())),
+            });
             return msg;
         }
     };
@@ -294,14 +332,16 @@ async fn stream_assistant_response(
                 if let Some(last) = context.messages.last_mut() {
                     *last = AgentMessage::Llm(Message::Assistant(message.clone()));
                 } else {
-                    context.messages.push(AgentMessage::Llm(Message::Assistant(message.clone())));
+                    context
+                        .messages
+                        .push(AgentMessage::Llm(Message::Assistant(message.clone())));
                 }
                 tx.push(AgentEvent::MessageEnd {
                     message: AgentMessage::Llm(Message::Assistant(message.clone())),
                 });
                 return message.clone();
             }
-            other => {
+            _other => {
                 if let Some(partial_msg) = &partial {
                     let amsg = AgentMessage::Llm(Message::Assistant(partial_msg.clone()));
                     if let Some(last) = context.messages.last_mut() {
@@ -309,7 +349,7 @@ async fn stream_assistant_response(
                     }
                     tx.push(AgentEvent::MessageUpdate {
                         message: amsg,
-                        assistant_event: event.clone(),
+                        assistant_event: Box::new(event.clone()),
                     });
                 }
             }
@@ -347,9 +387,12 @@ async fn execute_tool_calls(
         .content
         .iter()
         .filter_map(|b| match b {
-            ContentBlock::ToolCall { id, name, arguments, .. } => {
-                Some((id.clone(), name.clone(), arguments.clone()))
-            }
+            ContentBlock::ToolCall {
+                id,
+                name,
+                arguments,
+                ..
+            } => Some((id.clone(), name.clone(), arguments.clone())),
             _ => None,
         })
         .collect();
@@ -388,7 +431,9 @@ async fn execute_tool_calls(
                     Ok(r) => (r, false),
                     Err(e) => (
                         AgentToolResult {
-                            content: vec![UserBlock::Text { text: e.to_string() }],
+                            content: vec![UserBlock::Text {
+                                text: e.to_string(),
+                            }],
                             details: None,
                         },
                         true,
@@ -415,8 +460,12 @@ async fn execute_tool_calls(
         };
 
         results.push(tr.clone());
-        tx.push(AgentEvent::MessageStart { message: AgentMessage::Llm(Message::ToolResult(tr.clone())) });
-        tx.push(AgentEvent::MessageEnd { message: AgentMessage::Llm(Message::ToolResult(tr)) });
+        tx.push(AgentEvent::MessageStart {
+            message: AgentMessage::Llm(Message::ToolResult(tr.clone())),
+        });
+        tx.push(AgentEvent::MessageEnd {
+            message: AgentMessage::Llm(Message::ToolResult(tr)),
+        });
 
         // Check steering after each tool
         let s = get_steering(config).await;
@@ -431,7 +480,10 @@ async fn execute_tool_calls(
         }
     }
 
-    ToolExecResult { tool_results: results, steering }
+    ToolExecResult {
+        tool_results: results,
+        steering,
+    }
 }
 
 fn skip_tool_call(
@@ -441,7 +493,9 @@ fn skip_tool_call(
     tx: &mut AgentEventSender,
 ) -> ToolResultMessage {
     let result = AgentToolResult {
-        content: vec![UserBlock::Text { text: "Skipped due to queued user message.".into() }],
+        content: vec![UserBlock::Text {
+            text: "Skipped due to queued user message.".into(),
+        }],
         details: None,
     };
     tx.push(AgentEvent::ToolExecutionStart {
@@ -464,8 +518,12 @@ fn skip_tool_call(
         is_error: true,
         timestamp: chrono::Utc::now().timestamp_millis(),
     };
-    tx.push(AgentEvent::MessageStart { message: AgentMessage::Llm(Message::ToolResult(tr.clone())) });
-    tx.push(AgentEvent::MessageEnd { message: AgentMessage::Llm(Message::ToolResult(tr.clone())) });
+    tx.push(AgentEvent::MessageStart {
+        message: AgentMessage::Llm(Message::ToolResult(tr.clone())),
+    });
+    tx.push(AgentEvent::MessageEnd {
+        message: AgentMessage::Llm(Message::ToolResult(tr.clone())),
+    });
     tr
 }
 

@@ -8,8 +8,8 @@ use common::env_key;
 use ai::models::get_model;
 use ai::providers::complete_simple;
 use ai::types::{
-    ContentBlock, Context, Message, SimpleStreamOptions, StopReason, ToolResultMessage,
-    UserBlock, UserContent, UserMessage,
+    ContentBlock, Context, Message, SimpleStreamOptions, StopReason, ToolResultMessage, UserBlock,
+    UserContent, UserMessage,
 };
 use std::collections::HashMap;
 
@@ -45,7 +45,11 @@ fn build_prefilled_messages() -> Vec<Message> {
         provider: "openai".into(),
         model: "gpt-5.2-codex".into(),
         usage: ai::types::Usage {
-            input: 100, output: 50, cache_read: 0, cache_write: 0, total_tokens: 150,
+            input: 100,
+            output: 50,
+            cache_read: 0,
+            cache_write: 0,
+            total_tokens: 150,
             cost: ai::types::Cost::default(),
         },
         stop_reason: StopReason::ToolUse,
@@ -57,7 +61,9 @@ fn build_prefilled_messages() -> Vec<Message> {
         role: "toolResult".into(),
         tool_call_id: FAILING_TOOL_CALL_ID.into(),
         tool_name: "echo".into(),
-        content: vec![UserBlock::Text { text: "hello".into() }],
+        content: vec![UserBlock::Text {
+            text: "hello".into(),
+        }],
         details: None,
         is_error: false,
         timestamp: 0,
@@ -78,12 +84,18 @@ fn build_prefilled_messages() -> Vec<Message> {
 
 #[test]
 fn failing_tool_call_id_contains_pipe() {
-    assert!(FAILING_TOOL_CALL_ID.contains('|'), "Test ID must be pipe-separated");
+    assert!(
+        FAILING_TOOL_CALL_ID.contains('|'),
+        "Test ID must be pipe-separated"
+    );
 }
 
 #[test]
 fn failing_tool_call_id_is_long() {
-    assert!(FAILING_TOOL_CALL_ID.len() > 100, "Test ID must be long enough to trigger the bug");
+    assert!(
+        FAILING_TOOL_CALL_ID.len() > 100,
+        "Test ID must be long enough to trigger the bug"
+    );
 }
 
 #[test]
@@ -110,10 +122,20 @@ async fn openai_handles_prefilled_long_pipe_id() {
 
     let response = complete_simple(
         &model,
-        &Context { system_prompt: Some("You are a helpful assistant.".into()), messages, tools: None },
+        &Context {
+            system_prompt: Some("You are a helpful assistant.".into()),
+            messages,
+            tools: None,
+        },
         Some(&opts),
-    ).await.unwrap();
+    )
+    .await
+    .unwrap();
 
-    assert_ne!(response.stop_reason, StopReason::Error, "Should not fail with call_id too long");
+    assert_ne!(
+        response.stop_reason,
+        StopReason::Error,
+        "Should not fail with call_id too long"
+    );
     assert!(response.error_message.is_none());
 }

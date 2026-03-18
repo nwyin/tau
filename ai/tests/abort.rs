@@ -6,7 +6,9 @@ use common::env_key;
 
 use ai::models::get_model;
 use ai::providers::{complete, stream};
-use ai::types::{Context, SimpleStreamOptions, StreamOptions, UserMessage, UserContent, Message, StopReason};
+use ai::types::{
+    Context, Message, SimpleStreamOptions, StopReason, StreamOptions, UserContent, UserMessage,
+};
 use futures::StreamExt;
 
 async fn test_abort_signal(model: &ai::types::Model, api_key: Option<String>) {
@@ -32,9 +34,12 @@ async fn test_abort_signal(model: &ai::types::Model, api_key: Option<String>) {
     let mut text = String::new();
     let mut aborted = false;
     while let Some(event) = response.next().await {
-        if aborted { break; }
+        if aborted {
+            break;
+        }
         if let ai::types::AssistantMessageEvent::TextDelta { delta, .. }
-        | ai::types::AssistantMessageEvent::ThinkingDelta { delta: delta, .. } = &event {
+        | ai::types::AssistantMessageEvent::ThinkingDelta { delta: delta, .. } = &event
+        {
             text.push_str(delta);
         }
         if text.len() >= 50 {

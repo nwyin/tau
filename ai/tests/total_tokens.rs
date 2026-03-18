@@ -55,4 +55,3 @@ async fn openai_responses_total_tokens() {
     let model = get_model("openai", "gpt-5-mini").unwrap();
     test_total_tokens(&model, env_key("OPENAI_API_KEY")).await;
 }
-

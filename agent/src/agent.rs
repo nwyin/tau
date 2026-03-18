@@ -51,10 +51,12 @@ pub enum QueueMode {
 // Agent
 // ---------------------------------------------------------------------------
 
+type EventListeners = Vec<Box<dyn Fn(&AgentEvent) + Send + Sync>>;
+
 pub struct Agent {
     state: Arc<Mutex<AgentState>>,
 
-    listeners: Arc<Mutex<Vec<Box<dyn Fn(&AgentEvent) + Send + Sync>>>>,
+    listeners: Arc<Mutex<EventListeners>>,
 
     convert_to_llm: ConvertToLlmFn,
     transform_context: Option<TransformContextFn>,
@@ -77,7 +79,10 @@ pub struct Agent {
 fn default_convert_to_llm() -> ConvertToLlmFn {
     Arc::new(|messages: Vec<AgentMessage>| {
         Box::pin(async move {
-            Ok(messages.into_iter().filter_map(|m| m.as_message().cloned()).collect())
+            Ok(messages
+                .into_iter()
+                .filter_map(|m| m.as_message().cloned())
+                .collect())
         })
     })
 }
@@ -85,7 +90,9 @@ fn default_convert_to_llm() -> ConvertToLlmFn {
 impl Agent {
     pub fn new(opts: AgentOptions) -> Self {
         let init = opts.initial_state.unwrap_or_default();
-        let model = init.model.expect("AgentOptions.initial_state.model is required");
+        let model = init
+            .model
+            .expect("AgentOptions.initial_state.model is required");
 
         let state = AgentState {
             system_prompt: init.system_prompt.unwrap_or_default(),
@@ -188,22 +195,6 @@ impl Agent {
             || !self.follow_up_queue.lock().unwrap().is_empty()
     }
 
-    fn dequeue_steering(&self) -> Vec<AgentMessage> {
-        let mut q = self.steering_queue.lock().unwrap();
-        match self.steering_mode {
-            QueueMode::OneAtATime => q.pop_front().into_iter().collect(),
-            QueueMode::All => q.drain(..).collect(),
-        }
-    }
-
-    fn dequeue_follow_up(&self) -> Vec<AgentMessage> {
-        let mut q = self.follow_up_queue.lock().unwrap();
-        match self.follow_up_mode {
-            QueueMode::OneAtATime => q.pop_front().into_iter().collect(),
-            QueueMode::All => q.drain(..).collect(),
-        }
-    }
-
     // -----------------------------------------------------------------------
     // Subscriptions
     // -----------------------------------------------------------------------
@@ -211,9 +202,8 @@ impl Agent {
     /// Subscribe to agent events. Returns an unsubscribe closure.
     pub fn subscribe(&self, f: impl Fn(&AgentEvent) + Send + Sync + 'static) -> impl FnOnce() {
         let mut listeners = self.listeners.lock().unwrap();
-        let idx = listeners.len();
         listeners.push(Box::new(f));
-        // Simplistic: capture idx (not reuse-safe after removes, fine for now)
+        // Simplistic (not reuse-safe after removes, fine for now)
         let listeners = Arc::clone(&self.listeners);
         move || {
             // Mark as no-op (swap with empty closure). Real impl would use IDs.
@@ -255,7 +245,9 @@ impl Agent {
     pub async fn prompt(&self, input: impl Into<String>) -> Result<()> {
         let is_streaming = self.state.lock().unwrap().is_streaming;
         if is_streaming {
-            return Err(anyhow!("Agent is already streaming. Use steer() or wait for completion."));
+            return Err(anyhow!(
+                "Agent is already streaming. Use steer() or wait for completion."
+            ));
         }
         let msg = AgentMessage::user(input.into());
         self.run_loop(vec![msg]).await
@@ -371,12 +363,16 @@ impl Agent {
         };
 
         let reasoning = thinking_level.to_ai();
-        let mut simple_opts = SimpleStreamOptions::default();
-        simple_opts.reasoning = reasoning;
-        simple_opts.thinking_budgets = self.thinking_budgets.clone();
-        simple_opts.base.session_id = self.session_id.clone();
-        simple_opts.base.max_retry_delay_ms = self.max_retry_delay_ms;
-        simple_opts.base.transport = Some(self.transport.clone());
+        let simple_opts = SimpleStreamOptions {
+            reasoning,
+            thinking_budgets: self.thinking_budgets.clone(),
+            base: ai::types::StreamOptions {
+                session_id: self.session_id.clone(),
+                max_retry_delay_ms: self.max_retry_delay_ms,
+                transport: Some(self.transport.clone()),
+                ..Default::default()
+            },
+        };
 
         let steering_queue = Arc::clone(&self.steering_queue);
         let follow_up_queue = Arc::clone(&self.follow_up_queue);

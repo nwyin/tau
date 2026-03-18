@@ -11,7 +11,10 @@ use common::{create_usage, mock_model, registry_lock};
 use ai::models::{get_model, supports_xhigh};
 use ai::providers::{clear_api_providers, complete_simple, register_api_provider, ApiProvider};
 use ai::stream::{assistant_message_event_stream, AssistantMessageEventStream};
-use ai::types::{ContentBlock, Context, Message, SimpleStreamOptions, StopReason, ThinkingLevel, UserContent, UserMessage};
+use ai::types::{
+    ContentBlock, Context, Message, SimpleStreamOptions, StopReason, ThinkingLevel, UserContent,
+    UserMessage,
+};
 use std::sync::{Arc, Mutex};
 
 struct XHighProvider {
@@ -71,7 +74,9 @@ impl XHighProvider {
 
         let (mut tx, stream) = assistant_message_event_stream();
         tokio::spawn(async move {
-            tx.push(ai::types::AssistantMessageEvent::Start { partial: message.clone() });
+            tx.push(ai::types::AssistantMessageEvent::Start {
+                partial: message.clone(),
+            });
             tx.push(ai::types::AssistantMessageEvent::Done {
                 reason: message.stop_reason.clone(),
                 message,
@@ -127,20 +132,31 @@ async fn supported_xhigh_model_accepts_xhigh_reasoning() {
     let provider = Arc::new(XHighProvider::new());
     register_api_provider(provider.clone());
 
-    let mut model = get_model("openai", "gpt-5.2-codex").unwrap().as_ref().clone();
+    let mut model = get_model("openai", "gpt-5.2-codex")
+        .unwrap()
+        .as_ref()
+        .clone();
     model.api = "test-xhigh".into();
 
     let mut opts = SimpleStreamOptions::default();
     opts.reasoning = Some(ThinkingLevel::XHigh);
 
-    let response = complete_simple(&model, &make_context(), Some(&opts)).await.unwrap();
+    let response = complete_simple(&model, &make_context(), Some(&opts))
+        .await
+        .unwrap();
     assert_eq!(
         provider.seen_reasoning.lock().unwrap().as_slice(),
         &[Some(ThinkingLevel::XHigh)]
     );
     assert_eq!(response.stop_reason, StopReason::Stop);
-    assert!(response.content.iter().any(|block| matches!(block, ContentBlock::Thinking { .. })));
-    assert!(response.content.iter().any(|block| matches!(block, ContentBlock::Text { text, .. } if text == "42")));
+    assert!(response
+        .content
+        .iter()
+        .any(|block| matches!(block, ContentBlock::Thinking { .. })));
+    assert!(response
+        .content
+        .iter()
+        .any(|block| matches!(block, ContentBlock::Text { text, .. } if text == "42")));
 
     clear_api_providers();
 }
@@ -159,7 +175,9 @@ async fn unsupported_xhigh_model_returns_error_for_xhigh_reasoning() {
     let mut opts = SimpleStreamOptions::default();
     opts.reasoning = Some(ThinkingLevel::XHigh);
 
-    let response = complete_simple(&model, &make_context(), Some(&opts)).await.unwrap();
+    let response = complete_simple(&model, &make_context(), Some(&opts))
+        .await
+        .unwrap();
     assert_eq!(
         provider.seen_reasoning.lock().unwrap().as_slice(),
         &[Some(ThinkingLevel::XHigh)]

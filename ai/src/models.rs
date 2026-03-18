@@ -14,7 +14,9 @@ struct ModelRegistry {
 
 impl Default for ModelRegistry {
     fn default() -> Self {
-        let mut reg = ModelRegistry { models: HashMap::new() };
+        let mut reg = ModelRegistry {
+            models: HashMap::new(),
+        };
         for model in crate::catalog::builtin_models() {
             reg.models
                 .entry(model.provider.clone())

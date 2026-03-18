@@ -7,9 +7,13 @@
 mod common;
 use common::{create_assistant_message, mock_model, registry_lock};
 
-use ai::providers::{clear_api_providers, complete, complete_simple, register_api_provider, ApiProvider};
+use ai::providers::{
+    clear_api_providers, complete, complete_simple, register_api_provider, ApiProvider,
+};
 use ai::stream::{assistant_message_event_stream, AssistantMessageEventStream};
-use ai::types::{CacheRetention, Context, Message, SimpleStreamOptions, StreamOptions, UserContent, UserMessage};
+use ai::types::{
+    CacheRetention, Context, Message, SimpleStreamOptions, StreamOptions, UserContent, UserMessage,
+};
 use std::sync::{Arc, Mutex};
 
 #[derive(Default)]
@@ -23,7 +27,9 @@ impl RecordingProvider {
         let message = create_assistant_message(text);
         let (mut tx, stream) = assistant_message_event_stream();
         tokio::spawn(async move {
-            tx.push(ai::types::AssistantMessageEvent::Start { partial: message.clone() });
+            tx.push(ai::types::AssistantMessageEvent::Start {
+                partial: message.clone(),
+            });
             tx.push(ai::types::AssistantMessageEvent::Done {
                 reason: message.stop_reason.clone(),
                 message,
@@ -89,7 +95,9 @@ async fn forwards_cache_retention_in_raw_stream_options() {
     opts.cache_retention = Some(CacheRetention::Long);
 
     let model = mock_model("test-cache-retention", "test");
-    let response = complete(&model, &sample_context(), Some(&opts)).await.unwrap();
+    let response = complete(&model, &sample_context(), Some(&opts))
+        .await
+        .unwrap();
 
     assert_eq!(response.role, "assistant");
     assert_eq!(
@@ -112,7 +120,9 @@ async fn forwards_cache_retention_in_simple_stream_options() {
     opts.base.cache_retention = Some(CacheRetention::Short);
 
     let model = mock_model("test-cache-retention", "test");
-    let response = complete_simple(&model, &sample_context(), Some(&opts)).await.unwrap();
+    let response = complete_simple(&model, &sample_context(), Some(&opts))
+        .await
+        .unwrap();
 
     assert_eq!(response.role, "assistant");
     assert_eq!(
@@ -132,11 +142,25 @@ async fn preserves_none_cache_retention_when_unspecified() {
     register_api_provider(provider.clone());
 
     let model = mock_model("test-cache-retention", "test");
-    complete(&model, &sample_context(), Some(&StreamOptions::default())).await.unwrap();
-    complete_simple(&model, &sample_context(), Some(&SimpleStreamOptions::default())).await.unwrap();
+    complete(&model, &sample_context(), Some(&StreamOptions::default()))
+        .await
+        .unwrap();
+    complete_simple(
+        &model,
+        &sample_context(),
+        Some(&SimpleStreamOptions::default()),
+    )
+    .await
+    .unwrap();
 
-    assert_eq!(provider.raw_cache_retention.lock().unwrap().as_slice(), &[None]);
-    assert_eq!(provider.simple_cache_retention.lock().unwrap().as_slice(), &[None]);
+    assert_eq!(
+        provider.raw_cache_retention.lock().unwrap().as_slice(),
+        &[None]
+    );
+    assert_eq!(
+        provider.simple_cache_retention.lock().unwrap().as_slice(),
+        &[None]
+    );
 
     clear_api_providers();
 }

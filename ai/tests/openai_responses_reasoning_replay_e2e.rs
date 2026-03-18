@@ -82,7 +82,9 @@ impl CapturingReplayProvider {
         let message = create_assistant_message(text);
         let (mut tx, stream) = assistant_message_event_stream();
         tokio::spawn(async move {
-            tx.push(ai::types::AssistantMessageEvent::Start { partial: message.clone() });
+            tx.push(ai::types::AssistantMessageEvent::Start {
+                partial: message.clone(),
+            });
             tx.push(ai::types::AssistantMessageEvent::Done {
                 reason: message.stop_reason.clone(),
                 message,
@@ -145,7 +147,9 @@ async fn reasoning_only_aborted_history_is_forwarded_without_local_error() {
         tools: Some(vec![test_tool()]),
     };
 
-    let response = complete(&model, &context, Some(&StreamOptions::default())).await.unwrap();
+    let response = complete(&model, &context, Some(&StreamOptions::default()))
+        .await
+        .unwrap();
     assert_eq!(response.stop_reason, StopReason::Stop);
 
     let seen = provider.seen_contexts.lock().unwrap();
@@ -203,7 +207,9 @@ async fn same_provider_different_model_history_keeps_reasoning_and_tool_call_ids
         tools: Some(vec![test_tool()]),
     };
 
-    let response = complete(&model_b, &context, Some(&StreamOptions::default())).await.unwrap();
+    let response = complete(&model_b, &context, Some(&StreamOptions::default()))
+        .await
+        .unwrap();
     assert_eq!(response.stop_reason, StopReason::Stop);
 
     let seen = provider.seen_contexts.lock().unwrap();
@@ -246,7 +252,8 @@ async fn cross_provider_history_keeps_foreign_tool_call_ids_intact() {
         ..openai_model.clone()
     };
 
-    let assistant = assistant_with_reasoning_and_tool_call(&anthropic_model, "toolu_123", StopReason::ToolUse);
+    let assistant =
+        assistant_with_reasoning_and_tool_call(&anthropic_model, "toolu_123", StopReason::ToolUse);
     let tool_result = Message::ToolResult(ToolResultMessage {
         role: "toolResult".into(),
         tool_call_id: "toolu_123".into(),
@@ -268,7 +275,9 @@ async fn cross_provider_history_keeps_foreign_tool_call_ids_intact() {
         tools: Some(vec![test_tool()]),
     };
 
-    let response = complete(&openai_model, &context, Some(&StreamOptions::default())).await.unwrap();
+    let response = complete(&openai_model, &context, Some(&StreamOptions::default()))
+        .await
+        .unwrap();
     assert_eq!(response.stop_reason, StopReason::Stop);
 
     let seen = provider.seen_contexts.lock().unwrap();

@@ -10,8 +10,8 @@ use common::{create_usage, mock_model, registry_lock};
 use ai::providers::{clear_api_providers, complete_simple, register_api_provider, ApiProvider};
 use ai::stream::{assistant_message_event_stream, AssistantMessageEventStream};
 use ai::types::{
-    AssistantMessage, ContentBlock, Context, Message, SimpleStreamOptions, StopReason, ThinkingLevel,
-    Tool, ToolResultMessage, UserBlock, UserContent, UserMessage,
+    AssistantMessage, ContentBlock, Context, Message, SimpleStreamOptions, StopReason,
+    ThinkingLevel, Tool, ToolResultMessage, UserBlock, UserContent, UserMessage,
 };
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -76,7 +76,9 @@ impl InterleavedThinkingProvider {
         let message = assistant_with_thinking_and_tool_call();
         let (mut tx, stream) = assistant_message_event_stream();
         tokio::spawn(async move {
-            tx.push(ai::types::AssistantMessageEvent::Start { partial: message.clone() });
+            tx.push(ai::types::AssistantMessageEvent::Start {
+                partial: message.clone(),
+            });
             tx.push(ai::types::AssistantMessageEvent::Done {
                 reason: message.stop_reason.clone(),
                 message,
@@ -109,7 +111,9 @@ impl InterleavedThinkingProvider {
         };
         let (mut tx, stream) = assistant_message_event_stream();
         tokio::spawn(async move {
-            tx.push(ai::types::AssistantMessageEvent::Start { partial: message.clone() });
+            tx.push(ai::types::AssistantMessageEvent::Start {
+                partial: message.clone(),
+            });
             tx.push(ai::types::AssistantMessageEvent::Done {
                 reason: message.stop_reason.clone(),
                 message,
@@ -171,28 +175,48 @@ async fn second_request_preserves_prior_thinking_and_tool_result_history() {
         tools: Some(vec![calculator_tool()]),
     };
 
-    let first_response = complete_simple(&model, &context, Some(&opts)).await.unwrap();
+    let first_response = complete_simple(&model, &context, Some(&opts))
+        .await
+        .unwrap();
     assert_eq!(first_response.stop_reason, StopReason::ToolUse);
-    assert!(first_response.content.iter().any(|block| matches!(block, ContentBlock::Thinking { .. })));
-    assert!(first_response.content.iter().any(|block| matches!(block, ContentBlock::ToolCall { .. })));
+    assert!(first_response
+        .content
+        .iter()
+        .any(|block| matches!(block, ContentBlock::Thinking { .. })));
+    assert!(first_response
+        .content
+        .iter()
+        .any(|block| matches!(block, ContentBlock::ToolCall { .. })));
 
-    context.messages.push(Message::Assistant(first_response.clone()));
-    context.messages.push(Message::ToolResult(ToolResultMessage {
-        role: "toolResult".into(),
-        tool_call_id: "calc-1".into(),
-        tool_name: "calculator".into(),
-        content: vec![UserBlock::Text {
-            text: "The answer is 9512 or 19024.".into(),
-        }],
-        details: None,
-        is_error: false,
-        timestamp: 0,
-    }));
+    context
+        .messages
+        .push(Message::Assistant(first_response.clone()));
+    context
+        .messages
+        .push(Message::ToolResult(ToolResultMessage {
+            role: "toolResult".into(),
+            tool_call_id: "calc-1".into(),
+            tool_name: "calculator".into(),
+            content: vec![UserBlock::Text {
+                text: "The answer is 9512 or 19024.".into(),
+            }],
+            details: None,
+            is_error: false,
+            timestamp: 0,
+        }));
 
-    let second_response = complete_simple(&model, &context, Some(&opts)).await.unwrap();
+    let second_response = complete_simple(&model, &context, Some(&opts))
+        .await
+        .unwrap();
     assert_eq!(second_response.stop_reason, StopReason::Stop);
-    assert!(second_response.content.iter().any(|block| matches!(block, ContentBlock::Thinking { .. })));
-    assert!(second_response.content.iter().any(|block| matches!(block, ContentBlock::Text { text, .. } if text.contains("9512"))));
+    assert!(second_response
+        .content
+        .iter()
+        .any(|block| matches!(block, ContentBlock::Thinking { .. })));
+    assert!(second_response
+        .content
+        .iter()
+        .any(|block| matches!(block, ContentBlock::Text { text, .. } if text.contains("9512"))));
 
     let seen = provider.seen_contexts.lock().unwrap();
     assert_eq!(seen.len(), 2);

@@ -137,18 +137,24 @@ pub type ConvertToLlmFn =
     Arc<dyn Fn(Vec<AgentMessage>) -> BoxFuture<anyhow::Result<Vec<Message>>> + Send + Sync>;
 
 pub type TransformContextFn = Arc<
-    dyn Fn(Vec<AgentMessage>, Option<tokio_util::sync::CancellationToken>) -> BoxFuture<Vec<AgentMessage>>
+    dyn Fn(
+            Vec<AgentMessage>,
+            Option<tokio_util::sync::CancellationToken>,
+        ) -> BoxFuture<Vec<AgentMessage>>
         + Send
         + Sync,
 >;
 
-pub type GetApiKeyFn =
-    Arc<dyn Fn(String) -> BoxFuture<Option<String>> + Send + Sync>;
+pub type GetApiKeyFn = Arc<dyn Fn(String) -> BoxFuture<Option<String>> + Send + Sync>;
 
 pub type GetMessagesFn = Arc<dyn Fn() -> BoxFuture<Vec<AgentMessage>> + Send + Sync>;
 
 pub type StreamAssistantFn = Arc<
-    dyn Fn(Model, LlmContext, Option<SimpleStreamOptions>) -> anyhow::Result<AssistantMessageEventStream>
+    dyn Fn(
+            Model,
+            LlmContext,
+            Option<SimpleStreamOptions>,
+        ) -> anyhow::Result<AssistantMessageEventStream>
         + Send
         + Sync,
 >;
@@ -172,21 +178,47 @@ pub struct AgentLoopConfig {
 pub enum AgentEvent {
     // Agent lifecycle
     AgentStart,
-    AgentEnd { messages: Vec<AgentMessage> },
+    AgentEnd {
+        messages: Vec<AgentMessage>,
+    },
 
     // Turn lifecycle
     TurnStart,
-    TurnEnd { message: AgentMessage, tool_results: Vec<ToolResultMessage> },
+    TurnEnd {
+        message: AgentMessage,
+        tool_results: Vec<ToolResultMessage>,
+    },
 
     // Message lifecycle
-    MessageStart { message: AgentMessage },
-    MessageUpdate { message: AgentMessage, assistant_event: AssistantMessageEvent },
-    MessageEnd { message: AgentMessage },
+    MessageStart {
+        message: AgentMessage,
+    },
+    MessageUpdate {
+        message: AgentMessage,
+        assistant_event: Box<AssistantMessageEvent>,
+    },
+    MessageEnd {
+        message: AgentMessage,
+    },
 
     // Tool execution lifecycle
-    ToolExecutionStart { tool_call_id: String, tool_name: String, args: Value },
-    ToolExecutionUpdate { tool_call_id: String, tool_name: String, args: Value, partial_result: AgentToolResult },
-    ToolExecutionEnd { tool_call_id: String, tool_name: String, result: AgentToolResult, is_error: bool },
+    ToolExecutionStart {
+        tool_call_id: String,
+        tool_name: String,
+        args: Value,
+    },
+    ToolExecutionUpdate {
+        tool_call_id: String,
+        tool_name: String,
+        args: Value,
+        partial_result: AgentToolResult,
+    },
+    ToolExecutionEnd {
+        tool_call_id: String,
+        tool_name: String,
+        result: AgentToolResult,
+        is_error: bool,
+    },
 }
 
 // Needed so AgentToolResult can live inside AgentEvent::ToolExecutionUpdate.

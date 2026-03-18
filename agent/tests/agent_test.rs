@@ -4,9 +4,9 @@
 mod common;
 use common::*;
 
-use ai::stream::assistant_message_event_stream;
 use agent::agent::{Agent, AgentOptions, AgentStateInit, QueueMode};
 use agent::types::{AgentMessage, ThinkingLevel};
+use ai::stream::assistant_message_event_stream;
 use std::sync::Arc;
 
 // ---------------------------------------------------------------------------
@@ -201,7 +201,9 @@ async fn prompt_throws_when_already_streaming() {
 
     let msg = mock_assistant_message("done");
     if let Some(tx) = sender.lock().unwrap().as_mut() {
-        tx.push(ai::types::AssistantMessageEvent::Start { partial: msg.clone() });
+        tx.push(ai::types::AssistantMessageEvent::Start {
+            partial: msg.clone(),
+        });
         tx.push(ai::types::AssistantMessageEvent::Done {
             reason: msg.stop_reason.clone(),
             message: msg,
@@ -237,7 +239,9 @@ async fn continue_throws_when_already_streaming() {
 
     let msg = mock_assistant_message("done");
     if let Some(tx) = sender.lock().unwrap().as_mut() {
-        tx.push(ai::types::AssistantMessageEvent::Start { partial: msg.clone() });
+        tx.push(ai::types::AssistantMessageEvent::Start {
+            partial: msg.clone(),
+        });
         tx.push(ai::types::AssistantMessageEvent::Done {
             reason: msg.stop_reason.clone(),
             message: msg,
@@ -254,13 +258,17 @@ async fn continue_throws_when_already_streaming() {
 #[tokio::test]
 async fn continue_processes_queued_follow_up_after_assistant_turn() {
     let agent = Agent::new(AgentOptions {
-        stream_fn: Some(stream_fn_from_messages(vec![mock_assistant_message("Processed")])),
+        stream_fn: Some(stream_fn_from_messages(vec![mock_assistant_message(
+            "Processed",
+        )])),
         ..default_opts()
     });
 
     agent.replace_messages(vec![
         user_message("Initial"),
-        AgentMessage::Llm(ai::types::Message::Assistant(mock_assistant_message("Initial response"))),
+        AgentMessage::Llm(ai::types::Message::Assistant(mock_assistant_message(
+            "Initial response",
+        ))),
     ]);
     agent.follow_up(user_message("Queued follow-up"));
 
@@ -278,7 +286,10 @@ async fn continue_processes_queued_follow_up_after_assistant_turn() {
 
 #[tokio::test]
 async fn continue_one_at_a_time_steering_from_assistant_tail() {
-    let responses = vec![mock_assistant_message("Processed 1"), mock_assistant_message("Processed 2")];
+    let responses = vec![
+        mock_assistant_message("Processed 1"),
+        mock_assistant_message("Processed 2"),
+    ];
     let agent = Agent::new(AgentOptions {
         steering_mode: Some(QueueMode::OneAtATime),
         stream_fn: Some(stream_fn_from_messages(responses)),
@@ -287,7 +298,9 @@ async fn continue_one_at_a_time_steering_from_assistant_tail() {
 
     agent.replace_messages(vec![
         user_message("Initial"),
-        AgentMessage::Llm(ai::types::Message::Assistant(mock_assistant_message("Initial response"))),
+        AgentMessage::Llm(ai::types::Message::Assistant(mock_assistant_message(
+            "Initial response",
+        ))),
     ]);
 
     agent.steer(user_message("Steering 1"));
@@ -296,8 +309,17 @@ async fn continue_one_at_a_time_steering_from_assistant_tail() {
     agent.continue_().await.unwrap();
 
     agent.with_state(|s| {
-        let recent_roles: Vec<_> = s.messages.iter().rev().take(4).map(|m| m.role().to_string()).collect();
-        assert_eq!(recent_roles.into_iter().rev().collect::<Vec<_>>(), vec!["user", "assistant", "user", "assistant"]);
+        let recent_roles: Vec<_> = s
+            .messages
+            .iter()
+            .rev()
+            .take(4)
+            .map(|m| m.role().to_string())
+            .collect();
+        assert_eq!(
+            recent_roles.into_iter().rev().collect::<Vec<_>>(),
+            vec!["user", "assistant", "user", "assistant"]
+        );
     });
 }
 
@@ -308,7 +330,10 @@ async fn session_id_forwarded_to_stream_fn() {
     let mut agent = Agent::new(AgentOptions {
         session_id: Some("session-abc".into()),
         stream_fn: Some(stream_fn_once(move |_model, _context, options| {
-            seen_ref.lock().unwrap().push(options.and_then(|opts| opts.base.session_id.clone()));
+            seen_ref
+                .lock()
+                .unwrap()
+                .push(options.and_then(|opts| opts.base.session_id.clone()));
             instant_stream(mock_assistant_message("ok"))
         })),
         ..default_opts()
@@ -320,7 +345,10 @@ async fn session_id_forwarded_to_stream_fn() {
 
     assert_eq!(
         *seen.lock().unwrap(),
-        vec![Some("session-abc".to_string()), Some("session-def".to_string())]
+        vec![
+            Some("session-abc".to_string()),
+            Some("session-def".to_string())
+        ]
     );
 }
 
@@ -330,7 +358,10 @@ async fn session_id_forwarded_to_stream_fn() {
 
 fn default_opts() -> AgentOptions {
     AgentOptions {
-        initial_state: Some(AgentStateInit { model: Some(mock_model()), ..Default::default() }),
+        initial_state: Some(AgentStateInit {
+            model: Some(mock_model()),
+            ..Default::default()
+        }),
         convert_to_llm: None,
         transform_context: None,
         stream_fn: None,

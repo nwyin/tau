@@ -11,7 +11,10 @@ use common::{mock_model, registry_lock};
 
 use ai::providers::{clear_api_providers, complete, register_api_provider, ApiProvider};
 use ai::stream::{assistant_message_event_stream, AssistantMessageEventStream};
-use ai::types::{AssistantMessage, ContentBlock, Context, Message, StopReason, StreamOptions, Usage, UserContent, UserMessage};
+use ai::types::{
+    AssistantMessage, ContentBlock, Context, Message, StopReason, StreamOptions, Usage,
+    UserContent, UserMessage,
+};
 use std::sync::{Arc, Mutex};
 
 const LOREM_IPSUM: &str = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. ";
@@ -79,7 +82,9 @@ impl OverflowProvider {
 
         let (mut tx, stream) = assistant_message_event_stream();
         tokio::spawn(async move {
-            tx.push(ai::types::AssistantMessageEvent::Start { partial: message.clone() });
+            tx.push(ai::types::AssistantMessageEvent::Start {
+                partial: message.clone(),
+            });
             tx.push(ai::types::AssistantMessageEvent::Done {
                 reason: message.stop_reason.clone(),
                 message,
@@ -149,11 +154,20 @@ async fn overflow_content_reaches_provider_and_is_classified_as_context_overflow
         tools: None,
     };
 
-    let response = complete(&model, &context, Some(&StreamOptions::default())).await.unwrap();
+    let response = complete(&model, &context, Some(&StreamOptions::default()))
+        .await
+        .unwrap();
 
-    assert_eq!(provider.seen_user_lengths.lock().unwrap().as_slice(), &[overflow_content.len()]);
+    assert_eq!(
+        provider.seen_user_lengths.lock().unwrap().as_slice(),
+        &[overflow_content.len()]
+    );
     assert_eq!(response.stop_reason, StopReason::Error);
-    assert!(response.error_message.as_deref().unwrap_or_default().contains("context window"));
+    assert!(response
+        .error_message
+        .as_deref()
+        .unwrap_or_default()
+        .contains("context window"));
     assert!(is_context_overflow(&response, context_window));
 
     clear_api_providers();

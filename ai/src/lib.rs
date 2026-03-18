@@ -6,9 +6,11 @@ pub mod types;
 
 // Convenience re-exports used throughout the agent crate.
 pub use providers::{complete, complete_simple, stream as stream_fn, stream_simple};
-pub use stream::{assistant_message_event_stream, AssistantMessageEventSender, AssistantMessageEventStream};
+pub use stream::{
+    assistant_message_event_stream, AssistantMessageEventSender, AssistantMessageEventStream,
+};
 pub use types::{
-    AssistantMessage, AssistantMessageEvent, ContentBlock, Context, Cost, Message, Model, ModelCost,
-    SimpleStreamOptions, StopReason, StreamOptions, ThinkingBudgets, ThinkingLevel, Tool, ToolResultMessage,
-    Usage, UserBlock, UserContent, UserMessage,
+    AssistantMessage, AssistantMessageEvent, ContentBlock, Context, Cost, Message, Model,
+    ModelCost, SimpleStreamOptions, StopReason, StreamOptions, ThinkingBudgets, ThinkingLevel,
+    Tool, ToolResultMessage, Usage, UserBlock, UserContent, UserMessage,
 };

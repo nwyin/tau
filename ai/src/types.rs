@@ -230,9 +230,16 @@ pub struct AssistantMessage {
 }
 
 impl AssistantMessage {
-    pub fn tool_calls(&self) -> impl Iterator<Item = (&str, &str, &HashMap<String, serde_json::Value>)> {
+    pub fn tool_calls(
+        &self,
+    ) -> impl Iterator<Item = (&str, &str, &HashMap<String, serde_json::Value>)> {
         self.content.iter().filter_map(|b| match b {
-            ContentBlock::ToolCall { id, name, arguments, .. } => Some((id.as_str(), name.as_str(), arguments)),
+            ContentBlock::ToolCall {
+                id,
+                name,
+                arguments,
+                ..
+            } => Some((id.as_str(), name.as_str(), arguments)),
             _ => None,
         })
     }
@@ -240,7 +247,10 @@ impl AssistantMessage {
     pub fn zero_usage(api: &str, provider: &str, model: &str, stop_reason: StopReason) -> Self {
         AssistantMessage {
             role: "assistant".into(),
-            content: vec![ContentBlock::Text { text: String::new(), text_signature: None }],
+            content: vec![ContentBlock::Text {
+                text: String::new(),
+                text_signature: None,
+            }],
             api: api.into(),
             provider: provider.into(),
             model: model.into(),
@@ -374,7 +384,10 @@ pub enum AssistantMessageEvent {
 
 impl AssistantMessageEvent {
     pub fn is_terminal(&self) -> bool {
-        matches!(self, AssistantMessageEvent::Done { .. } | AssistantMessageEvent::Error { .. })
+        matches!(
+            self,
+            AssistantMessageEvent::Done { .. } | AssistantMessageEvent::Error { .. }
+        )
     }
 
     /// Extract the final AssistantMessage from a terminal event, panics on non-terminal.
@@ -393,7 +406,7 @@ impl AssistantMessageEvent {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelCost {
-    pub input: f64,  // $/million tokens
+    pub input: f64, // $/million tokens
     pub output: f64,
     #[serde(rename = "cacheRead")]
     pub cache_read: f64,

@@ -1,8 +1,8 @@
 //! Shared test helpers for agent tests.
 
-use ai::types::{AssistantMessage, ContentBlock, StopReason, Usage};
-use ai::stream::{AssistantMessageEventStream, assistant_message_event_stream};
 use agent::types::{AgentContext, AgentMessage, StreamAssistantFn};
+use ai::stream::{assistant_message_event_stream, AssistantMessageEventStream};
+use ai::types::{AssistantMessage, ContentBlock, StopReason, Usage};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
@@ -15,7 +15,12 @@ pub fn mock_model() -> ai::types::Model {
         base_url: "https://example.invalid".into(),
         reasoning: false,
         input: vec!["text".into()],
-        cost: ai::types::ModelCost { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
+        cost: ai::types::ModelCost {
+            input: 0.0,
+            output: 0.0,
+            cache_read: 0.0,
+            cache_write: 0.0,
+        },
         context_window: 8192,
         max_tokens: 2048,
         headers: None,
@@ -26,7 +31,10 @@ pub fn mock_model() -> ai::types::Model {
 pub fn mock_assistant_message(text: &str) -> AssistantMessage {
     AssistantMessage {
         role: "assistant".into(),
-        content: vec![ContentBlock::Text { text: text.into(), text_signature: None }],
+        content: vec![ContentBlock::Text {
+            text: text.into(),
+            text_signature: None,
+        }],
         api: "openai-responses".into(),
         provider: "openai".into(),
         model: "mock".into(),
@@ -44,7 +52,9 @@ pub fn mock_assistant_message_with_tool_call(
 ) -> AssistantMessage {
     let mut map = std::collections::HashMap::new();
     if let serde_json::Value::Object(obj) = args {
-        for (k, v) in obj { map.insert(k, v); }
+        for (k, v) in obj {
+            map.insert(k, v);
+        }
     }
     AssistantMessage {
         role: "assistant".into(),
@@ -80,9 +90,14 @@ pub fn empty_context() -> AgentContext {
 pub fn instant_stream(msg: AssistantMessage) -> AssistantMessageEventStream {
     let (mut tx, stream) = assistant_message_event_stream();
     tokio::spawn(async move {
-        tx.push(ai::types::AssistantMessageEvent::Start { partial: msg.clone() });
+        tx.push(ai::types::AssistantMessageEvent::Start {
+            partial: msg.clone(),
+        });
         let reason = msg.stop_reason.clone();
-        tx.push(ai::types::AssistantMessageEvent::Done { reason, message: msg });
+        tx.push(ai::types::AssistantMessageEvent::Done {
+            reason,
+            message: msg,
+        });
     });
     stream
 }
@@ -93,7 +108,11 @@ pub fn pending_stream() -> AssistantMessageEventStream {
 }
 
 pub fn stream_fn_once(
-    f: impl Fn(ai::types::Model, ai::types::Context, Option<ai::types::SimpleStreamOptions>) -> AssistantMessageEventStream
+    f: impl Fn(
+            ai::types::Model,
+            ai::types::Context,
+            Option<ai::types::SimpleStreamOptions>,
+        ) -> AssistantMessageEventStream
         + Send
         + Sync
         + 'static,

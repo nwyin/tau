@@ -79,7 +79,9 @@ impl CapturingProvider {
         let message = create_assistant_message(text);
         let (mut tx, stream) = assistant_message_event_stream();
         tokio::spawn(async move {
-            tx.push(ai::types::AssistantMessageEvent::Start { partial: message.clone() });
+            tx.push(ai::types::AssistantMessageEvent::Start {
+                partial: message.clone(),
+            });
             tx.push(ai::types::AssistantMessageEvent::Done {
                 reason: message.stop_reason.clone(),
                 message,
@@ -118,7 +120,8 @@ impl ApiProvider for CapturingProvider {
 #[test]
 fn serializes_unicode_tool_result_without_error() {
     let context = build_context_with_unicode_tool_result();
-    let json = serde_json::to_string(&context.messages).expect("unicode tool result should serialize");
+    let json =
+        serde_json::to_string(&context.messages).expect("unicode tool result should serialize");
 
     assert!(json.contains("🙈"));
     assert!(json.contains("こんにちは"));

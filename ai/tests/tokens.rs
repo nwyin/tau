@@ -30,9 +30,12 @@ async fn test_tokens_on_abort(model: &ai::types::Model, api_key: Option<String>)
     let mut aborted = false;
 
     while let Some(event) = response.next().await {
-        if aborted { break; }
+        if aborted {
+            break;
+        }
         if let ai::types::AssistantMessageEvent::TextDelta { delta, .. }
-        | ai::types::AssistantMessageEvent::ThinkingDelta { delta: delta, .. } = &event {
+        | ai::types::AssistantMessageEvent::ThinkingDelta { delta: delta, .. } = &event
+        {
             text.push_str(delta);
             if text.len() >= 1000 {
                 aborted = true;
@@ -48,7 +51,10 @@ async fn test_tokens_on_abort(model: &ai::types::Model, api_key: Option<String>)
     // OpenAI-family and Gemini CLI only emit usage in final chunk so they'll have zeros on abort.
     // We just assert the invariant: totalTokens == input + output + cacheRead + cacheWrite.
     let u = &msg.usage;
-    assert_eq!(u.total_tokens, u.input + u.output + u.cache_read + u.cache_write);
+    assert_eq!(
+        u.total_tokens,
+        u.input + u.output + u.cache_read + u.cache_write
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -75,4 +81,3 @@ async fn anthropic_tokens_on_abort() {
     let model = get_model("anthropic", "claude-3-5-haiku-20241022").unwrap();
     test_tokens_on_abort(&model, env_key("ANTHROPIC_API_KEY")).await;
 }
-

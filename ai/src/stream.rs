@@ -51,15 +51,23 @@ impl<T: Clone + Unpin> Stream for EventStream<T> {
 impl<T: Clone> EventStream<T> {
     /// Resolves with the terminal event once it has been pushed.
     pub async fn result(self) -> T {
-        self.result_rx.await.expect("EventStream sender dropped without resolving result")
+        self.result_rx
+            .await
+            .expect("EventStream sender dropped without resolving result")
     }
 }
 
 /// Create a paired (sender, stream).
-pub fn event_stream<T: Clone>(is_complete: fn(&T) -> bool) -> (EventStreamSender<T>, EventStream<T>) {
+pub fn event_stream<T: Clone>(
+    is_complete: fn(&T) -> bool,
+) -> (EventStreamSender<T>, EventStream<T>) {
     let (tx, rx) = mpsc::unbounded_channel();
     let (result_tx, result_rx) = oneshot::channel();
-    let sender = EventStreamSender { tx, result_tx: Some(result_tx), is_complete };
+    let sender = EventStreamSender {
+        tx,
+        result_tx: Some(result_tx),
+        is_complete,
+    };
     let stream = EventStream { rx, result_rx };
     (sender, stream)
 }
@@ -89,7 +97,8 @@ impl Stream for AssistantMessageEventStream {
     }
 }
 
-pub fn assistant_message_event_stream() -> (AssistantMessageEventSender, AssistantMessageEventStream) {
+pub fn assistant_message_event_stream() -> (AssistantMessageEventSender, AssistantMessageEventStream)
+{
     let (sender, stream) = event_stream(|e: &AssistantMessageEvent| e.is_terminal());
     (sender, AssistantMessageEventStream { inner: stream })
 }
@@ -100,5 +109,8 @@ pub fn assistant_message_event_stream() -> (AssistantMessageEventSender, Assista
 
 use crate::types::{Context as LlmContext, Model};
 
-pub type StreamFn =
-    Box<dyn Fn(Model, LlmContext, Option<SimpleStreamOptions>) -> AssistantMessageEventStream + Send + Sync>;
+pub type StreamFn = Box<
+    dyn Fn(Model, LlmContext, Option<SimpleStreamOptions>) -> AssistantMessageEventStream
+        + Send
+        + Sync,
+>;

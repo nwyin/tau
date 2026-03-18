@@ -31,7 +31,12 @@ fn returns_false_for_opus_4_6_on_non_anthropic_api() {
         base_url: "https://api.openai.com/v1".into(),
         reasoning: true,
         input: vec!["text".into(), "image".into()],
-        cost: ai::types::ModelCost { input: 5.0, output: 25.0, cache_read: 0.5, cache_write: 6.25 },
+        cost: ai::types::ModelCost {
+            input: 5.0,
+            output: 25.0,
+            cache_read: 0.5,
+            cache_write: 6.25,
+        },
         context_window: 200_000,
         max_tokens: 128_000,
         headers: None,

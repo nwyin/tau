@@ -69,7 +69,11 @@ pub fn clear_api_providers() {
 
 use anyhow::{anyhow, Result};
 
-pub fn stream(model: &Model, context: &Context, options: Option<&StreamOptions>) -> Result<AssistantMessageEventStream> {
+pub fn stream(
+    model: &Model,
+    context: &Context,
+    options: Option<&StreamOptions>,
+) -> Result<AssistantMessageEventStream> {
     let provider = get_api_provider(&model.api)
         .ok_or_else(|| anyhow!("No API provider registered for api: {}", model.api))?;
     Ok(provider.stream(model, context, options))

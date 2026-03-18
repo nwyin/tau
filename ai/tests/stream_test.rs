@@ -7,7 +7,9 @@
 mod common;
 use common::{create_usage, mock_model, registry_lock};
 
-use ai::providers::{clear_api_providers, complete_simple, register_api_provider, stream, ApiProvider};
+use ai::providers::{
+    clear_api_providers, complete_simple, register_api_provider, stream, ApiProvider,
+};
 use ai::stream::{assistant_message_event_stream, AssistantMessageEventStream};
 use ai::types::{
     AssistantMessage, AssistantMessageEvent, ContentBlock, Context, Message, SimpleStreamOptions,
@@ -68,7 +70,9 @@ impl MockProvider {
         );
         let (mut tx, stream) = assistant_message_event_stream();
         tokio::spawn(async move {
-            tx.push(AssistantMessageEvent::Start { partial: message.clone() });
+            tx.push(AssistantMessageEvent::Start {
+                partial: message.clone(),
+            });
             tx.push(AssistantMessageEvent::Done {
                 reason: message.stop_reason.clone(),
                 message,
@@ -294,9 +298,13 @@ async fn basic_text_generation_completes_successfully() {
     register_api_provider(Arc::new(MockProvider::new(MockScenario::BasicText)));
 
     let model = mock_model("test-stream", "test");
-    let response = complete_simple(&model, &base_context("Reply with exactly: 'Hello test successful'"), Some(&SimpleStreamOptions::default()))
-        .await
-        .unwrap();
+    let response = complete_simple(
+        &model,
+        &base_context("Reply with exactly: 'Hello test successful'"),
+        Some(&SimpleStreamOptions::default()),
+    )
+    .await
+    .unwrap();
 
     assert_eq!(response.role, "assistant");
     assert!(matches!(response.stop_reason, StopReason::Stop));
@@ -331,19 +339,30 @@ async fn handle_tool_call_emits_complete_tool_call_payload() {
 
     while let Some(event) = s.next().await {
         match event {
-            AssistantMessageEvent::ToolCallStart { content_index, partial } => {
+            AssistantMessageEvent::ToolCallStart {
+                content_index,
+                partial,
+            } => {
                 has_tool_start = true;
                 assert_eq!(content_index, 0);
-                assert!(matches!(&partial.content[0], ContentBlock::ToolCall { name, .. } if name == "math_operation"));
+                assert!(
+                    matches!(&partial.content[0], ContentBlock::ToolCall { name, .. } if name == "math_operation")
+                );
             }
             AssistantMessageEvent::ToolCallDelta { delta, .. } => {
                 has_tool_delta = true;
                 accumulated_tool_args.push_str(&delta);
             }
-            AssistantMessageEvent::ToolCallEnd { content_index, tool_call, .. } => {
+            AssistantMessageEvent::ToolCallEnd {
+                content_index,
+                tool_call,
+                ..
+            } => {
                 has_tool_end = true;
                 assert_eq!(content_index, 0);
-                assert!(matches!(tool_call, ContentBlock::ToolCall { name, .. } if name == "math_operation"));
+                assert!(
+                    matches!(tool_call, ContentBlock::ToolCall { name, .. } if name == "math_operation")
+                );
             }
             _ => {}
         }
@@ -373,7 +392,12 @@ async fn handle_streaming_text_events() {
     register_api_provider(Arc::new(MockProvider::new(MockScenario::StreamingText)));
 
     let model = mock_model("test-stream", "test");
-    let mut s = stream(&model, &base_context("Count from 1 to 3"), Some(&ai::types::StreamOptions::default())).unwrap();
+    let mut s = stream(
+        &model,
+        &base_context("Count from 1 to 3"),
+        Some(&ai::types::StreamOptions::default()),
+    )
+    .unwrap();
     let mut text_started = false;
     let mut text_chunks = String::new();
     let mut text_completed = false;
@@ -391,7 +415,10 @@ async fn handle_streaming_text_events() {
     assert!(text_started);
     assert_eq!(text_chunks, "1 2 3");
     assert!(text_completed);
-    assert!(response.content.iter().any(|block| matches!(block, ContentBlock::Text { text, .. } if text == "1 2 3")));
+    assert!(response
+        .content
+        .iter()
+        .any(|block| matches!(block, ContentBlock::Text { text, .. } if text == "1 2 3")));
 
     clear_api_providers();
 }
@@ -406,7 +433,9 @@ async fn handle_thinking_events() {
     let mut opts = SimpleStreamOptions::default();
     opts.reasoning = Some(ai::types::ThinkingLevel::High);
 
-    let mut s = ai::providers::stream_simple(&model, &base_context("Think step by step"), Some(&opts)).unwrap();
+    let mut s =
+        ai::providers::stream_simple(&model, &base_context("Think step by step"), Some(&opts))
+            .unwrap();
     let mut thinking_started = false;
     let mut thinking_chunks = String::new();
     let mut thinking_completed = false;

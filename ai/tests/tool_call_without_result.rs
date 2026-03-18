@@ -82,4 +82,3 @@ async fn openai_responses_tool_call_without_result() {
     let model = get_model("openai", "gpt-5-mini").unwrap();
     test_tool_call_without_result(&model, env_key("OPENAI_API_KEY")).await;
 }
-
