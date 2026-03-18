@@ -197,13 +197,23 @@ pub enum UserBlock {
     },
 }
 
+fn default_role_user() -> String {
+    "user".to_string()
+}
+fn default_role_assistant() -> String {
+    "assistant".to_string()
+}
+fn default_role_tool_result() -> String {
+    "toolResult".to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserMessage {
     // Message uses #[serde(tag = "role")], which adds the role tag automatically.
-    // skip_serializing avoids duplicate "role" keys; default handles the tag being
-    // stripped by serde before the inner struct is deserialized.
-    #[serde(default, skip_serializing)]
-    pub role: String, // always "user"
+    // skip avoids duplicate "role" keys and provides the correct default when the
+    // tag is stripped by serde before the inner struct is deserialized.
+    #[serde(skip, default = "default_role_user")]
+    pub role: String,
     pub content: UserContent,
     pub timestamp: i64,
 }
@@ -220,8 +230,9 @@ impl UserMessage {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AssistantMessage {
-    #[serde(default, skip_serializing)]
-    pub role: String, // always "assistant"
+    // See UserMessage for why skip + named default are used here.
+    #[serde(skip, default = "default_role_assistant")]
+    pub role: String,
     pub content: Vec<ContentBlock>,
     pub api: Api,
     pub provider: Provider,
@@ -269,8 +280,9 @@ impl AssistantMessage {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolResultMessage {
-    #[serde(default, skip_serializing)]
-    pub role: String, // always "toolResult"
+    // See UserMessage for why skip + named default are used here.
+    #[serde(skip, default = "default_role_tool_result")]
+    pub role: String,
     #[serde(rename = "toolCallId")]
     pub tool_call_id: String,
     #[serde(rename = "toolName")]

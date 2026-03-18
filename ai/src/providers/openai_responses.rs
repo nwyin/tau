@@ -283,6 +283,29 @@ fn stream_openai_responses(
     stream
 }
 
+/// Parse SSE text into a list of JSON events.
+///
+/// Pure function over raw SSE text, exposed for property-based testing.
+/// Lines not starting with `data: ` (comments, `event:`, empty) are silently
+/// skipped. Malformed JSON after `data: ` is also silently skipped. Stops at
+/// `data: [DONE]`.
+pub fn parse_sse_text(text: &str) -> Vec<Value> {
+    let mut events = Vec::new();
+    for raw_line in text.split('\n') {
+        let line = raw_line.trim_end_matches('\r');
+        if let Some(data) = line.strip_prefix("data: ") {
+            if data == "[DONE]" {
+                break;
+            }
+            if let Ok(v) = serde_json::from_str::<Value>(data) {
+                events.push(v);
+            }
+        }
+        // Non-data lines (comment, event:, empty) are silently ignored.
+    }
+    events
+}
+
 /// Collect SSE data lines from a streaming HTTP response.
 ///
 /// Reads bytes, splits on newlines, and parses `data: {...}` lines.
