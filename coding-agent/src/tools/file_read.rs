@@ -108,10 +108,7 @@ impl AgentTool for FileReadTool {
             if offset > total {
                 return Ok(AgentToolResult {
                     content: vec![UserBlock::Text {
-                        text: format!(
-                            "Offset {} exceeds file length ({} lines)",
-                            offset, total
-                        ),
+                        text: format!("Offset {} exceeds file length ({} lines)", offset, total),
                     }],
                     details: None,
                 });

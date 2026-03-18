@@ -23,16 +23,14 @@ fn text_content(result: &agent::types::AgentToolResult) -> String {
 async fn test_bash_echo() {
     let tool = BashTool;
     let result: AgentToolResult = tool
-        .execute(
-            "id1".into(),
-            json!({"command": "echo hello"}),
-            None,
-            None,
-        )
+        .execute("id1".into(), json!({"command": "echo hello"}), None, None)
         .await
         .unwrap();
     let out = text_content(&result);
-    assert!(out.contains("hello"), "expected 'hello' in output, got: {out}");
+    assert!(
+        out.contains("hello"),
+        "expected 'hello' in output, got: {out}"
+    );
 }
 
 // INV-2: BashTool returns exit code info for failing commands
@@ -40,12 +38,7 @@ async fn test_bash_echo() {
 async fn test_bash_exit_code() {
     let tool = BashTool;
     let result: AgentToolResult = tool
-        .execute(
-            "id2".into(),
-            json!({"command": "exit 1"}),
-            None,
-            None,
-        )
+        .execute("id2".into(), json!({"command": "exit 1"}), None, None)
         .await
         .unwrap();
     let out = text_content(&result);
@@ -89,12 +82,7 @@ async fn test_bash_cancellation() {
     });
 
     let result: AgentToolResult = tool
-        .execute(
-            "id4".into(),
-            json!({"command": "sleep 10"}),
-            Some(ct),
-            None,
-        )
+        .execute("id4".into(), json!({"command": "sleep 10"}), Some(ct), None)
         .await
         .unwrap();
     let out = text_content(&result);
@@ -122,9 +110,18 @@ async fn test_file_read_numbered_lines() {
         .await
         .unwrap();
     let out = text_content(&result);
-    assert!(out.contains("1\tline one"), "expected numbered lines, got: {out}");
-    assert!(out.contains("2\tline two"), "expected numbered lines, got: {out}");
-    assert!(out.contains("3\tline three"), "expected numbered lines, got: {out}");
+    assert!(
+        out.contains("1\tline one"),
+        "expected numbered lines, got: {out}"
+    );
+    assert!(
+        out.contains("2\tline two"),
+        "expected numbered lines, got: {out}"
+    );
+    assert!(
+        out.contains("3\tline three"),
+        "expected numbered lines, got: {out}"
+    );
 }
 
 // INV-6: FileReadTool respects offset and limit
@@ -148,8 +145,14 @@ async fn test_file_read_offset_limit() {
     // Should show lines 2 and 3 (b, c)
     assert!(out.contains("2\tb"), "expected line 2, got: {out}");
     assert!(out.contains("3\tc"), "expected line 3, got: {out}");
-    assert!(!out.contains("1\ta"), "should not contain line 1, got: {out}");
-    assert!(!out.contains("4\td"), "should not contain line 4, got: {out}");
+    assert!(
+        !out.contains("1\ta"),
+        "should not contain line 1, got: {out}"
+    );
+    assert!(
+        !out.contains("4\td"),
+        "should not contain line 4, got: {out}"
+    );
 }
 
 // INV-7: FileReadTool returns error for nonexistent files
@@ -214,7 +217,10 @@ async fn test_file_write_creates_file() {
         .await
         .unwrap();
     let out = text_content(&result);
-    assert!(out.contains("Wrote"), "expected success message, got: {out}");
+    assert!(
+        out.contains("Wrote"),
+        "expected success message, got: {out}"
+    );
     assert_eq!(std::fs::read_to_string(&path).unwrap(), "hello world");
 }
 
@@ -235,7 +241,10 @@ async fn test_file_write_creates_parents() {
         .await
         .unwrap();
     let out = text_content(&result);
-    assert!(out.contains("Wrote"), "expected success message, got: {out}");
+    assert!(
+        out.contains("Wrote"),
+        "expected success message, got: {out}"
+    );
     assert_eq!(std::fs::read_to_string(&path).unwrap(), "nested");
 }
 
@@ -257,6 +266,9 @@ async fn test_file_write_overwrites() {
         .await
         .unwrap();
     let out = text_content(&result);
-    assert!(out.contains("Wrote"), "expected success message, got: {out}");
+    assert!(
+        out.contains("Wrote"),
+        "expected success message, got: {out}"
+    );
     assert_eq!(std::fs::read_to_string(&path).unwrap(), "new content");
 }

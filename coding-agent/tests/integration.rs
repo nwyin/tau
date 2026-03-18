@@ -162,7 +162,9 @@ async fn test_bash_tool_round_trip() {
     assert!(tool_end, "expected successful ToolExecutionEnd for bash");
 
     // Should have AgentEnd
-    let agent_end = events.iter().any(|e| matches!(e, AgentEvent::AgentEnd { .. }));
+    let agent_end = events
+        .iter()
+        .any(|e| matches!(e, AgentEvent::AgentEnd { .. }));
     assert!(agent_end, "expected AgentEnd event");
 }
 

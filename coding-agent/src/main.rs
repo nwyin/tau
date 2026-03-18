@@ -54,34 +54,36 @@ async fn main() -> Result<()> {
     });
 
     // Subscribe to events
-    let _unsubscribe = agent.subscribe(move |event| {
-        match event {
-            AgentEvent::MessageUpdate { assistant_event, .. } => match assistant_event.as_ref() {
-                AssistantMessageEvent::TextDelta { delta, .. } => {
-                    print!("{}", delta);
-                    let _ = io::stdout().flush();
-                }
-                AssistantMessageEvent::ThinkingDelta { delta, .. } => {
-                    eprint!("[thinking] {}", delta);
-                    let _ = io::stderr().flush();
-                }
-                _ => {}
-            },
-            AgentEvent::ToolExecutionStart { tool_name, .. } => {
-                eprintln!("[tool: {}]", tool_name);
+    let _unsubscribe = agent.subscribe(move |event| match event {
+        AgentEvent::MessageUpdate {
+            assistant_event, ..
+        } => match assistant_event.as_ref() {
+            AssistantMessageEvent::TextDelta { delta, .. } => {
+                print!("{}", delta);
+                let _ = io::stdout().flush();
             }
-            AgentEvent::ToolExecutionEnd {
-                tool_name, is_error, ..
-            } => {
-                if *is_error {
-                    eprintln!("[tool error: {}]", tool_name);
-                }
-            }
-            AgentEvent::AgentEnd { .. } => {
-                println!();
+            AssistantMessageEvent::ThinkingDelta { delta, .. } => {
+                eprint!("[thinking] {}", delta);
+                let _ = io::stderr().flush();
             }
             _ => {}
+        },
+        AgentEvent::ToolExecutionStart { tool_name, .. } => {
+            eprintln!("[tool: {}]", tool_name);
         }
+        AgentEvent::ToolExecutionEnd {
+            tool_name,
+            is_error,
+            ..
+        } => {
+            if *is_error {
+                eprintln!("[tool error: {}]", tool_name);
+            }
+        }
+        AgentEvent::AgentEnd { .. } => {
+            println!();
+        }
+        _ => {}
     });
 
     // Set up Ctrl-C handler
