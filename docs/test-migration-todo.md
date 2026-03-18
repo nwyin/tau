@@ -19,7 +19,7 @@ Scope: `tau` intentionally targets only OpenAI, Anthropic, and Kimi. Missing tes
 - [x] Keep provider matrix limited to OpenAI / Anthropic / Kimi as `tau` support evolves.
 - [x] Agent tool definitions wired through to LLM context in `stream_assistant_response()` (commit `48ba375`).
 - [x] OpenAI Responses provider implemented and registered (commit `cac395b`).
-- [ ] Anthropic provider not yet implemented (TODO stub only).
+- [x] Anthropic provider implemented (commit 776127d).
 - [ ] Kimi provider not yet implemented (TODO stub only).
 
 ## 3. High-value AI regression ports
@@ -56,4 +56,4 @@ Fixture-based contract tests in `ai/tests/openai_responses_provider.rs` provide 
 ## 6. Deferred by design
 
 - [ ] Leave non-target-provider ports out unless `tau` expands beyond OpenAI / Anthropic / Kimi.
-- [ ] Anthropic and Kimi provider implementations deferred — TODO stubs in `ai/src/providers/`.
+- Kimi provider implementation deferred — TODO stub in `ai/src/providers/` (tracked in §2 above).
