@@ -8,4 +8,7 @@ Create a Flask app that displays a list of books from a SQLite database.
    - Tests GET `/` returns 200 and contains a book title in the HTML
    - Tests GET `/api/books` returns 200 and the JSON array has 5 items
    - Tests each book in the JSON response has keys: id, title, author, year
-6. Install dependencies (`pip install flask pytest`) and run `python -m pytest test_app.py -v`. Confirm all tests pass.
+6. Set up a virtual environment and install dependencies using `uv`:
+   - `uv venv`
+   - `uv pip install flask pytest`
+   Then run `uv run python -m pytest test_app.py -v`. Confirm all tests pass.

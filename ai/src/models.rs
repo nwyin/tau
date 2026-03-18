@@ -46,6 +46,17 @@ pub fn get_model(provider: &str, model_id: &str) -> Option<Arc<Model>> {
     reg.models.get(provider)?.get(model_id).cloned()
 }
 
+/// Search all providers for a model by ID. Returns the first match.
+pub fn find_model(model_id: &str) -> Option<Arc<Model>> {
+    let reg = registry().read().unwrap();
+    for provider_models in reg.models.values() {
+        if let Some(model) = provider_models.get(model_id) {
+            return Some(model.clone());
+        }
+    }
+    None
+}
+
 pub fn get_providers() -> Vec<String> {
     let reg = registry().read().unwrap();
     reg.models.keys().cloned().collect()

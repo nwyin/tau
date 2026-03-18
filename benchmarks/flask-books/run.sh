@@ -7,7 +7,7 @@
 # Requirements:
 #   - cargo build -p coding-agent (or cargo install --path coding-agent)
 #   - An API key for the chosen provider (OPENAI_API_KEY or ANTHROPIC_API_KEY)
-#   - Python 3.x available on PATH
+#   - uv (https://docs.astral.sh/uv/) and Python 3.x available on PATH
 #
 # The script:
 #   1. Creates a temp working directory
@@ -121,8 +121,8 @@ else
     check "test_app.py exists" "0"
 fi
 
-# Check 5: Flask and pytest importable
-if python3 -c "import flask; import pytest" 2>/dev/null; then
+# Check 5: Flask and pytest importable (via uv venv the agent created)
+if [[ -d "$WORKDIR/.venv" ]] && "$WORKDIR/.venv/bin/python" -c "import flask; import pytest" 2>/dev/null; then
     check "flask and pytest importable" "1"
 else
     check "flask and pytest importable" "0"
@@ -131,7 +131,7 @@ fi
 # Check 6: Tests pass
 if [[ -f "$WORKDIR/test_app.py" ]] && [[ -f "$WORKDIR/app.py" ]]; then
     cd "$WORKDIR"
-    if python3 -m pytest test_app.py -v --tb=short > "$WORKDIR/pytest-output.log" 2>&1; then
+    if uv run python -m pytest test_app.py -v --tb=short > "$WORKDIR/pytest-output.log" 2>&1; then
         check "pytest passes" "1"
     else
         check "pytest passes" "0"

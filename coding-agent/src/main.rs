@@ -43,29 +43,32 @@ async fn main() -> Result<()> {
     let stats_json_path = cli.stats_json.clone();
     let prompt_arg = cli.prompt.clone();
 
-    // Check for API key first
-    let api_key = std::env::var("OPENAI_API_KEY").map_err(|_| {
-        eprintln!("Error: OPENAI_API_KEY environment variable is not set.");
-        anyhow!("OPENAI_API_KEY not set")
-    })?;
-
-    // Resolve model: --model flag > OPENAI_MODEL env > default
+    // Resolve model: --model flag > TAU_MODEL env > default
     let model_id = cli
         .model
-        .or_else(|| std::env::var("OPENAI_MODEL").ok())
+        .or_else(|| std::env::var("TAU_MODEL").ok())
         .unwrap_or_else(|| "gpt-4o-mini".to_string());
 
     let system_prompt = cli.system_prompt.unwrap_or_else(|| {
         "You are a coding assistant. You can run bash commands, read files, and write files. Be concise.".to_string()
     });
 
-    // Register providers
+    // Register providers and resolve model
     ai::register_builtin_providers();
 
-    // Resolve model
-    let model = ai::models::get_model("openai", &model_id)
+    let model = ai::models::find_model(&model_id)
         .ok_or_else(|| anyhow!("Model '{}' not found in registry", model_id))?;
     let model = (*model).clone();
+
+    // Resolve API key based on model provider
+    let api_key = match model.provider.as_str() {
+        "anthropic" => std::env::var("ANTHROPIC_API_KEY").map_err(|_| {
+            anyhow!("ANTHROPIC_API_KEY not set (required for model '{}')", model_id)
+        })?,
+        _ => std::env::var("OPENAI_API_KEY").map_err(|_| {
+            anyhow!("OPENAI_API_KEY not set (required for model '{}')", model_id)
+        })?,
+    };
 
     // --- Session setup ---
     let session_mgr = SessionManager::new(default_session_dir());
