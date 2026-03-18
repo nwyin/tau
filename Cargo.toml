@@ -1,5 +1,5 @@
 [workspace]
-members = ["ai", "agent"]
+members = ["ai", "agent", "coding-agent"]
 resolver = "2"
 
 [workspace.dependencies]

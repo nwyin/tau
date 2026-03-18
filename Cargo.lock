@@ -118,6 +118,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "coding-agent"
+version = "0.1.0"
+dependencies = [
+ "agent",
+ "ai",
+ "anyhow",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
 name = "core-foundation"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"

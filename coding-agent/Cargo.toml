@@ -1,0 +1,20 @@
+[package]
+name = "coding-agent"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "coding-agent"
+path = "src/main.rs"
+
+[dependencies]
+ai = { path = "../ai" }
+agent = { path = "../agent" }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+tokio-util = { version = "0.7", features = ["rt"] }
+
+[dev-dependencies]
+tempfile = "3"
