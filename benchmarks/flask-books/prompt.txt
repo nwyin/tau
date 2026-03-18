@@ -1,4 +1,4 @@
-Create a Flask app that displays a list of books from a SQLite database.
+Create a Flask app that displays a list of books from a SQLite database. Create all files in the current working directory (do not create a subdirectory).
 
 1. Create a SQLite database `books.db` with a `books` table (id INTEGER PRIMARY KEY, title TEXT, author TEXT, year INTEGER). Insert 5 sample rows with real book data.
 2. Create `app.py` with a Flask app that connects to the database and renders the books in an HTML table at the `/` route. Use a Jinja2 template.
