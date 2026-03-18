@@ -122,13 +122,14 @@ OPENAI_API_KEY=sk-... cargo run -p coding-agent -- --prompt "List all Rust files
 
 ---
 
-## Gaps and next steps
+## Design decisions
 
-See `docs/roadmap.md` for the full roadmap.
+**Why three crates?** The `agent` crate is generic — it has no opinion about what tools exist or what domain the agent operates in. A new harness is ~80 lines of glue: pick tools, pick a system prompt, wire up events. `coding-agent` is one such harness; others (data, research, etc.) can be built on the same foundation without importing coding-specific dependencies.
 
-Key items:
-1. **Anthropic/Kimi providers** — TODO stubs exist, implementation deferred
-2. **`--prompt` headless mode** — in progress, enables benchmark integration
-3. **Session persistence** — JSONL storage for cross-restart continuity
-4. **More tools** — grep, find, edit (diff-based) for richer coding agent
-5. **Benchmark integration** — terminal-bench adapter to measure harness quality
+**Why not port all of pi-mono's coding-agent?** pi-mono's `packages/coding-agent` is ~120 source files — TUI, session branching, compaction, extensions, skills, themes, RPC, OAuth, and package management. tau needs tools that let an LLM interact with the filesystem and shell, a way to run it, and good enough quality to benchmark. Everything else is optional.
+
+**Why only OpenAI?** tau targets OpenAI, Anthropic, and Kimi. OpenAI was implemented first because the Responses API is well-documented and covers the broadest model selection. Anthropic and Kimi are TODO stubs.
+
+**Live API test policy.** Live provider tests require double opt-in: `OPENAI_API_KEY` + `RUN_LIVE_PROVIDER_TESTS=1`. Unit tests are fully offline and deterministic. Fixture-based contract tests validate provider wire formats without network calls. See `docs/test-migration-todo.md`.
+
+**No proxy, no web UI.** pi-mono supports browser-based agents via a CORS proxy (`streamProxy`) and a Lit web component library. tau is local-only — agents run on the machine, call providers directly. This is a deliberate scope cut.
