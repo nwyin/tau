@@ -1,7 +1,7 @@
 use agent::types::AgentTool;
 use agent::types::AgentToolResult;
 use ai::types::UserBlock;
-use coding_agent::tools::{BashTool, FileReadTool, FileWriteTool};
+use coding_agent::tools::{BashTool, FileEditTool, FileReadTool, FileWriteTool};
 use serde_json::json;
 use tempfile::TempDir;
 use tokio_util::sync::CancellationToken;
@@ -271,4 +271,205 @@ async fn test_file_write_overwrites() {
         "expected success message, got: {out}"
     );
     assert_eq!(std::fs::read_to_string(&path).unwrap(), "new content");
+}
+
+// INV-12: Exact string replacement produces correct file content
+#[tokio::test]
+async fn test_file_edit_basic_replacement() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("edit.txt");
+    std::fs::write(&path, "x=1\ny=2\n").unwrap();
+
+    let tool = FileEditTool;
+    let result: AgentToolResult = tool
+        .execute(
+            "id12".into(),
+            json!({"path": path.to_str().unwrap(), "old_string": "y=2", "new_string": "y=999"}),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+    let out = text_content(&result);
+    assert!(
+        out.contains("Replaced 1 occurrence"),
+        "expected success message, got: {out}"
+    );
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "x=1\ny=999\n");
+}
+
+// INV-13: Multiple matches of old_string rejected with count in error message
+#[tokio::test]
+async fn test_file_edit_multiple_matches() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("dup.txt");
+    std::fs::write(&path, "foo\nfoo\nbar\n").unwrap();
+
+    let tool = FileEditTool;
+    let result: AgentToolResult = tool
+        .execute(
+            "id13".into(),
+            json!({"path": path.to_str().unwrap(), "old_string": "foo", "new_string": "baz"}),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+    let out = text_content(&result);
+    assert!(
+        out.contains("2"),
+        "expected count '2' in error message, got: {out}"
+    );
+    assert!(
+        out.contains("occurrences"),
+        "expected 'occurrences' in error message, got: {out}"
+    );
+    // File must be unchanged
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "foo\nfoo\nbar\n");
+}
+
+// INV-14: old_string not found returns error with helpful file context
+#[tokio::test]
+async fn test_file_edit_not_found() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("nf.txt");
+    std::fs::write(&path, "hello world\nsecond line\n").unwrap();
+
+    let tool = FileEditTool;
+    let result: AgentToolResult = tool
+        .execute(
+            "id14".into(),
+            json!({"path": path.to_str().unwrap(), "old_string": "does not exist", "new_string": "x"}),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+    let out = text_content(&result);
+    assert!(
+        out.contains("not found"),
+        "expected 'not found' in error, got: {out}"
+    );
+    // Should include some file context to help diagnose stale edits
+    assert!(
+        out.contains("hello world") || out.contains("second line"),
+        "expected file context lines in error, got: {out}"
+    );
+}
+
+// INV-15: Non-existent file returns "not found" error
+#[tokio::test]
+async fn test_file_edit_nonexistent_file() {
+    let tool = FileEditTool;
+    let result: AgentToolResult = tool
+        .execute(
+            "id15".into(),
+            json!({"path": "/nonexistent/path/file.txt", "old_string": "foo", "new_string": "bar"}),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+    let out = text_content(&result);
+    assert!(
+        out.contains("not found") || out.contains("not found"),
+        "expected not-found error, got: {out}"
+    );
+}
+
+// INV-16: Binary file returns error containing "binary"
+#[tokio::test]
+async fn test_file_edit_binary_file() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("binary.bin");
+    std::fs::write(&path, b"\xff\xfe\x00\x01\x80\x90").unwrap();
+
+    let tool = FileEditTool;
+    let result: AgentToolResult = tool
+        .execute(
+            "id16".into(),
+            json!({"path": path.to_str().unwrap(), "old_string": "foo", "new_string": "bar"}),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+    let out = text_content(&result);
+    assert!(
+        out.contains("binary"),
+        "expected 'binary' in error message, got: {out}"
+    );
+}
+
+// INV-17: Empty new_string deletes the matched text successfully
+#[tokio::test]
+async fn test_file_edit_empty_new_string_deletes() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("del.txt");
+    std::fs::write(&path, "keep this\ndelete me\nkeep that\n").unwrap();
+
+    let tool = FileEditTool;
+    let result: AgentToolResult = tool
+        .execute(
+            "id17".into(),
+            json!({"path": path.to_str().unwrap(), "old_string": "delete me\n", "new_string": ""}),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+    let out = text_content(&result);
+    assert!(
+        out.contains("Replaced 1 occurrence"),
+        "expected success message, got: {out}"
+    );
+    let after = std::fs::read_to_string(&path).unwrap();
+    assert_eq!(after, "keep this\nkeep that\n");
+}
+
+// INV-18: Whitespace in old_string must match exactly (tabs, spaces, newlines preserved)
+#[tokio::test]
+async fn test_file_edit_whitespace_exact_match() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("ws.txt");
+    // File has a tab-indented line
+    std::fs::write(&path, "fn foo() {\n\treturn 1;\n}\n").unwrap();
+
+    let tool = FileEditTool;
+
+    // Using spaces instead of tab should NOT match
+    let result_spaces: AgentToolResult = tool
+        .execute(
+            "id18a".into(),
+            json!({"path": path.to_str().unwrap(), "old_string": "    return 1;", "new_string": "    return 2;"}),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+    let out_spaces = text_content(&result_spaces);
+    assert!(
+        out_spaces.contains("not found"),
+        "spaces should not match tab, got: {out_spaces}"
+    );
+
+    // Using the exact tab should match
+    let result_tab: AgentToolResult = tool
+        .execute(
+            "id18b".into(),
+            json!({"path": path.to_str().unwrap(), "old_string": "\treturn 1;", "new_string": "\treturn 42;"}),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+    let out_tab = text_content(&result_tab);
+    assert!(
+        out_tab.contains("Replaced 1 occurrence"),
+        "tab should match exactly, got: {out_tab}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&path).unwrap(),
+        "fn foo() {\n\treturn 42;\n}\n"
+    );
 }

@@ -207,13 +207,14 @@ async fn test_tools_sent_to_llm_context() {
     let tool_defs = ctx.tools.as_ref().expect("tools should be Some");
     assert_eq!(
         tool_defs.len(),
-        3,
-        "expected 3 tool definitions, got {}",
+        4,
+        "expected 4 tool definitions, got {}",
         tool_defs.len()
     );
 
     let names: Vec<&str> = tool_defs.iter().map(|t| t.name.as_str()).collect();
     assert!(names.contains(&"bash"), "missing bash tool");
+    assert!(names.contains(&"file_edit"), "missing file_edit tool");
     assert!(names.contains(&"file_read"), "missing file_read tool");
     assert!(names.contains(&"file_write"), "missing file_write tool");
 }
