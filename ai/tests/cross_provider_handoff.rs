@@ -62,8 +62,12 @@ async fn test_cross_provider_handoff(
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-#[ignore = "requires ANTHROPIC_API_KEY and OPENAI_API_KEY"]
+#[ignore = "live provider test: requires ANTHROPIC_API_KEY, OPENAI_API_KEY, and RUN_LIVE_PROVIDER_TESTS=1"]
 async fn anthropic_to_openai_handoff() {
+    if std::env::var("RUN_LIVE_PROVIDER_TESTS").is_err() {
+        eprintln!("Skipping: set RUN_LIVE_PROVIDER_TESTS=1 to run live provider tests");
+        return;
+    }
     let a = get_model("anthropic", "claude-3-5-haiku-20241022").unwrap();
     let b = get_model("openai", "gpt-4o-mini").unwrap();
     test_cross_provider_handoff(
@@ -76,8 +80,12 @@ async fn anthropic_to_openai_handoff() {
 }
 
 #[tokio::test]
-#[ignore = "requires OPENAI_API_KEY and ANTHROPIC_API_KEY"]
+#[ignore = "live provider test: requires ANTHROPIC_API_KEY, OPENAI_API_KEY, and RUN_LIVE_PROVIDER_TESTS=1"]
 async fn openai_to_anthropic_handoff() {
+    if std::env::var("RUN_LIVE_PROVIDER_TESTS").is_err() {
+        eprintln!("Skipping: set RUN_LIVE_PROVIDER_TESTS=1 to run live provider tests");
+        return;
+    }
     let a = get_model("openai", "gpt-4o-mini").unwrap();
     let b = get_model("anthropic", "claude-3-5-haiku-20241022").unwrap();
     test_cross_provider_handoff(

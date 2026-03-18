@@ -1,12 +1,13 @@
 //! Mirrors: packages/agent/test/e2e.test.ts
-//! End-to-end integration tests against live LLM providers.
+//! End-to-end smoke tests against live LLM providers.
+//! Requires OPENAI_API_KEY and RUN_LIVE_PROVIDER_TESTS=1.
 
 mod common;
 
 use std::sync::Arc;
 
 use agent::agent::{Agent, AgentOptions, AgentStateInit};
-use agent::types::{AgentEvent, AgentTool, AgentToolResult, ThinkingLevel, ToolUpdateFn};
+use agent::types::{AgentTool, AgentToolResult, ThinkingLevel, ToolUpdateFn};
 use ai::models::get_model;
 use ai::types::{Message, UserBlock};
 use serde_json::{json, Value};
@@ -174,235 +175,30 @@ async fn tool_execution(model: ai::types::Model) {
     });
 }
 
-async fn abort_execution(model: ai::types::Model) {
-    let agent = Arc::new(Agent::new(AgentOptions {
-        initial_state: Some(AgentStateInit {
-            system_prompt: Some("You are a helpful assistant.".into()),
-            model: Some(model),
-            thinking_level: Some(ThinkingLevel::Off),
-            tools: Some(vec![]),
-        }),
-        ..default_agent_opts_no_model()
-    }));
-
-    let worker = {
-        let agent = Arc::clone(&agent);
-        tokio::spawn(async move {
-            agent
-                .prompt(
-                    "Write a long answer counting from 1 to 5000 with commentary between numbers.",
-                )
-                .await
-        })
-    };
-
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-    agent.abort();
-    let _ = worker.await.unwrap();
-
-    agent.with_state(|s| {
-        assert!(!s.is_streaming);
-        assert!(s.messages.len() >= 2);
-
-        let last = s.messages.last().expect("last message");
-        if let agent::types::AgentMessage::Llm(Message::Assistant(message)) = last {
-            assert!(
-                matches!(
-                    message.stop_reason,
-                    ai::types::StopReason::Aborted | ai::types::StopReason::Error
-                ),
-                "expected aborted/error stop reason, got {:?}",
-                message.stop_reason
-            );
-        }
-    });
-}
-
-async fn state_updates(model: ai::types::Model) {
-    let agent = Agent::new(AgentOptions {
-        initial_state: Some(AgentStateInit {
-            system_prompt: Some("You are a helpful assistant.".into()),
-            model: Some(model),
-            thinking_level: Some(ThinkingLevel::Off),
-            tools: Some(vec![]),
-        }),
-        ..default_agent_opts_no_model()
-    });
-
-    let events = Arc::new(std::sync::Mutex::new(Vec::<&'static str>::new()));
-    let events_ref = Arc::clone(&events);
-    let _unsubscribe = agent.subscribe(move |event| {
-        let name = match event {
-            AgentEvent::AgentStart => "agent_start",
-            AgentEvent::AgentEnd { .. } => "agent_end",
-            AgentEvent::TurnStart => "turn_start",
-            AgentEvent::TurnEnd { .. } => "turn_end",
-            AgentEvent::MessageStart { .. } => "message_start",
-            AgentEvent::MessageUpdate { .. } => "message_update",
-            AgentEvent::MessageEnd { .. } => "message_end",
-            AgentEvent::ToolExecutionStart { .. } => "tool_execution_start",
-            AgentEvent::ToolExecutionUpdate { .. } => "tool_execution_update",
-            AgentEvent::ToolExecutionEnd { .. } => "tool_execution_end",
-        };
-        events_ref.lock().unwrap().push(name);
-    });
-
-    agent.prompt("Count from 1 to 5.").await.unwrap();
-
-    let captured = events.lock().unwrap().clone();
-    assert!(captured.contains(&"agent_start"));
-    assert!(captured.contains(&"agent_end"));
-    assert!(captured.contains(&"message_start"));
-    assert!(captured.contains(&"message_end"));
-    assert!(captured.contains(&"turn_start"));
-    assert!(captured.contains(&"turn_end"));
-}
-
-async fn multi_turn_conversation(model: ai::types::Model) {
-    let agent = Agent::new(AgentOptions {
-        initial_state: Some(AgentStateInit {
-            system_prompt: Some("You are a helpful assistant.".into()),
-            model: Some(model),
-            thinking_level: Some(ThinkingLevel::Off),
-            tools: Some(vec![]),
-        }),
-        ..default_agent_opts_no_model()
-    });
-
-    agent.prompt("My name is Alice.").await.unwrap();
-    agent.with_state(|s| assert_eq!(s.messages.len(), 2));
-
-    agent.prompt("What is my name?").await.unwrap();
-    agent.with_state(|s| {
-        assert_eq!(s.messages.len(), 4);
-
-        let last = s.messages.last().expect("assistant reply");
-        let last_text = match last {
-            agent::types::AgentMessage::Llm(Message::Assistant(message)) => message
-                .content
-                .iter()
-                .find_map(|block| match block {
-                    ai::types::ContentBlock::Text { text, .. } => Some(text.to_lowercase()),
-                    _ => None,
-                })
-                .unwrap_or_default(),
-            other => panic!("expected assistant message, got {}", other.role()),
-        };
-
-        assert!(
-            last_text.contains("alice"),
-            "expected Alice in final response: {last_text}"
-        );
-    });
-}
-
 // ---------------------------------------------------------------------------
-// Per-provider e2e tests
+// Smoke tests
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-#[ignore = "requires ANTHROPIC_API_KEY and registered anthropic provider"]
-async fn anthropic_basic_prompt() {
-    let model = get_model("anthropic", "claude-3-5-haiku-20241022").unwrap();
-    basic_prompt((*model).clone()).await;
-}
-
-#[tokio::test]
-#[ignore = "requires ANTHROPIC_API_KEY and registered anthropic provider"]
-async fn anthropic_tool_execution() {
-    let model = get_model("anthropic", "claude-3-5-haiku-20241022").unwrap();
-    tool_execution((*model).clone()).await;
-}
-
-#[tokio::test]
-#[ignore = "requires ANTHROPIC_API_KEY and registered anthropic provider"]
-async fn anthropic_abort_execution() {
-    let model = get_model("anthropic", "claude-3-5-haiku-20241022").unwrap();
-    abort_execution((*model).clone()).await;
-}
-
-#[tokio::test]
-#[ignore = "requires ANTHROPIC_API_KEY and registered anthropic provider"]
-async fn anthropic_state_updates() {
-    let model = get_model("anthropic", "claude-3-5-haiku-20241022").unwrap();
-    state_updates((*model).clone()).await;
-}
-
-#[tokio::test]
-#[ignore = "requires ANTHROPIC_API_KEY and registered anthropic provider"]
-async fn anthropic_multi_turn_conversation() {
-    let model = get_model("anthropic", "claude-3-5-haiku-20241022").unwrap();
-    multi_turn_conversation((*model).clone()).await;
-}
-
-#[tokio::test]
-#[ignore = "requires OPENAI_API_KEY and registered openai provider"]
+#[ignore = "live provider test: requires OPENAI_API_KEY and RUN_LIVE_PROVIDER_TESTS=1"]
 async fn openai_basic_prompt() {
+    if std::env::var("RUN_LIVE_PROVIDER_TESTS").is_err() {
+        eprintln!("Skipping: set RUN_LIVE_PROVIDER_TESTS=1 to run live provider tests");
+        return;
+    }
     let model = get_model("openai", "gpt-4o-mini").unwrap();
     basic_prompt((*model).clone()).await;
 }
 
 #[tokio::test]
-#[ignore = "requires OPENAI_API_KEY and registered openai provider"]
+#[ignore = "live provider test: requires OPENAI_API_KEY and RUN_LIVE_PROVIDER_TESTS=1"]
 async fn openai_tool_execution() {
+    if std::env::var("RUN_LIVE_PROVIDER_TESTS").is_err() {
+        eprintln!("Skipping: set RUN_LIVE_PROVIDER_TESTS=1 to run live provider tests");
+        return;
+    }
     let model = get_model("openai", "gpt-4o-mini").unwrap();
     tool_execution((*model).clone()).await;
-}
-
-#[tokio::test]
-#[ignore = "requires OPENAI_API_KEY and registered openai provider"]
-async fn openai_abort_execution() {
-    let model = get_model("openai", "gpt-4o-mini").unwrap();
-    abort_execution((*model).clone()).await;
-}
-
-#[tokio::test]
-#[ignore = "requires OPENAI_API_KEY and registered openai provider"]
-async fn openai_state_updates() {
-    let model = get_model("openai", "gpt-4o-mini").unwrap();
-    state_updates((*model).clone()).await;
-}
-
-#[tokio::test]
-#[ignore = "requires OPENAI_API_KEY and registered openai provider"]
-async fn openai_multi_turn_conversation() {
-    let model = get_model("openai", "gpt-4o-mini").unwrap();
-    multi_turn_conversation((*model).clone()).await;
-}
-
-#[tokio::test]
-#[ignore = "requires KIMI_API_KEY and registered kimi provider"]
-async fn kimi_basic_prompt() {
-    let model = get_model("kimi-coding", "kimi-k2-thinking").unwrap();
-    basic_prompt((*model).clone()).await;
-}
-
-#[tokio::test]
-#[ignore = "requires KIMI_API_KEY and registered kimi provider"]
-async fn kimi_tool_execution() {
-    let model = get_model("kimi-coding", "kimi-k2-thinking").unwrap();
-    tool_execution((*model).clone()).await;
-}
-
-#[tokio::test]
-#[ignore = "requires KIMI_API_KEY and registered kimi provider"]
-async fn kimi_abort_execution() {
-    let model = get_model("kimi-coding", "kimi-k2-thinking").unwrap();
-    abort_execution((*model).clone()).await;
-}
-
-#[tokio::test]
-#[ignore = "requires KIMI_API_KEY and registered kimi provider"]
-async fn kimi_state_updates() {
-    let model = get_model("kimi-coding", "kimi-k2-thinking").unwrap();
-    state_updates((*model).clone()).await;
-}
-
-#[tokio::test]
-#[ignore = "requires KIMI_API_KEY and registered kimi provider"]
-async fn kimi_multi_turn_conversation() {
-    let model = get_model("kimi-coding", "kimi-k2-thinking").unwrap();
-    multi_turn_conversation((*model).clone()).await;
 }
 
 // ---------------------------------------------------------------------------

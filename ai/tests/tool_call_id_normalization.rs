@@ -113,8 +113,12 @@ fn prefilled_messages_build_correctly() {
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-#[ignore = "requires OPENAI_API_KEY"]
+#[ignore = "live provider test: requires OPENAI_API_KEY and RUN_LIVE_PROVIDER_TESTS=1"]
 async fn openai_handles_prefilled_long_pipe_id() {
+    if std::env::var("RUN_LIVE_PROVIDER_TESTS").is_err() {
+        eprintln!("Skipping: set RUN_LIVE_PROVIDER_TESTS=1 to run live provider tests");
+        return;
+    }
     let model = get_model("openai", "gpt-5-mini").unwrap();
     let messages = build_prefilled_messages();
     let mut opts = SimpleStreamOptions::default();
