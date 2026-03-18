@@ -116,7 +116,10 @@ fn text_message(text: &str) -> AssistantMessage {
 #[test]
 fn test_cli_no_prompt_flag() {
     let cli = Cli::try_parse_from(["coding-agent"]).unwrap();
-    assert!(cli.prompt.is_none(), "expected no prompt when flag is absent");
+    assert!(
+        cli.prompt.is_none(),
+        "expected no prompt when flag is absent"
+    );
 }
 
 /// --prompt sets the prompt field.
@@ -150,8 +153,7 @@ fn test_cli_model_shorthand() {
 /// --system-prompt flag sets the system_prompt field.
 #[test]
 fn test_cli_system_prompt_flag() {
-    let cli =
-        Cli::try_parse_from(["coding-agent", "--system-prompt", "Be helpful."]).unwrap();
+    let cli = Cli::try_parse_from(["coding-agent", "--system-prompt", "Be helpful."]).unwrap();
     assert_eq!(cli.system_prompt.as_deref(), Some("Be helpful."));
 }
 
@@ -209,8 +211,7 @@ fn test_resolve_prompt_text_empty_stdin() {
 #[test]
 fn test_resolve_prompt_text_literal() {
     let mut reader = std::io::Cursor::new(b"should not be read");
-    let result =
-        coding_agent::resolve_prompt_text_from("echo hello", &mut reader).unwrap();
+    let result = coding_agent::resolve_prompt_text_from("echo hello", &mut reader).unwrap();
     assert_eq!(result, "echo hello");
 }
 
@@ -269,7 +270,10 @@ async fn test_prompt_mode_runs_to_completion() {
     // Simulate prompt mode: call once and wait (no REPL loop)
     let result = agent.prompt("echo hello using bash").await;
 
-    assert!(result.is_ok(), "agent.prompt() should return Ok in prompt mode");
+    assert!(
+        result.is_ok(),
+        "agent.prompt() should return Ok in prompt mode"
+    );
     assert!(
         *agent_ended.lock().unwrap(),
         "AgentEnd event must be received (agent ran to completion)"
@@ -312,5 +316,8 @@ async fn test_prompt_mode_no_tool_calls() {
     let result = agent.prompt("say hello").await;
 
     assert!(result.is_ok());
-    assert!(*agent_ended.lock().unwrap(), "AgentEnd must fire even without tool calls");
+    assert!(
+        *agent_ended.lock().unwrap(),
+        "AgentEnd must fire even without tool calls"
+    );
 }
