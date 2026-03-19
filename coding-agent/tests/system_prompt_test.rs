@@ -3,7 +3,12 @@ use coding_agent::tools::{BashTool, FileEditTool, FileReadTool, FileWriteTool};
 use std::sync::Arc;
 
 fn all_tools() -> Vec<Arc<dyn agent::types::AgentTool>> {
-    vec![BashTool::arc(), FileReadTool::arc(), FileEditTool::arc(), FileWriteTool::arc()]
+    vec![
+        BashTool::arc(),
+        FileReadTool::arc(),
+        FileEditTool::arc(),
+        FileWriteTool::arc(),
+    ]
 }
 
 // INV-1: The prompt always contains every registered tool's name.
@@ -59,7 +64,9 @@ fn system_prompt_bash_exploration_guideline_when_only_bash() {
     let tools: Vec<Arc<dyn agent::types::AgentTool>> = vec![BashTool::arc()];
     let prompt = build_system_prompt(&tools, "/tmp");
     assert!(
-        prompt.to_lowercase().contains("use bash for file exploration"),
+        prompt
+            .to_lowercase()
+            .contains("use bash for file exploration"),
         "prompt should contain bash-for-exploration guideline, got:\n{}",
         prompt
     );

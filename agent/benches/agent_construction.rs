@@ -3,10 +3,10 @@ use std::sync::Arc;
 use agent::agent::{Agent, AgentOptions, AgentStateInit};
 use agent::types::{AgentMessage, AgentTool, AgentToolResult, BoxFuture, ToolUpdateFn};
 use ai::types::{
-    AssistantMessage, ContentBlock, Cost, Message, ModelCost, StopReason, ToolResultMessage,
-    Usage, UserBlock, UserContent, UserMessage,
+    AssistantMessage, ContentBlock, Cost, Message, ModelCost, StopReason, ToolResultMessage, Usage,
+    UserBlock, UserContent, UserMessage,
 };
-use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use serde_json::Value;
 
 // ---------------------------------------------------------------------------
@@ -63,9 +63,7 @@ impl AgentTool for MockTool {
     ) -> BoxFuture<anyhow::Result<AgentToolResult>> {
         Box::pin(async {
             Ok(AgentToolResult {
-                content: vec![UserBlock::Text {
-                    text: "ok".into(),
-                }],
+                content: vec![UserBlock::Text { text: "ok".into() }],
                 details: None,
             })
         })
@@ -209,12 +207,16 @@ fn bench_replace_messages(c: &mut Criterion) {
     let mut group = c.benchmark_group("agent_construction");
     for n in [10usize, 50, 100, 500] {
         let messages = build_agent_messages(n);
-        group.bench_with_input(BenchmarkId::new("replace_messages", n), &messages, |b, msgs| {
-            b.iter(|| {
-                let agent = new_agent();
-                agent.replace_messages(msgs.clone());
-            });
-        });
+        group.bench_with_input(
+            BenchmarkId::new("replace_messages", n),
+            &messages,
+            |b, msgs| {
+                b.iter(|| {
+                    let agent = new_agent();
+                    agent.replace_messages(msgs.clone());
+                });
+            },
+        );
     }
     group.finish();
 }

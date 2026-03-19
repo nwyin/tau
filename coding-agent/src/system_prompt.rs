@@ -71,4 +71,3 @@ pub fn build_system_prompt(tools: &[Arc<dyn AgentTool>], cwd: &str) -> String {
 
     parts.join("\n\n")
 }
-

@@ -1,8 +1,8 @@
-use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use ai::types::{
-    AssistantMessage, ContentBlock, Cost, Message, StopReason, ToolResultMessage, Usage,
-    UserBlock, UserContent, UserMessage,
+    AssistantMessage, ContentBlock, Cost, Message, StopReason, ToolResultMessage, Usage, UserBlock,
+    UserContent, UserMessage,
 };
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 
 /// Build a deterministic mix of Messages of the given count.
 /// Pattern: user, assistant (1-3 text blocks), tool_result, repeat.
