@@ -259,6 +259,7 @@ async fn test_prompt_mode_runs_to_completion() {
         thinking_budgets: None,
         transport: None,
         max_retry_delay_ms: None,
+        max_turns: None,
     });
 
     let _unsub = agent.subscribe(move |event| {
@@ -305,6 +306,7 @@ async fn test_prompt_mode_no_tool_calls() {
         thinking_budgets: None,
         transport: None,
         max_retry_delay_ms: None,
+        max_turns: None,
     });
 
     let _unsub = agent.subscribe(move |event| {

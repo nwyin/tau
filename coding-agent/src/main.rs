@@ -52,6 +52,11 @@ async fn main() -> Result<()> {
         .or_else(|| std::env::var("TAU_MODEL").ok())
         .unwrap_or(config.model);
 
+    let max_turns: Option<u32> = std::env::var("TAU_MAX_TURNS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .or(config.max_turns);
+
     // Register providers and resolve model
     ai::register_builtin_providers();
 
@@ -144,6 +149,7 @@ async fn main() -> Result<()> {
         thinking_budgets: None,
         transport: None,
         max_retry_delay_ms: None,
+        max_turns,
     });
 
     // Set up stats collection if requested

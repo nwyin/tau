@@ -28,6 +28,7 @@ fn base_config() -> AgentLoopConfig {
     AgentLoopConfig {
         model: mock_model(),
         simple_options: ai::types::SimpleStreamOptions::default(),
+        max_turns: None,
         convert_to_llm: Arc::new(|msgs| identity_convert(msgs)),
         transform_context: None,
         stream_fn: None,
@@ -709,6 +710,68 @@ async fn tool_definitions_present_during_round_trip() {
         vec!["roundtrip".to_string()],
         "tool definition must be in LLM context"
     );
+}
+
+// ---------------------------------------------------------------------------
+// max_turns tests
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn max_turns_terminates_loop() {
+    // INV-1: Exactly max_turns TurnStart events emitted.
+    // INV-2: Exactly 1 AgentEnd event emitted.
+    // INV-3: The loop terminates (does not hang).
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    let call_count = Arc::new(AtomicUsize::new(0));
+    let count_ref = Arc::clone(&call_count);
+
+    let mut config = base_config();
+    config.max_turns = Some(3);
+
+    // stream_fn that always returns a tool call — would loop forever without max_turns
+    config.stream_fn = Some(stream_fn_once(move |_model, _context, _options| {
+        count_ref.fetch_add(1, Ordering::SeqCst);
+        instant_stream(mock_assistant_message_with_tool_call(
+            "tool-loop",
+            "noop",
+            serde_json::json!({}),
+        ))
+    }));
+
+    let context = AgentContext {
+        system_prompt: String::new(),
+        messages: vec![],
+        tools: vec![], // no tools registered, tool call returns error — which is fine
+    };
+
+    let mut stream = agent_loop(vec![user_message("start")], context, Arc::new(config), None);
+
+    let mut events = vec![];
+    // tokio::time::timeout ensures the test doesn't hang if max_turns is broken
+    let collect = async {
+        while let Some(event) = stream.next().await {
+            events.push(event);
+        }
+    };
+    tokio::time::timeout(std::time::Duration::from_secs(5), collect)
+        .await
+        .expect("loop should terminate within 5 seconds (max_turns not working)");
+
+    // INV-1: exactly 3 TurnStart events
+    let turn_starts = events
+        .iter()
+        .filter(|e| matches!(e, AgentEvent::TurnStart))
+        .count();
+    assert_eq!(turn_starts, 3, "expected exactly 3 TurnStart events");
+
+    // INV-2: exactly 1 AgentEnd event
+    let agent_ends = events
+        .iter()
+        .filter(|e| matches!(e, AgentEvent::AgentEnd { .. }))
+        .count();
+    assert_eq!(agent_ends, 1, "expected exactly 1 AgentEnd event");
 }
 
 // ---------------------------------------------------------------------------

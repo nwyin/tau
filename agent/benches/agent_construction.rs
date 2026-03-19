@@ -188,6 +188,7 @@ fn new_agent() -> Agent {
         thinking_budgets: None,
         transport: None,
         max_retry_delay_ms: None,
+        max_turns: None,
     })
 }
 

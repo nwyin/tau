@@ -134,6 +134,7 @@ async fn test_bash_tool_round_trip() {
         thinking_budgets: None,
         transport: None,
         max_retry_delay_ms: None,
+        max_turns: None,
     });
 
     let _unsub = agent.subscribe(move |event| {
@@ -198,6 +199,7 @@ async fn test_tools_sent_to_llm_context() {
         thinking_budgets: None,
         transport: None,
         max_retry_delay_ms: None,
+        max_turns: None,
     });
 
     agent.prompt("hello").await.unwrap();

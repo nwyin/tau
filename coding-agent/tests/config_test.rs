@@ -53,3 +53,20 @@ fn config_empty_file_returns_defaults() {
     assert_eq!(config.model, "gpt-4o-mini");
     assert_eq!(config.edit_mode, "replace");
 }
+
+#[test]
+fn config_max_turns_from_toml() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("config.toml");
+    std::fs::write(&path, "max_turns = 50\n").unwrap();
+    let config = load_config_from(&path);
+    assert_eq!(config.max_turns, Some(50));
+}
+
+#[test]
+fn config_max_turns_defaults_to_none() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("nonexistent.toml");
+    let config = load_config_from(&path);
+    assert!(config.max_turns.is_none());
+}

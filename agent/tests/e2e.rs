@@ -218,5 +218,6 @@ fn default_agent_opts_no_model() -> AgentOptions {
         thinking_budgets: None,
         transport: None,
         max_retry_delay_ms: None,
+        max_turns: None,
     }
 }

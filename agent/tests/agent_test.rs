@@ -31,6 +31,7 @@ fn creates_agent_with_default_state() {
         thinking_budgets: None,
         transport: None,
         max_retry_delay_ms: None,
+        max_turns: None,
     });
 
     agent.with_state(|s| {
@@ -372,6 +373,7 @@ fn default_opts() -> AgentOptions {
         thinking_budgets: None,
         transport: None,
         max_retry_delay_ms: None,
+        max_turns: None,
     }
 }
 

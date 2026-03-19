@@ -123,6 +123,7 @@ async fn run_loop(
     tx: &mut AgentEventSender,
 ) {
     let mut first_turn = true;
+    let mut turn_count: u32 = 0;
     let mut pending: Vec<AgentMessage> = get_steering(config).await;
 
     'outer: loop {
@@ -130,6 +131,16 @@ async fn run_loop(
         let mut steering_after_tools: Option<Vec<AgentMessage>> = None;
 
         while has_tool_calls || !pending.is_empty() {
+            if let Some(max) = config.max_turns {
+                if turn_count >= max {
+                    tx.push(AgentEvent::AgentEnd {
+                        messages: new_messages.clone(),
+                    });
+                    return;
+                }
+            }
+            turn_count += 1;
+
             if !first_turn {
                 tx.push(AgentEvent::TurnStart);
             } else {

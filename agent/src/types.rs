@@ -165,6 +165,7 @@ pub type StreamAssistantFn = Arc<
 pub struct AgentLoopConfig {
     pub model: Model,
     pub simple_options: SimpleStreamOptions,
+    pub max_turns: Option<u32>,
     pub convert_to_llm: ConvertToLlmFn,
     pub transform_context: Option<TransformContextFn>,
     pub stream_fn: Option<StreamAssistantFn>,

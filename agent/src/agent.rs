@@ -30,6 +30,7 @@ pub struct AgentOptions {
     pub thinking_budgets: Option<ThinkingBudgets>,
     pub transport: Option<Transport>,
     pub max_retry_delay_ms: Option<u64>,
+    pub max_turns: Option<u32>,
 }
 
 #[derive(Default)]
@@ -72,6 +73,7 @@ pub struct Agent {
     thinking_budgets: Option<ThinkingBudgets>,
     transport: Transport,
     max_retry_delay_ms: Option<u64>,
+    max_turns: Option<u32>,
 
     cancel: Arc<Mutex<Option<CancellationToken>>>,
 }
@@ -121,6 +123,7 @@ impl Agent {
             thinking_budgets: opts.thinking_budgets,
             transport: opts.transport.unwrap_or_default(),
             max_retry_delay_ms: opts.max_retry_delay_ms,
+            max_turns: opts.max_turns,
             cancel: Arc::new(Mutex::new(None)),
         }
     }
@@ -406,6 +409,7 @@ impl Agent {
         AgentLoopConfig {
             model,
             simple_options: simple_opts,
+            max_turns: self.max_turns,
             convert_to_llm: Arc::clone(&self.convert_to_llm),
             transform_context: self.transform_context.clone(),
             stream_fn: self.stream_fn.clone(),
