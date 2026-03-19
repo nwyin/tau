@@ -28,7 +28,7 @@ How does the choice of tools you expose to a coding agent affect its behavior? T
 | todos/plan | — | — | todo_write | todos | update_plan | todowrite/read |
 | checkpoint | — | — | checkpoint | — | — | — |
 | ask user | — | — | ask | — | request_user_input | question |
-| hashline edit | hash_file_edit | — | — | — | — | — |
+| hashline edit | hash_file_edit | — | hash_file_edit | — | — | — |
 | **Total** | **8** | **7** | **23+** | **23** | **30+** | **~20** |
 
 Every harness converges on the same six core tools: shell execution, file read, file edit, file write, content search, and file search. The divergence is in what else gets added on top.
@@ -106,13 +106,13 @@ The custom format uses function signatures as context anchors instead of line nu
 
 **Tradeoff:** Higher expressiveness per tool call. Higher implementation complexity and fragility. opencode's custom DSL mitigates some of the fragility but adds a non-standard format the model must learn.
 
-### Hash-anchored lines (tau only)
+### Hash-anchored lines (oh-my-pi, tau)
 
 ```json
 {"anchor": "10#A7F2", "operation": "replace", "content": "fn foo() -> Result<()> {"}
 ```
 
-tau's hashline mode tags every line with a `LINE#HASH` anchor. The model references lines by position+hash, which the tool validates. If the file changed since the model read it, stale hashes are rejected. This is tau's experimental alternative — no other harness does this.
+Invented by Can Boluk for oh-my-pi, hashline mode tags every line with a short content hash anchor. The model references lines by position+hash, which the tool validates. If the file changed since the model read it, stale hashes are rejected. tau ports the concept to Rust as a switchable edit mode alongside exact-match, enabling A/B comparison on the same harness.
 
 **Tradeoff:** Eliminates ambiguity (no string matching). Requires a re-read after every edit (hashes change). Higher token cost from hash-annotated file contents.
 
@@ -306,7 +306,7 @@ tau's toolset is deliberately thin: the convergent 6 core tools plus hashline va
 
 3. **Delegation lives outside the agent.** Sub-agents, planning, and coordination are handled by the hive orchestrator, not by giving the model tools to manage its own complexity.
 
-4. **Novel edit strategies over more tools.** tau's unique contribution is hashline editing — an alternative to exact match, patches, and AST patterns. The bet is that better edit reliability matters more than more tool variety.
+4. **Edit strategy as a variable, not a constant.** tau implements both exact-match and hashline editing (ported from Can Boluk's oh-my-pi) as switchable modes. The bet is that having both in one harness enables direct A/B comparison — and that better edit reliability matters more than more tool variety.
 
 5. **Benchmarking decides.** The toolset should grow based on measured impact, not feature parity with other harnesses. If LSP, web search, or sub-agents move benchmark scores, they earn their place.
 
