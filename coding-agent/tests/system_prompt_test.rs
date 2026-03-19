@@ -1,6 +1,7 @@
 use coding_agent::system_prompt::build_system_prompt;
 use coding_agent::tools::{
-    BashTool, FileEditTool, FileReadTool, FileWriteTool, HashFileEditTool, HashFileReadTool,
+    BashTool, FileEditTool, FileReadTool, FileWriteTool, GrepTool, HashFileEditTool,
+    HashFileReadTool,
 };
 use std::sync::Arc;
 
@@ -10,6 +11,7 @@ fn all_tools() -> Vec<Arc<dyn agent::types::AgentTool>> {
         FileReadTool::arc(),
         FileEditTool::arc(),
         FileWriteTool::arc(),
+        GrepTool::arc(),
     ]
 }
 
@@ -152,6 +154,32 @@ fn system_prompt_no_hashline_guidelines_with_standard_tools() {
     assert!(
         !prompt.contains("LINE#HASH"),
         "standard tools should not have hashline guidelines, got:\n{}",
+        prompt
+    );
+}
+
+// INV-5: When grep is present, grep guideline appears.
+#[test]
+fn system_prompt_grep_guideline_when_grep_present() {
+    let tools: Vec<Arc<dyn agent::types::AgentTool>> = vec![BashTool::arc(), GrepTool::arc()];
+    let prompt = build_system_prompt(&tools, "/tmp");
+    assert!(
+        prompt.to_lowercase().contains("use grep for searching"),
+        "prompt should contain grep guideline, got:\n{}",
+        prompt
+    );
+}
+
+// INV-5 negative: When grep is present, "use bash for file exploration" guideline is absent.
+#[test]
+fn system_prompt_no_bash_exploration_when_grep_present() {
+    let tools: Vec<Arc<dyn agent::types::AgentTool>> = vec![BashTool::arc(), GrepTool::arc()];
+    let prompt = build_system_prompt(&tools, "/tmp");
+    assert!(
+        !prompt
+            .to_lowercase()
+            .contains("use bash for file exploration"),
+        "should NOT contain bash-for-exploration guideline when grep is present, got:\n{}",
         prompt
     );
 }

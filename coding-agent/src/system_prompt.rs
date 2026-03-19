@@ -55,6 +55,10 @@ pub fn build_system_prompt(tools: &[Arc<dyn AgentTool>], cwd: &str) -> String {
             "Use file_write only for new files or complete rewrites, not for surgical edits.",
         );
     }
+    if has("grep") {
+        guidelines
+            .push("Use grep for searching file contents — prefer it over bash grep/rg commands.");
+    }
     if has("bash") && !has("grep") && !has("find") {
         guidelines.push("Use bash for file exploration (ls, grep, find).");
     }
