@@ -18,5 +18,9 @@ Thumbs.db
 
 .worktrees
 
+# Python
+__pycache__/
+*.pyc
+
 # Benchmark results (may contain API keys or secrets)
 benchmarks/*/results/
