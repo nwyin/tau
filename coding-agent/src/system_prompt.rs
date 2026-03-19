@@ -62,6 +62,10 @@ pub fn build_system_prompt(tools: &[Arc<dyn AgentTool>], cwd: &str) -> String {
     if has("bash") && !has("grep") && !has("find") {
         guidelines.push("Use bash for file exploration (ls, grep, find).");
     }
+    if has("glob") {
+        guidelines
+            .push("Use glob for finding files by pattern — prefer it over bash find/ls commands.");
+    }
 
     // Always-on guidelines
     guidelines.push("Be concise in your responses.");

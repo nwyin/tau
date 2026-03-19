@@ -2,6 +2,7 @@ pub mod bash;
 pub mod file_edit;
 pub mod file_read;
 pub mod file_write;
+pub mod glob;
 pub mod grep;
 pub mod hash_file_edit;
 pub mod hash_file_read;
@@ -15,6 +16,7 @@ pub use bash::BashTool;
 pub use file_edit::FileEditTool;
 pub use file_read::FileReadTool;
 pub use file_write::FileWriteTool;
+pub use glob::GlobTool;
 pub use grep::GrepTool;
 pub use hash_file_edit::HashFileEditTool;
 pub use hash_file_read::HashFileReadTool;
@@ -26,6 +28,7 @@ pub fn all_tools() -> Vec<Arc<dyn AgentTool>> {
         FileEditTool::arc(),
         FileReadTool::arc(),
         FileWriteTool::arc(),
+        GlobTool::arc(),
         GrepTool::arc(),
     ]
 }
@@ -38,6 +41,7 @@ pub fn tools_for_edit_mode(edit_mode: &str) -> Vec<Arc<dyn AgentTool>> {
             HashFileReadTool::arc(),
             HashFileEditTool::arc(),
             FileWriteTool::arc(),
+            GlobTool::arc(),
             GrepTool::arc(),
         ],
         _ => all_tools(), // "replace" or unknown → existing tools

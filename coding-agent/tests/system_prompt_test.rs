@@ -1,6 +1,6 @@
 use coding_agent::system_prompt::build_system_prompt;
 use coding_agent::tools::{
-    BashTool, FileEditTool, FileReadTool, FileWriteTool, GrepTool, HashFileEditTool,
+    BashTool, FileEditTool, FileReadTool, FileWriteTool, GlobTool, GrepTool, HashFileEditTool,
     HashFileReadTool,
 };
 use std::sync::Arc;
@@ -11,6 +11,7 @@ fn all_tools() -> Vec<Arc<dyn agent::types::AgentTool>> {
         FileReadTool::arc(),
         FileEditTool::arc(),
         FileWriteTool::arc(),
+        GlobTool::arc(),
         GrepTool::arc(),
     ]
 }
@@ -142,6 +143,18 @@ fn system_prompt_hashline_guidelines_when_hash_tools_present() {
     assert!(
         prompt.to_lowercase().contains("re-read"),
         "prompt should contain re-read guideline, got:\n{}",
+        prompt
+    );
+}
+
+// When glob is present, the glob guideline appears.
+#[test]
+fn system_prompt_glob_guideline_when_glob_present() {
+    let tools: Vec<Arc<dyn agent::types::AgentTool>> = vec![BashTool::arc(), GlobTool::arc()];
+    let prompt = build_system_prompt(&tools, "/tmp");
+    assert!(
+        prompt.contains("glob for finding files by pattern"),
+        "prompt should contain glob guideline, got:\n{}",
         prompt
     );
 }

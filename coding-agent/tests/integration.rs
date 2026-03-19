@@ -207,8 +207,8 @@ async fn test_tools_sent_to_llm_context() {
     let tool_defs = ctx.tools.as_ref().expect("tools should be Some");
     assert_eq!(
         tool_defs.len(),
-        5,
-        "expected 5 tool definitions, got {}",
+        6,
+        "expected 6 tool definitions, got {}",
         tool_defs.len()
     );
 
@@ -217,5 +217,6 @@ async fn test_tools_sent_to_llm_context() {
     assert!(names.contains(&"file_edit"), "missing file_edit tool");
     assert!(names.contains(&"file_read"), "missing file_read tool");
     assert!(names.contains(&"file_write"), "missing file_write tool");
+    assert!(names.contains(&"glob"), "missing glob tool");
     assert!(names.contains(&"grep"), "missing grep tool");
 }
