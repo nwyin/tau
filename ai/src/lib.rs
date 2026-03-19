@@ -1,4 +1,5 @@
 pub mod catalog;
+pub mod codex_auth;
 pub mod models;
 pub mod providers;
 pub mod stream;

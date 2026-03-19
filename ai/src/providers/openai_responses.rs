@@ -107,6 +107,13 @@ pub fn build_request_body(model: &Model, context: &Context, opts: &OpenAIRequest
         "store": false,
     });
 
+    // ChatGPT backend requires a top-level `instructions` field for the system prompt.
+    if model.base_url.contains("chatgpt.com") {
+        if let Some(ref sys) = context.system_prompt {
+            body["instructions"] = json!(sys);
+        }
+    }
+
     if let Some(key) = prompt_cache_key {
         body["prompt_cache_key"] = json!(key);
     }

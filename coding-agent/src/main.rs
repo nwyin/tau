@@ -62,18 +62,54 @@ async fn main() -> Result<()> {
 
     let model = ai::models::find_model(&model_id)
         .ok_or_else(|| anyhow!("Model '{}' not found in registry", model_id))?;
-    let model = (*model).clone();
+    let mut model = (*model).clone();
 
-    // Resolve API key based on model provider
-    let api_key = match model.provider.as_str() {
-        "anthropic" => std::env::var("ANTHROPIC_API_KEY").map_err(|_| {
+    // Resolve API key / auth based on model provider.
+    // For OpenAI models: OPENAI_API_KEY env > Codex OAuth (~/.codex/auth.json)
+    // For Anthropic models: ANTHROPIC_API_KEY env (required)
+    let codex_auth: Option<Arc<ai::codex_auth::CodexAuth>> =
+        if model.provider == "anthropic" || std::env::var("OPENAI_API_KEY").is_ok() {
+            None // Don't need Codex OAuth
+        } else {
+            match ai::codex_auth::CodexAuth::load() {
+                Ok(auth) => {
+                    eprintln!("[auth] Using Codex OAuth (~/.codex/auth.json)");
+                    Some(Arc::new(auth))
+                }
+                Err(_) => None,
+            }
+        };
+
+    // When using Codex OAuth, redirect requests to the ChatGPT backend
+    // and inject the account_id header.
+    if let Some(ref auth) = codex_auth {
+        model.base_url = ai::codex_auth::CHATGPT_BACKEND_URL.to_string();
+        if let Some(id) = auth.account_id().await {
+            let headers = model
+                .headers
+                .get_or_insert_with(std::collections::HashMap::new);
+            headers.insert("ChatGPT-Account-ID".to_string(), id);
+        }
+    }
+
+    // Validate we have some auth method for the model
+    let explicit_api_key: Option<String> = match model.provider.as_str() {
+        "anthropic" => Some(std::env::var("ANTHROPIC_API_KEY").map_err(|_| {
             anyhow!(
                 "ANTHROPIC_API_KEY not set (required for model '{}')",
                 model_id
             )
-        })?,
-        _ => std::env::var("OPENAI_API_KEY")
-            .map_err(|_| anyhow!("OPENAI_API_KEY not set (required for model '{}')", model_id))?,
+        })?),
+        _ => {
+            let env_key = std::env::var("OPENAI_API_KEY").ok();
+            if env_key.is_none() && codex_auth.is_none() {
+                return Err(anyhow!(
+                    "No API key for model '{}'. Set OPENAI_API_KEY or run `codex login`.",
+                    model_id
+                ));
+            }
+            env_key
+        }
     };
 
     // --- Session setup ---
@@ -142,10 +178,30 @@ async fn main() -> Result<()> {
         steering_mode: None,
         follow_up_mode: None,
         session_id: None,
-        get_api_key: Some(Arc::new(move |_provider| {
-            let key = api_key.clone();
-            Box::pin(async move { Some(key) })
-        })),
+        get_api_key: Some({
+            let codex = codex_auth.clone();
+            let key = explicit_api_key.clone();
+            Arc::new(move |_provider: String| {
+                let codex = codex.clone();
+                let key = key.clone();
+                Box::pin(async move {
+                    // Prefer explicit API key
+                    if let Some(k) = key {
+                        return Some(k);
+                    }
+                    // Fall back to Codex OAuth
+                    if let Some(ref auth) = codex {
+                        match auth.access_token().await {
+                            Ok(token) => return Some(token),
+                            Err(e) => {
+                                eprintln!("Warning: Codex OAuth error: {}", e);
+                            }
+                        }
+                    }
+                    None
+                })
+            })
+        }),
         thinking_budgets: None,
         transport: None,
         max_retry_delay_ms: None,
