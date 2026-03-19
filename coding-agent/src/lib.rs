@@ -1,4 +1,5 @@
 pub mod cli;
+pub mod config;
 pub mod session;
 pub mod system_prompt;
 pub mod tools;

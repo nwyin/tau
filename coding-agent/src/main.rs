@@ -12,7 +12,7 @@ use clap::Parser;
 
 use coding_agent::cli::Cli;
 use coding_agent::session::{SessionFile, SessionManager};
-use coding_agent::tools::all_tools;
+use coding_agent::tools::tools_for_edit_mode;
 
 fn emit_stats(stats: Option<&AgentStats>, print_stats: bool, stats_json_path: Option<&str>) {
     if let Some(s) = stats {
@@ -43,11 +43,14 @@ async fn main() -> Result<()> {
     let stats_json_path = cli.stats_json.clone();
     let prompt_arg = cli.prompt.clone();
 
-    // Resolve model: --model flag > TAU_MODEL env > default
+    // Load config
+    let config = coding_agent::config::load_config();
+
+    // Resolve model: --model flag > TAU_MODEL env > config > default
     let model_id = cli
         .model
         .or_else(|| std::env::var("TAU_MODEL").ok())
-        .unwrap_or_else(|| "gpt-4o-mini".to_string());
+        .unwrap_or(config.model);
 
     // Register providers and resolve model
     ai::register_builtin_providers();
@@ -112,7 +115,7 @@ async fn main() -> Result<()> {
     };
 
     // Build agent
-    let tools = all_tools();
+    let tools = tools_for_edit_mode(&config.edit_mode);
     let system_prompt = cli.system_prompt.unwrap_or_else(|| {
         coding_agent::system_prompt::build_system_prompt(
             &tools,

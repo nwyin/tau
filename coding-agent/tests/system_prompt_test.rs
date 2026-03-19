@@ -1,5 +1,7 @@
 use coding_agent::system_prompt::build_system_prompt;
-use coding_agent::tools::{BashTool, FileEditTool, FileReadTool, FileWriteTool};
+use coding_agent::tools::{
+    BashTool, FileEditTool, FileReadTool, FileWriteTool, HashFileEditTool, HashFileReadTool,
+};
 use std::sync::Arc;
 
 fn all_tools() -> Vec<Arc<dyn agent::types::AgentTool>> {
@@ -106,6 +108,50 @@ fn system_prompt_no_read_before_edit_without_file_read() {
     assert!(
         !prompt.to_lowercase().contains("read files before editing"),
         "should NOT contain read-before-edit guideline without file_read, got:\n{}",
+        prompt
+    );
+}
+
+// Hashline tools → hashline guidelines present.
+#[test]
+fn system_prompt_hashline_guidelines_when_hash_tools_present() {
+    let tools: Vec<Arc<dyn agent::types::AgentTool>> = vec![
+        BashTool::arc(),
+        HashFileReadTool::arc(),
+        HashFileEditTool::arc(),
+        FileWriteTool::arc(),
+    ];
+    let prompt = build_system_prompt(&tools, "/tmp");
+    assert!(
+        prompt.contains("hash_file_read"),
+        "prompt should mention hash_file_read, got:\n{}",
+        prompt
+    );
+    assert!(
+        prompt.contains("hash_file_edit"),
+        "prompt should mention hash_file_edit, got:\n{}",
+        prompt
+    );
+    assert!(
+        prompt.contains("LINE#HASH"),
+        "prompt should contain hashline guideline, got:\n{}",
+        prompt
+    );
+    assert!(
+        prompt.to_lowercase().contains("re-read"),
+        "prompt should contain re-read guideline, got:\n{}",
+        prompt
+    );
+}
+
+// Standard tools → hashline guidelines absent.
+#[test]
+fn system_prompt_no_hashline_guidelines_with_standard_tools() {
+    let tools = all_tools();
+    let prompt = build_system_prompt(&tools, "/tmp");
+    assert!(
+        !prompt.contains("LINE#HASH"),
+        "standard tools should not have hashline guidelines, got:\n{}",
         prompt
     );
 }

@@ -44,6 +44,12 @@ pub fn build_system_prompt(tools: &[Arc<dyn AgentTool>], cwd: &str) -> String {
     if has("file_edit") {
         guidelines.push("Use file_edit for precise changes — the old_string must match exactly.");
     }
+    if has("hash_file_read") && has("hash_file_edit") {
+        guidelines.push(
+            "Read files with hash_file_read before editing. Use LINE#HASH tags as anchors for hash_file_edit.",
+        );
+        guidelines.push("Re-read a file after editing it — hash_file_edit rejects stale hashes.");
+    }
     if has("file_write") {
         guidelines.push(
             "Use file_write only for new files or complete rewrites, not for surgical edits.",
