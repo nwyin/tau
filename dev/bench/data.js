@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1773915253613,
+  "lastUpdate": 1773920641556,
   "repoUrl": "https://github.com/nwyin/tau",
   "entries": {
     "tau benchmarks": [
@@ -125,6 +125,132 @@ window.BENCHMARK_DATA = {
             "name": "sse_parsing/events/1000",
             "value": 347972,
             "range": "± 11114",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "tommynguyen0512@gmail.com",
+            "name": "Tommy Bui Nguyen",
+            "username": "nwyin"
+          },
+          "committer": {
+            "email": "tommynguyen0512@gmail.com",
+            "name": "Tommy Bui Nguyen",
+            "username": "nwyin"
+          },
+          "distinct": true,
+          "id": "a72eafa376214b2a8128cb226681a5060e44d741",
+          "message": "chore: ignore Python __pycache__ and .pyc files\n\nPython compilation artifacts were showing as untracked in git status\nafter the terminal-bench adapter was added. Add standard Python entries\nto .gitignore to keep the working tree clean.",
+          "timestamp": "2026-03-19T19:32:08+08:00",
+          "tree_id": "66f8703fc0b66cbe062b990108db227284c3890b",
+          "url": "https://github.com/nwyin/tau/commit/a72eafa376214b2a8128cb226681a5060e44d741"
+        },
+        "date": 1773920641264,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "agent_construction/new_agent",
+            "value": 2170,
+            "range": "± 9",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/10",
+            "value": 4799,
+            "range": "± 13",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/50",
+            "value": 13184,
+            "range": "± 142",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/100",
+            "value": 23222,
+            "range": "± 59",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/500",
+            "value": 94590,
+            "range": "± 1061",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/10",
+            "value": 3678,
+            "range": "± 6",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/50",
+            "value": 18551,
+            "range": "± 281",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/100",
+            "value": 36299,
+            "range": "± 142",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/10",
+            "value": 12829,
+            "range": "± 123",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/50",
+            "value": 73210,
+            "range": "± 497",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/100",
+            "value": 145702,
+            "range": "± 3441",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/10",
+            "value": 16983,
+            "range": "± 34",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/50",
+            "value": 92613,
+            "range": "± 2389",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/100",
+            "value": 182914,
+            "range": "± 2596",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/10",
+            "value": 2733,
+            "range": "± 9",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/100",
+            "value": 36702,
+            "range": "± 365",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/1000",
+            "value": 344725,
+            "range": "± 1142",
             "unit": "ns/iter"
           }
         ]
