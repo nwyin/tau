@@ -10,6 +10,9 @@ from harbor.models.agent.context import AgentContext
 from harbor.models.trial.paths import EnvironmentPaths
 
 
+_CODEX_AUTH_PATH = Path.home() / ".codex" / "auth.json"
+
+
 class TauAgent(BaseInstalledAgent):
     @staticmethod
     def name() -> str:
@@ -28,6 +31,15 @@ class TauAgent(BaseInstalledAgent):
             env["TAU_BINARY_URL"] = os.environ["TAU_BINARY_URL"]
         return env
 
+    def _read_codex_auth(self) -> str | None:
+        """Read ~/.codex/auth.json from host if it exists and no OPENAI_API_KEY is set."""
+        if "OPENAI_API_KEY" in os.environ:
+            return None
+        try:
+            return _CODEX_AUTH_PATH.read_text()
+        except OSError:
+            return None
+
     def create_run_agent_commands(self, instruction: str) -> list[ExecInput]:
         model = self._parsed_model_name or "gpt-4o-mini"
         max_turns = os.environ.get("TAU_MAX_TURNS", "200")
@@ -37,10 +49,20 @@ class TauAgent(BaseInstalledAgent):
             if key in os.environ:
                 env[key] = os.environ[key]
 
+        codex_auth = self._read_codex_auth()
+        if codex_auth is not None:
+            env["CODEX_AUTH_JSON"] = codex_auth
+
         stats_path = f"{EnvironmentPaths.agent_dir}/tau-stats.json"
 
+        setup_parts = [f"mkdir -p {EnvironmentPaths.agent_dir}"]
+        if codex_auth is not None:
+            setup_parts.append(
+                "mkdir -p ~/.codex && printenv CODEX_AUTH_JSON > ~/.codex/auth.json"
+            )
+
         return [
-            ExecInput(command=f"mkdir -p {EnvironmentPaths.agent_dir}", env=env),
+            ExecInput(command=" && ".join(setup_parts), env=env),
             ExecInput(
                 command=(
                     f"/usr/local/bin/coding-agent"
