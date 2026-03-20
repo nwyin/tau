@@ -11,7 +11,16 @@ fi
 
 # Path 2: Download from TAU_BINARY_URL (CI/release)
 if [ -n "${TAU_BINARY_URL:-}" ]; then
-    curl -fsSL "$TAU_BINARY_URL" -o /usr/local/bin/coding-agent
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsSL "$TAU_BINARY_URL" -o /usr/local/bin/coding-agent
+    elif command -v wget >/dev/null 2>&1; then
+        wget -qO /usr/local/bin/coding-agent "$TAU_BINARY_URL"
+    elif command -v python3 >/dev/null 2>&1; then
+        python3 -c "import urllib.request; urllib.request.urlretrieve('$TAU_BINARY_URL', '/usr/local/bin/coding-agent')"
+    else
+        echo 'ERROR: No download tool available (need curl, wget, or python3)'
+        exit 1
+    fi
     chmod +x /usr/local/bin/coding-agent
     echo 'coding-agent installed from URL'
     exit 0

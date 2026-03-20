@@ -6,11 +6,31 @@ import shlex
 from pathlib import Path
 
 from harbor.agents.installed.base import BaseInstalledAgent, ExecInput
+from harbor.environments.base import BaseEnvironment
 from harbor.models.agent.context import AgentContext
 from harbor.models.trial.paths import EnvironmentPaths
 
 
 _CODEX_AUTH_PATH = Path.home() / ".codex" / "auth.json"
+_BINARY_NAME = "coding-agent"
+_BINARY_DEST = f"/usr/local/bin/{_BINARY_NAME}"
+
+
+def _find_binary() -> Path | None:
+    """Locate the coding-agent Linux binary, checking common locations."""
+    candidates = [
+        # Explicit env override
+        os.environ.get("TAU_BINARY_PATH"),
+        # Release build in repo (cross-compiled for Linux)
+        Path(__file__).resolve().parents[2] / "target" / "release" / _BINARY_NAME,
+    ]
+    for c in candidates:
+        if c is None:
+            continue
+        p = Path(c)
+        if p.is_file():
+            return p
+    return None
 
 
 class TauAgent(BaseInstalledAgent):
@@ -30,6 +50,18 @@ class TauAgent(BaseInstalledAgent):
         if "TAU_BINARY_URL" in os.environ:
             env["TAU_BINARY_URL"] = os.environ["TAU_BINARY_URL"]
         return env
+
+    async def setup(self, environment: BaseEnvironment) -> None:
+        """Upload the binary directly, falling back to the install script."""
+        binary = _find_binary()
+        if binary is not None:
+            await environment.upload_file(
+                source_path=binary, target_path=_BINARY_DEST
+            )
+            await environment.exec(command=f"chmod +x {_BINARY_DEST}")
+            return
+        # Fall back to original install script (URL download, etc.)
+        await super().setup(environment)
 
     def _read_codex_auth(self) -> str | None:
         """Read ~/.codex/auth.json from host if it exists and no OPENAI_API_KEY is set."""
