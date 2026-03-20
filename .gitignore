@@ -23,4 +23,5 @@ __pycache__/
 *.pyc
 
 # Benchmark results (may contain API keys or secrets)
-benchmarks/*/results/benchmarks/harbor/jobs/
+benchmarks/*/results/
+benchmarks/harbor/jobs/
