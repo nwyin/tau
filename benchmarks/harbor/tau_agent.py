@@ -21,8 +21,14 @@ def _find_binary() -> Path | None:
     candidates = [
         # Explicit env override
         os.environ.get("TAU_BINARY_PATH"),
-        # Release build in repo (cross-compiled for Linux)
+        # Native release build in repo
         Path(__file__).resolve().parents[2] / "target" / "release" / _BINARY_NAME,
+        # Musl cross-compiled release build in repo
+        Path(__file__).resolve().parents[2]
+        / "target"
+        / "x86_64-unknown-linux-musl"
+        / "release"
+        / _BINARY_NAME,
     ]
     for c in candidates:
         if c is None:
@@ -47,8 +53,9 @@ class TauAgent(BaseInstalledAgent):
 
     def _setup_env(self) -> dict[str, str]:
         env = {"DEBIAN_FRONTEND": "noninteractive"}
-        if "TAU_BINARY_URL" in os.environ:
-            env["TAU_BINARY_URL"] = os.environ["TAU_BINARY_URL"]
+        for key, value in os.environ.items():
+            if key.startswith("TAU_BINARY_"):
+                env[key] = value
         return env
 
     async def setup(self, environment: BaseEnvironment) -> None:

@@ -47,7 +47,8 @@ of three fallback paths (tried in order):
 | Method | How to trigger |
 |--------|---------------|
 | **Mount** (dev) | `docker run -v /path/to/coding-agent:/mnt/coding-agent ...` |
-| **URL download** (CI) | Set `TAU_BINARY_URL=https://...` |
+| **Release download** (default) | Publish a musl binary release; installer uses `latest` automatically |
+| **URL download** (override) | Set `TAU_BINARY_URL=https://...` |
 | **Build from source** | Have `cargo` installed in the container |
 
 Run it as part of your Docker image build or as a pre-eval hook:
@@ -64,7 +65,9 @@ All configuration is via environment variables set on the host before running `t
 |----------|---------|-------------|
 | `TAU_MAX_TURNS` | `50` | Maximum agent turns per task |
 | `TAU_MODEL` | `claude-sonnet-4-20250514` | Model used by coding-agent |
-| `TAU_BINARY_URL` | _(unset)_ | URL to download the pre-built binary |
+| `TAU_BINARY_VERSION` | `latest` | Release tag to install from (`latest` or `v0.1.0`) |
+| `TAU_BINARY_REPO` | `tnguyen21/tau` | GitHub repo used for release downloads |
+| `TAU_BINARY_URL` | _(computed)_ | Explicit URL override for the pre-built binary |
 
 You can also pass constructor kwargs directly when instantiating `TauAgent` in a custom
 evaluation script:

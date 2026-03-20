@@ -1,6 +1,11 @@
 #!/bin/bash
 set -euo pipefail
 
+TAU_BINARY_REPO="${TAU_BINARY_REPO:-tnguyen21/tau}"
+TAU_BINARY_TARGET="${TAU_BINARY_TARGET:-x86_64-unknown-linux-musl}"
+TAU_BINARY_NAME="${TAU_BINARY_NAME:-coding-agent}"
+TAU_BINARY_VERSION="${TAU_BINARY_VERSION:-latest}"
+
 # Path 1: Binary mounted at /mnt/coding-agent (local dev)
 if [ -f /mnt/coding-agent ]; then
     cp /mnt/coding-agent /usr/local/bin/coding-agent
@@ -9,7 +14,15 @@ if [ -f /mnt/coding-agent ]; then
     exit 0
 fi
 
-# Path 2: Download from TAU_BINARY_URL (CI/release)
+# Path 2: Download from TAU_BINARY_URL or a GitHub release asset
+if [ -z "${TAU_BINARY_URL:-}" ]; then
+    if [ "$TAU_BINARY_VERSION" = "latest" ]; then
+        TAU_BINARY_URL="https://github.com/${TAU_BINARY_REPO}/releases/latest/download/${TAU_BINARY_NAME}-${TAU_BINARY_TARGET}"
+    else
+        TAU_BINARY_URL="https://github.com/${TAU_BINARY_REPO}/releases/download/${TAU_BINARY_VERSION}/${TAU_BINARY_NAME}-${TAU_BINARY_TARGET}"
+    fi
+fi
+
 if [ -n "${TAU_BINARY_URL:-}" ]; then
     if command -v curl >/dev/null 2>&1; then
         curl -fsSL "$TAU_BINARY_URL" -o /usr/local/bin/coding-agent
@@ -26,5 +39,5 @@ if [ -n "${TAU_BINARY_URL:-}" ]; then
     exit 0
 fi
 
-echo 'ERROR: Set TAU_BINARY_URL or mount binary at /mnt/coding-agent'
+echo 'ERROR: failed to install coding-agent from mount or release URL'
 exit 1

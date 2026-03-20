@@ -41,6 +41,22 @@ cargo run -p coding-agent -- --prompt "List all Rust files in this repo"
 cargo run -p coding-agent -- --stats --prompt "Explain this repo"
 ```
 
+## Prebuilt Linux Binary
+
+CI builds a static `x86_64-unknown-linux-musl` `coding-agent` binary. Download it directly
+in a container:
+
+```bash
+curl -fsSL \
+  https://github.com/tnguyen21/tau/releases/latest/download/coding-agent-x86_64-unknown-linux-musl \
+  -o /usr/local/bin/coding-agent
+chmod +x /usr/local/bin/coding-agent
+```
+
+The Harbor and Terminal-Bench installers default to that `latest` release asset. Override
+with `TAU_BINARY_VERSION`, `TAU_BINARY_REPO`, or `TAU_BINARY_URL` when needed. The full tag
+and release flow is documented in [Release And Container Install](docs/releases.md).
+
 ## Providers
 
 OpenAI (Responses API) and Anthropic (Messages API) are implemented. Both support streaming, tool use, thinking/reasoning, and cost tracking.
@@ -97,6 +113,7 @@ coding-agent/
 ## Docs
 
 - [Architecture overview](docs/overview.md) — detailed walkthrough of types, patterns, and design decisions
+- [Release and container install](docs/releases.md) — tag-driven musl releases and container download flow
 - [Feature comparison](docs/feature-comparison.md) — tau vs 6 other harnesses across every dimension
 - [Toolset tradeoffs](docs/toolset-tradeoffs.md) — why this toolset, what others chose, and what it means
 - [Benchmarks landscape](docs/benchmarks-landscape.md) — harness-sensitive benchmarks and key numbers
