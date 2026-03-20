@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1773920641556,
+  "lastUpdate": 1773994461243,
   "repoUrl": "https://github.com/nwyin/tau",
   "entries": {
     "tau benchmarks": [
@@ -251,6 +251,132 @@ window.BENCHMARK_DATA = {
             "name": "sse_parsing/events/1000",
             "value": 344725,
             "range": "± 1142",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "tommynguyen0512@gmail.com",
+            "name": "Tommy Bui Nguyen",
+            "username": "nwyin"
+          },
+          "committer": {
+            "email": "tommynguyen0512@gmail.com",
+            "name": "Tommy Bui Nguyen",
+            "username": "nwyin"
+          },
+          "distinct": true,
+          "id": "c3c2c85d63975c3b496aeec18b8a5ff3c0b1436b",
+          "message": "fix: split concatenated gitignore patterns onto separate lines",
+          "timestamp": "2026-03-20T16:08:42+08:00",
+          "tree_id": "32796b6907c7f342a4fdd7a5018b805d0210fefb",
+          "url": "https://github.com/nwyin/tau/commit/c3c2c85d63975c3b496aeec18b8a5ff3c0b1436b"
+        },
+        "date": 1773994460560,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "agent_construction/new_agent",
+            "value": 1952,
+            "range": "± 25",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/10",
+            "value": 4784,
+            "range": "± 20",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/50",
+            "value": 13705,
+            "range": "± 316",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/100",
+            "value": 23895,
+            "range": "± 461",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/500",
+            "value": 105382,
+            "range": "± 604",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/10",
+            "value": 3239,
+            "range": "± 114",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/50",
+            "value": 16145,
+            "range": "± 33",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/100",
+            "value": 31523,
+            "range": "± 122",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/10",
+            "value": 11699,
+            "range": "± 35",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/50",
+            "value": 66141,
+            "range": "± 319",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/100",
+            "value": 132080,
+            "range": "± 752",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/10",
+            "value": 15361,
+            "range": "± 301",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/50",
+            "value": 83920,
+            "range": "± 3257",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/100",
+            "value": 165264,
+            "range": "± 496",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/10",
+            "value": 2626,
+            "range": "± 98",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/100",
+            "value": 38894,
+            "range": "± 149",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/1000",
+            "value": 360249,
+            "range": "± 1336",
             "unit": "ns/iter"
           }
         ]
