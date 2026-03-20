@@ -8,6 +8,7 @@ pub mod hash_file_edit;
 pub mod hash_file_read;
 pub mod hashline;
 pub mod pycfg;
+pub mod pycg;
 pub mod run_tests;
 
 use std::collections::HashMap;
@@ -24,6 +25,9 @@ pub use grep::GrepTool;
 pub use hash_file_edit::HashFileEditTool;
 pub use hash_file_read::HashFileReadTool;
 pub use pycfg::{CfgFunctionsTool, CfgGraphTool, CfgSummaryTool};
+pub use pycg::{
+    CgCalleesTool, CgCallersTool, CgNeighborsTool, CgPathTool, CgSummaryTool, CgSymbolsTool,
+};
 pub use run_tests::RunTestsTool;
 
 /// Return all built-in tools as a list ready to pass to the agent.
@@ -78,6 +82,12 @@ pub fn all_known_tools(edit_mode: &str) -> HashMap<String, Arc<dyn AgentTool>> {
     map.insert("cfg_functions".to_string(), CfgFunctionsTool::arc());
     map.insert("cfg_summary".to_string(), CfgSummaryTool::arc());
     map.insert("cfg_graph".to_string(), CfgGraphTool::arc());
+    map.insert("cg_symbols".to_string(), CgSymbolsTool::arc());
+    map.insert("cg_callers".to_string(), CgCallersTool::arc());
+    map.insert("cg_callees".to_string(), CgCalleesTool::arc());
+    map.insert("cg_path".to_string(), CgPathTool::arc());
+    map.insert("cg_neighbors".to_string(), CgNeighborsTool::arc());
+    map.insert("cg_summary".to_string(), CgSummaryTool::arc());
     map
 }
 
