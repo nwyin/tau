@@ -44,11 +44,15 @@ pub struct Cli {
     #[arg(long, value_name = "CMD")]
     pub test_command: Option<String>,
 
-    /// Directory for trace output (run.json + trace.jsonl)
+    /// Directory for structured trace output (run.json + trace.jsonl)
     #[arg(long, value_name = "DIR")]
     pub trace_output: Option<String>,
 
     /// Task ID for benchmark identification
     #[arg(long, value_name = "ID")]
     pub task_id: Option<String>,
+
+    /// Enable benchmark mode — enforces tool selection, tracing, no-session, no-bash
+    #[arg(long)]
+    pub benchmark_mode: bool,
 }
