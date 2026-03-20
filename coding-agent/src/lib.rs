@@ -3,6 +3,7 @@ pub mod config;
 pub mod session;
 pub mod system_prompt;
 pub mod tools;
+pub mod trace;
 
 pub use tools::all_tools;
 

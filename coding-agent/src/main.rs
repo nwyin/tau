@@ -13,7 +13,9 @@ use clap::Parser;
 use coding_agent::cli::Cli;
 use coding_agent::session::{SessionFile, SessionManager};
 use coding_agent::tools;
+use coding_agent::tools::tools_for_edit_mode;
 use coding_agent::tools::RunTestsTool;
+use coding_agent::trace::{sha256_prefix, TraceConfig, TraceSubscriber};
 
 fn emit_stats(stats: Option<&AgentStats>, print_stats: bool, stats_json_path: Option<&str>) {
     if let Some(s) = stats {
@@ -43,6 +45,8 @@ async fn main() -> Result<()> {
     let print_stats = cli.stats;
     let stats_json_path = cli.stats_json.clone();
     let prompt_arg = cli.prompt.clone();
+    let trace_output = cli.trace_output.clone();
+    let task_id = cli.task_id.clone();
 
     // Load config
     let config = coding_agent::config::load_config();
@@ -180,6 +184,8 @@ async fn main() -> Result<()> {
                 .to_string_lossy(),
         )
     });
+    let system_prompt_hash = sha256_prefix(&system_prompt);
+    let model_provider = model.provider.clone();
     let agent = Agent::new(AgentOptions {
         initial_state: Some(AgentStateInit {
             model: Some(model),
@@ -228,6 +234,31 @@ async fn main() -> Result<()> {
         let s = AgentStats::new();
         let unsub = agent.subscribe(s.handler());
         (Some(s), Some(unsub))
+    } else {
+        (None, None)
+    };
+
+    // Set up trace output if requested
+    let tool_names: Vec<String> = tools_for_edit_mode(&config.edit_mode)
+        .iter()
+        .map(|t| t.name().to_string())
+        .collect();
+    let (_trace, _trace_unsub) = if let Some(ref trace_dir) = trace_output {
+        let t = TraceSubscriber::new(
+            trace_dir,
+            TraceConfig {
+                run_id: uuid::Uuid::new_v4().to_string(),
+                task_id: task_id.clone(),
+                model_id: model_id.clone(),
+                provider: model_provider.clone(),
+                tool_names,
+                edit_mode: config.edit_mode.clone(),
+                system_prompt_hash,
+                max_turns,
+            },
+        );
+        let unsub = agent.subscribe(t.handler());
+        (Some(t), Some(unsub))
     } else {
         (None, None)
     };
@@ -307,6 +338,9 @@ async fn main() -> Result<()> {
 
         // Emit stats after run
         emit_stats(stats.as_ref(), print_stats, stats_json_path.as_deref());
+        if let Some(ref t) = _trace {
+            t.finalize();
+        }
 
         let exit_code = if result.is_err() || abort_count.load(Ordering::SeqCst) > 0 {
             1
