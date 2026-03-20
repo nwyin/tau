@@ -1,41 +1,41 @@
 # Toolset Tradeoffs
 
-How does the choice of tools you expose to a coding agent affect its behavior? This doc compares the toolsets of six harnesses — tau, pi-mono, oh-my-pi, crush, codex, and opencode — and analyzes what each choice implies.
+How does the choice of tools you expose to a coding agent affect its behavior? This doc compares the toolsets of seven harnesses — tau, kimi-cli, pi-mono, oh-my-pi, crush, codex, and opencode — and analyzes what each choice implies.
 
 ## The landscape
 
-| Tool | tau | pi-mono | oh-my-pi | crush | codex | opencode |
-|------|:---:|:-------:|:--------:|:-----:|:-----:|:-------:|
-| bash/shell | bash | bash | bash | bash | shell | bash |
-| file read | file_read | read | read | view | read_file | read |
-| file edit | file_edit | edit | edit | edit | apply_patch | edit *or* apply_patch |
-| file write | file_write | write | write | write | (via apply_patch) | write |
-| grep | grep | grep | grep | grep | grep_files | grep |
-| glob/find | glob | find | find | glob | list_dir | glob |
-| ls | — | ls | — | ls | list_dir | ls |
-| **Total core** | **6** | **7** | **6** | **7** | **6** | **7** |
-| sub-agents | — | — | task | agent | spawn_agent | task |
-| web fetch | — | — | fetch | fetch | — | webfetch |
-| web search | — | — | web_search | web_search | web_search | websearch |
-| code search | — | — | — | sourcegraph | — | codesearch |
-| browser | — | — | browser | — | — | — |
-| LSP | — | — | lsp | lsp_* (3) | — | lsp |
-| notebooks | — | — | notebook | — | js_repl | — |
-| python REPL | — | — | python | — | — | — |
-| AST edit | — | — | ast_grep/edit | — | — | — |
-| multi-edit | — | — | — | multiedit | — | multiedit |
-| batch exec | — | — | — | — | — | batch |
-| todos/plan | — | — | todo_write | todos | update_plan | todowrite/read |
-| checkpoint | — | — | checkpoint | — | — | — |
-| ask user | — | — | ask | — | request_user_input | question |
-| hashline edit | hash_file_edit | — | hash_file_edit | — | — | — |
-| **Total** | **8** | **7** | **23+** | **23** | **30+** | **~20** |
+| Tool | tau | kimi-cli | pi-mono | oh-my-pi | crush | codex | opencode |
+|------|:---:|:--------:|:-------:|:--------:|:-----:|:-----:|:-------:|
+| bash/shell | bash | Shell | bash | bash | bash | shell | bash |
+| file read | file_read | ReadFile | read | read | view | read_file | read |
+| file edit | file_edit | StrReplaceFile | edit | edit | edit | apply_patch | edit *or* apply_patch |
+| file write | file_write | WriteFile | write | write | write | (via apply_patch) | write |
+| grep | grep | Grep | grep | grep | grep | grep_files | grep |
+| glob/find | glob | Glob | find | find | glob | list_dir | glob |
+| ls | — | — | ls | — | ls | list_dir | ls |
+| **Total core** | **6** | **6** | **7** | **6** | **7** | **6** | **7** |
+| sub-agents | — | Task | — | task | agent | spawn_agent | task |
+| web fetch | — | FetchURL | — | fetch | fetch | — | webfetch |
+| web search | — | SearchWeb | — | web_search | web_search | web_search | websearch |
+| code search | — | — | — | — | sourcegraph | — | codesearch |
+| browser | — | — | — | browser | — | — | — |
+| LSP | — | — | — | lsp | lsp_* (3) | — | lsp |
+| notebooks | — | — | — | notebook | — | js_repl | — |
+| python REPL | — | — | — | python | — | — | — |
+| AST edit | — | — | — | ast_grep/edit | — | — | — |
+| multi-edit | — | batched replace | — | — | multiedit | — | multiedit |
+| batch exec | — | background tasks | — | — | — | — | batch |
+| todos/plan | — | SetTodoList + plan mode | — | todo_write | todos | update_plan | todowrite/read |
+| checkpoint | — | — | — | checkpoint | — | — | — |
+| ask user | — | AskUserQuestion | — | ask | — | request_user_input | question |
+| hashline edit | hash_file_edit | — | — | hash_file_edit | — | — | — |
+| **Total** | **8** | **17 (default)** | **7** | **23+** | **23** | **30+** | **~20** |
 
 Every harness converges on the same six core tools: shell execution, file read, file edit, file write, content search, and file search. The divergence is in what else gets added on top.
 
 ## Core convergence: the minimal viable toolset
 
-All six harnesses agree on a base layer:
+All seven harnesses agree on a base layer:
 
 1. **Shell** — run arbitrary commands. The universal escape hatch.
 2. **Read** — read file contents with line numbers.
@@ -69,13 +69,13 @@ This is a pragmatic acknowledgment that different models have different tool-use
 
 **Tradeoff:** Better per-model performance. Higher implementation complexity — the harness must maintain two edit paths and the system prompt must adapt. Makes cross-model benchmarking harder since the tool surface isn't constant.
 
-### Exact string match (tau, pi-mono, crush, opencode for Claude)
+### Exact string match (tau, kimi-cli, pi-mono, crush, opencode for Claude)
 
 ```json
 {"old_string": "fn foo() {", "new_string": "fn foo() -> Result<()> {"}
 ```
 
-The model provides the exact text to find and its replacement. Simple to implement, simple for the model to understand. Fails when `old_string` appears multiple times or when the model hallucinates whitespace. pi-mono mitigates this with fuzzy matching (whitespace/unicode normalization). tau requires exact match and gives diagnostic context on failure.
+The model provides the exact text to find and its replacement. Simple to implement, simple for the model to understand. Fails when `old_string` appears multiple times or when the model hallucinates whitespace. pi-mono mitigates this with fuzzy matching (whitespace/unicode normalization). tau requires exact match and gives diagnostic context on failure. kimi-cli stays in this family too, but adds one pragmatic twist: `StrReplaceFile` accepts a list of exact replacements in one call, so it can batch a small refactor without committing to a patch DSL.
 
 **Tradeoff:** Low token cost per edit. High failure rate on large or repetitive files.
 
@@ -126,15 +126,15 @@ oh-my-pi has `ast_grep` and `ast_edit` tools that operate on syntax tree pattern
 
 **Tradeoff:** Most precise edit mechanism. Only works for languages with ast-grep support. Models must learn pattern syntax.
 
-### Multi-edit (crush, opencode)
+### Multi-edit (kimi-cli, crush, opencode)
 
-crush and opencode both have a `multiedit` tool that applies multiple find-and-replace operations to a single file in one call. crush applies edits sequentially with partial success; opencode treats the batch atomically (all succeed or all fail).
+kimi-cli, crush, and opencode all reduce round trips for repeated edits, but they do it differently. kimi-cli keeps the edit model simple: `StrReplaceFile` takes a list of exact string replacements and shows a diff for approval. crush and opencode go further with dedicated `multiedit` tools; crush applies edits sequentially with partial success, while opencode treats the batch atomically (all succeed or all fail).
 
-**Tradeoff:** Fewer round trips for multi-site edits. Atomicity vs. partial success is itself a design choice — atomic is safer but wastes work on failure; partial success is more forgiving but leaves the file in a half-edited state.
+**Tradeoff:** Fewer round trips for multi-site edits. Atomicity vs. partial success is itself a design choice — atomic is safer but wastes work on failure; partial success is more forgiving but leaves the file in a half-edited state. kimi-cli's version is less expressive than a patch tool, but much easier for a model to produce correctly.
 
 ## Dimension 2: Toolset breadth
 
-The harnesses cluster into two camps:
+The harnesses cluster into three camps:
 
 ### Thin toolset (tau: 8, pi-mono: 7)
 
@@ -151,13 +151,17 @@ Only the tools needed for the core coding loop. Everything else goes through bas
 - The model must know how to construct the right shell command for each task.
 - No structured output for complex operations (LSP diagnostics, web content).
 
-### Medium toolset (opencode: ~20)
+### Productized mid-size toolset (kimi-cli: 17, opencode: ~20)
 
-opencode sits between the two camps. It has the core 7, plus web search, LSP, sub-agents, multi-edit, batch execution, and todos — but not browser automation, notebooks, AST editing, or checkpointing. It's selective about which extensions earn a tool.
+kimi-cli and opencode sit between the thin and thick camps, but with different priorities.
 
-The most distinctive addition is **batch** — a meta-tool that runs up to 25 other tool calls in parallel within a single turn. This is unique across all six harnesses. Instead of the model issuing tool calls sequentially (read file A, then read file B, then read file C), it wraps them in a batch and gets all results at once.
+kimi-cli's extra tools are mostly about operating safely in an interactive product: ask-user prompts, todos, plan mode, web search/fetch, subagents, and background shell task management. It does not add LSP, browser automation, notebooks, or a patch DSL. The result is a bigger surface than tau, but still a fairly coherent one.
 
-**Tradeoff:** batch reduces latency on parallel-safe operations but adds a layer of abstraction the model must reason about. It also makes traces harder to follow (a single "batch" call expands to 25 sub-calls).
+opencode has the core 7, plus web search, LSP, sub-agents, multi-edit, batch execution, and todos — but not browser automation, notebooks, AST editing, or checkpointing. It's selective about which extensions earn a tool.
+
+The most distinctive addition here is opencode's **batch** — a meta-tool that runs up to 25 other tool calls in parallel within a single turn. This is unique across all seven harnesses. Instead of the model issuing tool calls sequentially (read file A, then read file B, then read file C), it wraps them in a batch and gets all results at once.
+
+**Tradeoff:** kimi-cli spends its complexity budget on user-facing workflow primitives; opencode spends it on execution efficiency. batch reduces latency on parallel-safe operations but adds a layer of abstraction the model must reason about. kimi-cli's background task tools are easier to reason about, but only parallelize shell work, not arbitrary tool calls.
 
 ### Thick toolset (oh-my-pi: 23+, crush: 23, codex: 30+)
 
@@ -183,7 +187,7 @@ The pattern: **start with the convergent 6, add tools only when bash is measurab
 
 ## Dimension 3: Sub-agent delegation
 
-Four harnesses support spawning sub-agents: oh-my-pi (`task`), crush (`agent`), codex (`spawn_agent` + `send_input` + `wait_agent` + `close_agent`), and opencode (`task`).
+Five harnesses support spawning sub-agents: kimi-cli (`Task`), oh-my-pi (`task`), crush (`agent`), codex (`spawn_agent` + `send_input` + `wait_agent` + `close_agent`), and opencode (`task`).
 
 tau and pi-mono do not have sub-agent tools.
 
@@ -198,16 +202,18 @@ tau and pi-mono do not have sub-agent tools.
 - The model must learn *when* to delegate vs. do it directly.
 - Codex needs 5 tools just for agent lifecycle (spawn, send, wait, resume, close). That's toolset bloat for coordination overhead.
 
+kimi-cli is interesting here because it splits parallelism into two separate concepts: subagents for isolated reasoning, and background shell tasks for long-running commands. That is a more opinionated decomposition than codex or opencode, where "parallel work" is mostly one bucket.
+
 **tau's position:** No sub-agent tool. The hive orchestrator handles parallelism at a higher level — the agent itself stays single-threaded. This is a deliberate architectural choice: delegation lives in the harness infrastructure, not in the model's tool surface.
 
 ## Dimension 4: Web and external access
 
-| | tau | pi-mono | oh-my-pi | crush | codex | opencode |
-|---|:---:|:-------:|:--------:|:-----:|:-----:|:-------:|
-| HTTP fetch | — | — | fetch | fetch, agentic_fetch | — | webfetch |
-| Web search | — | — | web_search | web_search | web_search | websearch |
-| Code search | — | — | — | sourcegraph | — | codesearch |
-| Browser | — | — | browser (Puppeteer) | — | — | — |
+| | tau | kimi-cli | pi-mono | oh-my-pi | crush | codex | opencode |
+|---|:---:|:--------:|:-------:|:--------:|:-----:|:-----:|:-------:|
+| HTTP fetch | — | FetchURL | — | fetch | fetch, agentic_fetch | — | webfetch |
+| Web search | — | SearchWeb | — | web_search | web_search | web_search | websearch |
+| Code search | — | — | — | — | sourcegraph | — | codesearch |
+| Browser | — | — | — | browser (Puppeteer) | — | — | — |
 
 **Arguments for web tools:**
 - Models can look up API docs, Stack Overflow answers, library changelogs.
@@ -219,6 +225,8 @@ tau and pi-mono do not have sub-agent tools.
 - Token cost — web pages are large. Even cleaned, a docs page is 2-10K tokens.
 - Security surface — the agent can now exfiltrate code to arbitrary URLs or fetch malicious content.
 - For benchmarking, web access introduces non-determinism.
+
+kimi-cli's web tools are more service-backed than agentic: `SearchWeb` calls a configured Moonshot search endpoint, and `FetchURL` prefers a configured fetch service but can fall back to local fetching. That is different from oh-my-pi's browser-first stance or opencode's generalized web/code search. It keeps the harness simple, but it also means web capability quality depends heavily on the provider-side service.
 
 **tau's position:** No web tools. Coding agents operating on local codebases rarely need web access. When they do, `bash` + `curl` works. If web access becomes important for benchmarks, it's a candidate for a dedicated tool.
 
@@ -247,10 +255,10 @@ opencode also integrates LSP *implicitly* — the edit and write tools automatic
 
 ## Dimension 6: Planning and state management
 
-| | tau | pi-mono | oh-my-pi | crush | codex | opencode |
-|---|:---:|:-------:|:--------:|:-----:|:-----:|:-------:|
-| Todo/plan | — | — | todo_write | todos | update_plan | todowrite/read |
-| Checkpoint | — | — | checkpoint + rewind | — | — | — |
+| | tau | kimi-cli | pi-mono | oh-my-pi | crush | codex | opencode |
+|---|:---:|:--------:|:-------:|:--------:|:-----:|:-----:|:-------:|
+| Todo/plan | — | SetTodoList + plan mode | — | todo_write | todos | update_plan | todowrite/read |
+| Checkpoint | — | — | — | checkpoint + rewind | — | — | — |
 
 These tools let the model explicitly manage its own state: create task lists, save progress checkpoints, rewind on failure.
 
@@ -264,7 +272,29 @@ These tools let the model explicitly manage its own state: create task lists, sa
 - Checkpoints are complex to implement correctly (file system state, git state, agent state).
 - In practice, git provides checkpointing. `git stash` / `git checkout` via bash is equivalent.
 
+The distinctive move here is kimi-cli's **plan mode**. This is not just a todo list: it is an enforced read-only phase where the model only gets `Glob`, `Grep`, and `ReadFile`, writes a plan artifact, and asks the user to approve or revise it before execution. That is much stronger than codex's `update_plan` or opencode's todo list because it changes the available tool surface, not just the trace.
+
 **tau's position:** No planning tools in the agent itself. Planning happens at the hive level (the queen decomposes tasks into issues). The agent is a worker that executes a well-scoped task — it shouldn't need to plan.
+
+## Spotlight: kimi-cli's interesting choices
+
+kimi-cli (Python, 17 default tools) is the clearest example here of a harness that is more product than benchmark scaffold. The interesting part is not raw tool count, but which problems it chose to productize.
+
+### Plan mode as a hard phase boundary
+
+kimi-cli's plan mode is not advisory. It shrinks the tool surface to read-only exploration, forces the model to write a plan file, and routes the next step through user approval or revision. That makes planning auditable and safe, but also slows down short tasks where an experienced model could have just started coding.
+
+### Background shell as a first-class primitive
+
+Instead of a general batch tool, kimi-cli treats long-running shell commands as background jobs with IDs, progress inspection, stop controls, and automatic completion notifications. This matches interactive development work very well: builds, tests, watchers, and servers are the long pole more often than file reads.
+
+### Sessions as workflow state, not just transcripts
+
+kimi-cli persists not just chat history, but approval state, plan mode, dynamic subagents, and additional workspace directories. That makes resuming a session feel like reopening a workbench, not replaying a transcript. Most benchmark harnesses stop at message history.
+
+### Multiple frontends over one core
+
+The same harness runs in terminal mode, Web UI, ACP server mode for IDEs, and a separate trace visualizer. That pushes design decisions toward approval UX, structured questions, session search/fork/archive, and interoperable wire logs. tau is currently much closer to a core harness than a user-facing product.
 
 ## Spotlight: opencode's interesting choices
 
@@ -272,7 +302,7 @@ opencode (TypeScript, ~20 tools) deserves special attention because it makes sev
 
 ### Model-aware toolset composition
 
-The tool registry dynamically includes/excludes tools based on the model. GPT gets `apply_patch`; Claude gets `edit` + `write`. LSP and batch are behind experimental flags. The `question` tool only appears for interactive clients (app/cli/desktop), not headless mode. This is the most sophisticated tool filtering across all six harnesses — everyone else gives every model the same tools.
+The tool registry dynamically includes/excludes tools based on the model. GPT gets `apply_patch`; Claude gets `edit` + `write`. LSP and batch are behind experimental flags. The `question` tool only appears for interactive clients (app/cli/desktop), not headless mode. This is the most sophisticated tool filtering across all seven harnesses — everyone else gives every model the same tools.
 
 This raises an interesting benchmarking question: should a harness optimize per-model, or should it provide a uniform interface and let the model adapt? Per-model optimization likely wins on benchmarks but makes the harness harder to reason about.
 
@@ -316,7 +346,8 @@ Based on convergence across harnesses and likely benchmark impact:
 
 - **Implicit LSP diagnostics** — opencode's approach of wiring LSP feedback into the edit tool result (not as a separate tool) is compelling. The model gets type error feedback for free, without tool-choice overhead. Worth prototyping as an enhancement to file_edit rather than a standalone tool.
 - **ls** — pi-mono, crush, and opencode have it. Listing directory contents is common enough that a structured tool (with depth control, type labels) might outperform `bash ls -la`. Low cost to add.
-- **multiedit** — crush and opencode both have it. Batching multiple edits per file in one call reduces round trips. Worth testing against single-edit-per-call for multi-site refactors.
+- **multiedit / batched replace** — kimi-cli, crush, and opencode all reduce round trips here. Worth testing whether tau should add a low-risk batched exact-replace tool before jumping straight to patch mode.
 - **Model-aware tool filtering** — opencode's dynamic tool composition is worth watching. If tau supports multiple models with different edit strengths, conditional tool selection could help. But adds complexity and makes benchmarking less apples-to-apples.
-- **ask user** — oh-my-pi, codex, and opencode let the agent ask clarifying questions. Useful for interactive mode, irrelevant for headless benchmarks.
-- **web search** — four of six harnesses have it. Might help on tasks requiring API knowledge the model lacks. Adds non-determinism.
+- **ask user** — kimi-cli, oh-my-pi, codex, and opencode let the agent ask clarifying questions. Useful for interactive mode, irrelevant for headless benchmarks.
+- **plan mode** — kimi-cli shows a stronger version of planning than a todo tool: read-only exploration plus explicit approval before writing. Worth studying if tau wants a safe "research first" mode.
+- **web search** — five of seven harnesses have it. Might help on tasks requiring API knowledge the model lacks. Adds non-determinism.
