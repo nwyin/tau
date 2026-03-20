@@ -7,6 +7,7 @@ pub struct TauConfig {
     pub model: String,
     pub edit_mode: String, // "replace" | "hashline"
     pub max_turns: Option<u32>,
+    pub tools: Option<Vec<String>>,
 }
 
 impl Default for TauConfig {
@@ -15,6 +16,7 @@ impl Default for TauConfig {
             model: "gpt-4o-mini".to_string(),
             edit_mode: "replace".to_string(),
             max_turns: None,
+            tools: None,
         }
     }
 }

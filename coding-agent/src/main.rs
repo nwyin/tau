@@ -12,7 +12,7 @@ use clap::Parser;
 
 use coding_agent::cli::Cli;
 use coding_agent::session::{SessionFile, SessionManager};
-use coding_agent::tools::tools_for_edit_mode;
+use coding_agent::tools;
 
 fn emit_stats(stats: Option<&AgentStats>, print_stats: bool, stats_json_path: Option<&str>) {
     if let Some(s) = stats {
@@ -155,8 +155,16 @@ async fn main() -> Result<()> {
         (vec![], None)
     };
 
-    // Build agent
-    let tools = tools_for_edit_mode(&config.edit_mode);
+    // Build agent — resolve tool list: --tools flag > config tools > default for edit_mode
+    let tools = if let Some(ref tool_names) = cli.tools {
+        eprintln!("[tools] enabled: {}", tool_names.join(", "));
+        tools::tools_from_allowlist(tool_names, &config.edit_mode)
+    } else if let Some(ref tool_names) = config.tools {
+        eprintln!("[tools] enabled: {}", tool_names.join(", "));
+        tools::tools_from_allowlist(tool_names, &config.edit_mode)
+    } else {
+        tools::tools_for_edit_mode(&config.edit_mode)
+    };
     let system_prompt = cli.system_prompt.unwrap_or_else(|| {
         coding_agent::system_prompt::build_system_prompt(
             &tools,

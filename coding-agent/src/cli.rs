@@ -35,4 +35,8 @@ pub struct Cli {
     /// Run without session persistence (ephemeral)
     #[arg(long, conflicts_with_all = ["session", "resume"])]
     pub no_session: bool,
+
+    /// Comma-separated list of tools to enable (overrides config)
+    #[arg(long, value_delimiter = ',')]
+    pub tools: Option<Vec<String>>,
 }

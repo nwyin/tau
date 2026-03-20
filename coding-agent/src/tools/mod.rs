@@ -8,6 +8,7 @@ pub mod hash_file_edit;
 pub mod hash_file_read;
 pub mod hashline;
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use agent::types::AgentTool;
@@ -46,4 +47,45 @@ pub fn tools_for_edit_mode(edit_mode: &str) -> Vec<Arc<dyn AgentTool>> {
         ],
         _ => all_tools(), // "replace" or unknown → existing tools
     }
+}
+
+/// Returns all known tool implementations keyed by canonical name.
+///
+/// Canonical names are stable identifiers ("file_read", "file_edit") regardless of
+/// edit_mode. The registry resolves them to the appropriate implementation:
+/// - "hashline" → HashFileReadTool / HashFileEditTool
+/// - "replace" (default) → FileReadTool / FileEditTool
+pub fn all_known_tools(edit_mode: &str) -> HashMap<String, Arc<dyn AgentTool>> {
+    let mut map: HashMap<String, Arc<dyn AgentTool>> = HashMap::new();
+    map.insert("bash".to_string(), BashTool::arc());
+    map.insert("file_write".to_string(), FileWriteTool::arc());
+    map.insert("glob".to_string(), GlobTool::arc());
+    map.insert("grep".to_string(), GrepTool::arc());
+    match edit_mode {
+        "hashline" => {
+            map.insert("file_read".to_string(), HashFileReadTool::arc());
+            map.insert("file_edit".to_string(), HashFileEditTool::arc());
+        }
+        _ => {
+            map.insert("file_read".to_string(), FileReadTool::arc());
+            map.insert("file_edit".to_string(), FileEditTool::arc());
+        }
+    }
+    map
+}
+
+/// Resolve an allowlist of tool names against the registry.
+/// Returns the matching tools in order. Logs a warning for unknown names and omits them.
+pub fn tools_from_allowlist(names: &[String], edit_mode: &str) -> Vec<Arc<dyn AgentTool>> {
+    let registry = all_known_tools(edit_mode);
+    names
+        .iter()
+        .filter_map(|name| match registry.get(name.as_str()) {
+            Some(tool) => Some(Arc::clone(tool)),
+            None => {
+                eprintln!("Warning: unknown tool '{}', skipping", name);
+                None
+            }
+        })
+        .collect()
 }
