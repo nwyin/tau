@@ -40,10 +40,6 @@ pub struct Cli {
     #[arg(long, value_delimiter = ',')]
     pub tools: Option<Vec<String>>,
 
-    /// Test command for run_tests tool (overrides TAU_BENCHMARK_TEST_CMD env var)
-    #[arg(long, value_name = "CMD")]
-    pub test_command: Option<String>,
-
     /// Directory for trace output (run.json + trace.jsonl)
     #[arg(long, value_name = "DIR")]
     pub trace_output: Option<String>,

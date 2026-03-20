@@ -9,7 +9,6 @@ pub mod hash_file_read;
 pub mod hashline;
 pub mod pycfg;
 pub mod pycg;
-pub mod run_tests;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -28,7 +27,6 @@ pub use pycfg::{CfgFunctionsTool, CfgGraphTool, CfgSummaryTool};
 pub use pycg::{
     CgCalleesTool, CgCallersTool, CgNeighborsTool, CgPathTool, CgSummaryTool, CgSymbolsTool,
 };
-pub use run_tests::RunTestsTool;
 
 /// Return all built-in tools as a list ready to pass to the agent.
 pub fn all_tools() -> Vec<Arc<dyn AgentTool>> {

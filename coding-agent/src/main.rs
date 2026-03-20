@@ -14,7 +14,6 @@ use coding_agent::cli::Cli;
 use coding_agent::session::{SessionFile, SessionManager};
 use coding_agent::tools;
 use coding_agent::tools::tools_for_edit_mode;
-use coding_agent::tools::RunTestsTool;
 use coding_agent::trace::{sha256_prefix, TraceConfig, TraceSubscriber};
 
 fn emit_stats(stats: Option<&AgentStats>, print_stats: bool, stats_json_path: Option<&str>) {
@@ -160,13 +159,8 @@ async fn main() -> Result<()> {
         (vec![], None)
     };
 
-    // Resolve test command: --test-command flag > TAU_BENCHMARK_TEST_CMD env > None
-    let test_command = cli
-        .test_command
-        .or_else(|| std::env::var("TAU_BENCHMARK_TEST_CMD").ok());
-
     // Build agent — resolve tool list: --tools flag > config tools > default for edit_mode
-    let mut tools = if let Some(ref tool_names) = cli.tools {
+    let tools = if let Some(ref tool_names) = cli.tools {
         eprintln!("[tools] enabled: {}", tool_names.join(", "));
         tools::tools_from_allowlist(tool_names, &config.edit_mode)
     } else if let Some(ref tool_names) = config.tools {
@@ -175,7 +169,6 @@ async fn main() -> Result<()> {
     } else {
         tools::tools_for_edit_mode(&config.edit_mode)
     };
-    tools.push(RunTestsTool::arc(test_command));
     let system_prompt = cli.system_prompt.unwrap_or_else(|| {
         coding_agent::system_prompt::build_system_prompt(
             &tools,
