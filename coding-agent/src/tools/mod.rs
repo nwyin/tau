@@ -7,6 +7,7 @@ pub mod grep;
 pub mod hash_file_edit;
 pub mod hash_file_read;
 pub mod hashline;
+pub mod pycfg;
 pub mod run_tests;
 
 use std::collections::HashMap;
@@ -22,6 +23,7 @@ pub use glob::GlobTool;
 pub use grep::GrepTool;
 pub use hash_file_edit::HashFileEditTool;
 pub use hash_file_read::HashFileReadTool;
+pub use pycfg::{CfgFunctionsTool, CfgGraphTool, CfgSummaryTool};
 pub use run_tests::RunTestsTool;
 
 /// Return all built-in tools as a list ready to pass to the agent.
@@ -73,6 +75,9 @@ pub fn all_known_tools(edit_mode: &str) -> HashMap<String, Arc<dyn AgentTool>> {
             map.insert("file_edit".to_string(), FileEditTool::arc());
         }
     }
+    map.insert("cfg_functions".to_string(), CfgFunctionsTool::arc());
+    map.insert("cfg_summary".to_string(), CfgSummaryTool::arc());
+    map.insert("cfg_graph".to_string(), CfgGraphTool::arc());
     map
 }
 
