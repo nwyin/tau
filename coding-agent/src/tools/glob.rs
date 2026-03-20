@@ -103,7 +103,12 @@ impl AgentTool for GlobTool {
                     content: vec![UserBlock::Text {
                         text: format!("No files matched pattern '{}'.", pattern_clone),
                     }],
-                    details: None,
+                    details: Some(json!({
+                        "pattern": pattern_clone,
+                        "root": path.display().to_string(),
+                        "result_count": 0usize,
+                        "truncated": false,
+                    })),
                 });
             }
 
@@ -127,7 +132,12 @@ impl AgentTool for GlobTool {
 
             Ok(AgentToolResult {
                 content: vec![UserBlock::Text { text: output }],
-                details: None,
+                details: Some(json!({
+                    "pattern": pattern_clone,
+                    "root": path.display().to_string(),
+                    "result_count": total,
+                    "truncated": capped,
+                })),
             })
         })
     }

@@ -310,7 +310,11 @@ impl AgentTool for HashFileEditTool {
                     content: vec![UserBlock::Text {
                         text: e.to_string(),
                     }],
-                    details: None,
+                    details: Some(json!({
+                        "path": path.display().to_string(),
+                        "success": false,
+                        "replacements": 0,
+                    })),
                 });
             }
 
@@ -319,7 +323,11 @@ impl AgentTool for HashFileEditTool {
                 content: vec![UserBlock::Text {
                     text: format!("Applied {} edit(s) to {}", edit_count, path.display()),
                 }],
-                details: None,
+                details: Some(json!({
+                    "path": path.display().to_string(),
+                    "success": true,
+                    "replacements": edit_count,
+                })),
             })
         })
     }

@@ -58,6 +58,8 @@ impl AgentTool for FileWriteTool {
                     .join(path_str)
             };
 
+            let path_existed_before = path.exists();
+
             if let Some(parent) = path.parent() {
                 if let Err(e) = std::fs::create_dir_all(parent) {
                     return Ok(AgentToolResult {
@@ -74,7 +76,11 @@ impl AgentTool for FileWriteTool {
                     content: vec![UserBlock::Text {
                         text: format!("Wrote {} bytes to {}", content.len(), path.display()),
                     }],
-                    details: None,
+                    details: Some(json!({
+                        "path": path.display().to_string(),
+                        "bytes_written": content.len(),
+                        "created": !path_existed_before,
+                    })),
                 }),
                 Err(e) => Ok(AgentToolResult {
                     content: vec![UserBlock::Text {

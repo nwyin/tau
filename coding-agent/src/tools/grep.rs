@@ -173,7 +173,14 @@ impl AgentTool for GrepTool {
                             content: vec![UserBlock::Text {
                                 text: "No matches found.".to_string(),
                             }],
-                            details: None,
+                            details: Some(json!({
+                                "pattern": params["pattern"].as_str().unwrap_or(""),
+                                "path": search_path.display().to_string(),
+                                "glob": params["glob"].as_str(),
+                                "match_count": 0usize,
+                                "files_with_matches": 0usize,
+                                "truncated": false,
+                            })),
                         });
                     }
 
@@ -192,7 +199,18 @@ impl AgentTool for GrepTool {
                     let lines: Vec<&str> = output.lines().collect();
                     let total = lines.len();
 
-                    let text = if total > limit {
+                    let files_with_matches_count = {
+                        let mut files = std::collections::HashSet::new();
+                        for line in &lines {
+                            if let Some(colon_pos) = line.find(':') {
+                                files.insert(&line[..colon_pos]);
+                            }
+                        }
+                        files.len()
+                    };
+                    let was_truncated = total > limit;
+
+                    let text = if was_truncated {
                         let shown = lines[..limit].join("\n");
                         format!("{}\n[{} matches, showing first {}]", shown, total, limit)
                     } else {
@@ -201,7 +219,14 @@ impl AgentTool for GrepTool {
 
                     Ok(AgentToolResult {
                         content: vec![UserBlock::Text { text }],
-                        details: None,
+                        details: Some(json!({
+                            "pattern": params["pattern"].as_str().unwrap_or(""),
+                            "path": search_path.display().to_string(),
+                            "glob": params["glob"].as_str(),
+                            "match_count": total,
+                            "files_with_matches": files_with_matches_count,
+                            "truncated": was_truncated,
+                        })),
                     })
                 }
             }

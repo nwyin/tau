@@ -127,7 +127,11 @@ impl AgentTool for FileEditTool {
                             context
                         ),
                     }],
-                    details: None,
+                    details: Some(json!({
+                        "path": path.display().to_string(),
+                        "success": false,
+                        "replacements": 0,
+                    })),
                 });
             }
 
@@ -139,7 +143,11 @@ impl AgentTool for FileEditTool {
                             count
                         ),
                     }],
-                    details: None,
+                    details: Some(json!({
+                        "path": path.display().to_string(),
+                        "success": false,
+                        "replacements": 0,
+                    })),
                 });
             }
 
@@ -158,13 +166,21 @@ impl AgentTool for FileEditTool {
                             new_bytes
                         ),
                     }],
-                    details: None,
+                    details: Some(json!({
+                        "path": path.display().to_string(),
+                        "success": true,
+                        "replacements": 1,
+                    })),
                 }),
                 Err(e) => Ok(AgentToolResult {
                     content: vec![UserBlock::Text {
                         text: e.to_string(),
                     }],
-                    details: None,
+                    details: Some(json!({
+                        "path": path.display().to_string(),
+                        "success": false,
+                        "replacements": 0,
+                    })),
                 }),
             }
         })

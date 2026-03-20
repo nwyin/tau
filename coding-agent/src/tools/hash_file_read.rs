@@ -134,7 +134,13 @@ impl AgentTool for HashFileReadTool {
 
             Ok(AgentToolResult {
                 content: vec![UserBlock::Text { text: output }],
-                details: None,
+                details: Some(json!({
+                    "path": path.display().to_string(),
+                    "offset": offset,
+                    "limit": limit,
+                    "lines_returned": end_idx - start_idx,
+                    "total_lines": total,
+                })),
             })
         })
     }

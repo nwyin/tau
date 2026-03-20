@@ -51,6 +51,7 @@ impl AgentTool for BashTool {
 
             let timeout_secs = params["timeout"].as_f64().unwrap_or(120.0) as u64;
             let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/"));
+            let start = std::time::Instant::now();
 
             let mut child = tokio::process::Command::new("sh")
                 .arg("-c")
@@ -133,12 +134,24 @@ impl AgentTool for BashTool {
                     })
                 }
                 Outcome::Done(status) => {
+                    let duration = start.elapsed();
                     let stdout_bytes = stdout_task.await.unwrap_or_default();
                     let stderr_bytes = stderr_task.await.unwrap_or_default();
 
-                    let mut combined = String::new();
-                    combined.push_str(&String::from_utf8_lossy(&stdout_bytes));
-                    combined.push_str(&String::from_utf8_lossy(&stderr_bytes));
+                    let stdout_str = String::from_utf8_lossy(&stdout_bytes);
+                    let stderr_str = String::from_utf8_lossy(&stderr_bytes);
+                    let stdout_lines_count = if stdout_str.is_empty() {
+                        0
+                    } else {
+                        stdout_str.lines().count()
+                    };
+                    let stderr_lines_count = if stderr_str.is_empty() {
+                        0
+                    } else {
+                        stderr_str.lines().count()
+                    };
+
+                    let mut combined = format!("{}{}", stdout_str, stderr_str);
 
                     let exit_code = status.code().unwrap_or(-1);
 
@@ -182,7 +195,13 @@ impl AgentTool for BashTool {
 
                     Ok(AgentToolResult {
                         content: vec![UserBlock::Text { text }],
-                        details: None,
+                        details: Some(json!({
+                            "command": command,
+                            "exit_code": exit_code,
+                            "duration_ms": duration.as_millis(),
+                            "stdout_lines": stdout_lines_count,
+                            "stderr_lines": stderr_lines_count,
+                        })),
                     })
                 }
             }
