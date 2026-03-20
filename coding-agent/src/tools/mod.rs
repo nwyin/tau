@@ -7,6 +7,7 @@ pub mod grep;
 pub mod hash_file_edit;
 pub mod hash_file_read;
 pub mod hashline;
+pub mod run_tests;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -21,6 +22,7 @@ pub use glob::GlobTool;
 pub use grep::GrepTool;
 pub use hash_file_edit::HashFileEditTool;
 pub use hash_file_read::HashFileReadTool;
+pub use run_tests::RunTestsTool;
 
 /// Return all built-in tools as a list ready to pass to the agent.
 pub fn all_tools() -> Vec<Arc<dyn AgentTool>> {
