@@ -39,7 +39,7 @@ fn default_session_dir() -> PathBuf {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let mut cli = Cli::parse();
+    let cli = Cli::parse();
 
     // Capture flags before cli fields are moved
     let print_stats = cli.stats;
@@ -117,12 +117,6 @@ async fn main() -> Result<()> {
         }
     };
 
-    // --- Benchmark mode: force no-session before session setup ---
-    if cli.benchmark_mode {
-        cli.no_session = true;
-        eprintln!("[benchmark] no-session forced");
-    }
-
     // --- Session setup ---
     let session_mgr = SessionManager::new(default_session_dir());
 
@@ -181,20 +175,7 @@ async fn main() -> Result<()> {
     } else {
         tools::tools_for_edit_mode(&config.edit_mode)
     };
-    tools.push(RunTestsTool::arc(test_command.clone()));
-
-    // --- Benchmark mode validation (after tool resolution) ---
-    if cli.benchmark_mode {
-        let tool_names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
-        coding_agent::validate_benchmark_mode(
-            cli.tools.is_some(),
-            cli.trace_output.is_some(),
-            &tool_names,
-            test_command.as_deref(),
-        )?;
-        eprintln!("[benchmark] mode active — all constraints satisfied");
-    }
-
+    tools.push(RunTestsTool::arc(test_command));
     let system_prompt = cli.system_prompt.unwrap_or_else(|| {
         coding_agent::system_prompt::build_system_prompt(
             &tools,
