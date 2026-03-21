@@ -227,6 +227,197 @@ Data collected 2026-03-19 by reading each harness's source code.
 
 ---
 
+## Underexplored dimensions
+
+The tables above capture discrete features, but several design surfaces
+cut across all of them. These are harder to compare in a matrix but
+matter enormously for daily-driver quality.
+
+### System prompt engineering
+
+The system prompt is arguably the biggest design surface — it IS the
+product. Considerations:
+
+- **Construction**: static template vs dynamic (adapts to loaded tools,
+  cwd, project type, git state). kimi-cli injects tool-specific
+  guidelines per tool. Claude Code's system prompt is ~8K tokens of
+  carefully tuned instructions.
+- **Project-level rules**: CLAUDE.md, `.cursorrules`, `.tau.md` — how
+  persistent per-project instructions are loaded, where they're injected,
+  whether they survive compaction.
+- **Per-model adaptation**: different models need different guidance.
+  Anthropic models benefit from XML tags, OpenAI from structured JSON
+  examples. Some harnesses swap prompt sections per provider.
+- **Guideline injection**: "read before edit", "don't over-engineer",
+  "use existing patterns" — these behavioral guidelines are what make an
+  agent feel helpful vs annoying.
+
+### Tool result formatting
+
+How tool output is presented back to the model is a huge lever. Gets no
+attention in feature comparisons but determines whether the model
+recovers or spirals.
+
+- **Line numbers**: file_read with `cat -n` style vs raw content. Lets
+  the model reference specific lines for edits.
+- **Truncation markers**: `[truncated N lines]`, `Total output: N lines`
+  so the model knows it's seeing a subset and can request more.
+- **Error formatting**: actionable hints ("file not found — did you mean
+  X?") vs raw stderr. Some harnesses parse common errors and suggest
+  fixes.
+- **Structured metadata**: tool results can carry `details` (JSON
+  metadata) separate from `content` (what the model sees). tau has this
+  via `AgentToolResult.details` but it's underused.
+
+### Error recovery and self-correction
+
+What happens when a tool call fails? Most harnesses just pass the error
+back and hope the model adapts. But there's design space here:
+
+- **Retry policies**: auto-retry transient failures (network, rate
+  limits) with backoff. Distinct from "model tries again."
+- **Context overflow recovery**: detect overflow error, auto-compact,
+  retry the same request. Codex and opencode do this.
+- **Edit conflict resolution**: when file_edit fails (match not found),
+  some harnesses (opencode) try fuzzy matching or re-read the file
+  before failing.
+- **Cascading fallbacks**: model downgrades on rate limit, provider
+  fallback chains.
+- **Self-correction loops**: some harnesses detect "the model is stuck"
+  (same tool call repeated 3x) and inject a nudge or abort.
+
+### Conversation steering and dynamic injection
+
+Keeping the agent on track over long sessions without burning context.
+
+- **System reminders**: kimi-cli injects `<system-reminder>` tags before
+  each step with task context, plan state, recent diagnostics.
+- **Git status injection**: some harnesses inject current branch/status
+  before each turn so the model stays aware.
+- **Diagnostic injection**: LSP errors injected after edits (oh-my-pi,
+  crush, opencode) so the model self-corrects immediately.
+- **Task context refresh**: re-injecting the original task description
+  periodically so the model doesn't drift.
+- **TTSR (pattern-triggered rules)**: oh-my-pi injects specific rules
+  when it detects certain patterns (e.g., "you're editing a test file,
+  remember to run tests after").
+
+### Project detection and onboarding
+
+How a harness learns about a new project. Determines first-impression
+quality.
+
+- **Language/framework detection**: package.json, Cargo.toml, pyproject.toml
+  → adapt tools, system prompt, suggestions.
+- **Git state**: branch, dirty files, recent commits — injected into
+  context for awareness.
+- **Config files**: CLAUDE.md, .cursorrules, project-level settings
+  that persist across sessions.
+- **Repo map / codebase summary**: aider's approach — build a structural
+  map of the codebase and inject a compact summary. Expensive but
+  effective for "understand the whole project" tasks.
+
+### Cost control and model routing
+
+Running an agent is expensive. Controlling costs matters for daily use.
+
+- **Cost caps**: per-session or per-task token/dollar limits. pi_agent_rust
+  has this.
+- **Model routing**: use a cheap model for simple tasks (grep, file read)
+  and expensive model for reasoning/edits. No harness does this well yet.
+- **Prompt caching**: Anthropic's cache_control, OpenAI's response cache.
+  Some harnesses (crush, pi_agent_rust) explicitly manage cache prefixes.
+- **Token budgets for tools**: limit how much context a single tool result
+  can consume (prevent one huge file read from dominating the window).
+
+### Git safety
+
+Preventing the agent from doing irreversible damage to the repo.
+
+- **Ghost snapshots**: codex creates a git commit after each turn, enabling
+  rollback to any point.
+- **Auto-stash**: stash dirty state before risky operations.
+- **Dangerous command detection**: blocking force push, `rm -rf`,
+  `git reset --hard` unless explicitly allowed.
+- **Worktree isolation**: run the agent in a git worktree so mistakes
+  don't affect the main working tree.
+
+### Pre-flight validation
+
+Validating tool args before execution to prevent wasted turns.
+
+- **File existence checks**: does the file exist before trying to edit?
+- **Regex validation**: is the pattern valid before running grep?
+- **Path containment**: is the path inside the project root? Prevents
+  accidental reads/writes outside the workspace.
+- **Argument type checking**: tool parameters declared as JSON Schema but
+  models sometimes send wrong types.
+
+### Streaming and incremental UX
+
+How partial responses render. Pure UX but determines whether the tool
+feels responsive or sluggish.
+
+- **Text streaming**: show tokens as they arrive, not after completion.
+- **Tool call preview**: show tool name and args before execution starts.
+- **Progress indicators**: spinner or elapsed time for long tool calls
+  (bash commands, large file reads).
+- **Incremental diff**: show edits as they're proposed, not after applied.
+
+### Observability and debugging
+
+How you understand what the agent is doing and why.
+
+- **Verbose mode**: show the full prompt sent to the API, raw
+  request/response, token counts per message.
+- **Trace files**: structured logs of every event (tau has this via
+  trace.jsonl).
+- **Token breakdown**: per-message token counts so you can see what's
+  consuming context.
+- **Tool call audit**: full args and results for every tool call, not
+  just success/failure.
+- **Cost tracking**: running total of dollars spent in the session.
+
+### Caching and performance
+
+Beyond prompt caching — harness-level performance.
+
+- **File content caching**: avoid re-reading files that haven't changed.
+  Use file mtime or git status to invalidate.
+- **Tool result deduplication**: if the model calls the same grep twice,
+  return cached result.
+- **Warm starts**: pre-loading project context (repo map, recent git
+  history) before the first user message.
+- **Connection pooling**: reuse HTTP connections to API providers across
+  turns.
+
+### Multi-modal and rich content
+
+Beyond text — handling images, PDFs, notebooks.
+
+- **Image input**: screenshot analysis, diagram understanding. oh-my-pi,
+  codex, pi_agent_rust support this.
+- **Image generation**: oh-my-pi can generate images via Gemini.
+- **PDF reading**: some harnesses can ingest PDFs directly.
+- **Notebook support**: oh-my-pi has native Jupyter notebook editing.
+- **Terminal screenshots**: capturing terminal output as images for
+  visual debugging.
+
+### Testing and quality assurance
+
+How harnesses ensure their own quality.
+
+- **Property-based testing**: tau and pi_agent_rust use proptest.
+- **Concurrency testing**: pi_agent_rust uses loom for concurrency
+  verification.
+- **Benchmark suites**: standardized evals (SWE-bench, HumanEval,
+  custom benchmarks).
+- **Mutation testing**: some harnesses use mutmut or similar.
+- **Trace replay**: replaying recorded traces to verify deterministic
+  behavior.
+
+---
+
 ## Summary: What tau needs for daily-driver status
 
 Based on the table above, here are the features that appear across 4+ harnesses (table stakes for a daily driver), grouped by priority:
