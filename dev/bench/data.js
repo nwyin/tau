@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1774133668624,
+  "lastUpdate": 1774134724739,
   "repoUrl": "https://github.com/nwyin/tau",
   "entries": {
     "tau benchmarks": [
@@ -1637,6 +1637,132 @@ window.BENCHMARK_DATA = {
             "name": "sse_parsing/events/1000",
             "value": 364117,
             "range": "± 1130",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "tommynguyen0512@gmail.com",
+            "name": "Tommy Bui Nguyen",
+            "username": "nwyin"
+          },
+          "committer": {
+            "email": "tommynguyen0512@gmail.com",
+            "name": "Tommy Bui Nguyen",
+            "username": "nwyin"
+          },
+          "distinct": true,
+          "id": "b4d011dfe2b5ec1a37917303f8bb49f5c2ca6c6f",
+          "message": "feat: add `tau models` subcommand to list available models\n\nShows all registered models grouped by provider with pricing, context\nwindow, and API backend. Supports --provider/-p filter for narrowing\nto a specific provider (e.g. `tau models -p openrouter`).",
+          "timestamp": "2026-03-22T07:03:57+08:00",
+          "tree_id": "76351add7845bfca164823b42a6dec8898ac337c",
+          "url": "https://github.com/nwyin/tau/commit/b4d011dfe2b5ec1a37917303f8bb49f5c2ca6c6f"
+        },
+        "date": 1774134724450,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "agent_construction/new_agent",
+            "value": 2152,
+            "range": "± 67",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/10",
+            "value": 3780,
+            "range": "± 39",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/50",
+            "value": 13110,
+            "range": "± 34",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/100",
+            "value": 23277,
+            "range": "± 162",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/500",
+            "value": 95391,
+            "range": "± 698",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/10",
+            "value": 3433,
+            "range": "± 13",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/50",
+            "value": 17319,
+            "range": "± 155",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/100",
+            "value": 34873,
+            "range": "± 147",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/10",
+            "value": 12958,
+            "range": "± 64",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/50",
+            "value": 73994,
+            "range": "± 338",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/100",
+            "value": 150512,
+            "range": "± 581",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/10",
+            "value": 17040,
+            "range": "± 67",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/50",
+            "value": 92572,
+            "range": "± 832",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/100",
+            "value": 183801,
+            "range": "± 467",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/10",
+            "value": 2857,
+            "range": "± 5",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/100",
+            "value": 38707,
+            "range": "± 163",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/1000",
+            "value": 361636,
+            "range": "± 1163",
             "unit": "ns/iter"
           }
         ]
