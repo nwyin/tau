@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1774076695514,
+  "lastUpdate": 1774133668624,
   "repoUrl": "https://github.com/nwyin/tau",
   "entries": {
     "tau benchmarks": [
@@ -1511,6 +1511,132 @@ window.BENCHMARK_DATA = {
             "name": "sse_parsing/events/1000",
             "value": 363502,
             "range": "± 707",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "tommynguyen0512@gmail.com",
+            "name": "Tommy Bui Nguyen",
+            "username": "nwyin"
+          },
+          "committer": {
+            "email": "tommynguyen0512@gmail.com",
+            "name": "Tommy Bui Nguyen",
+            "username": "nwyin"
+          },
+          "distinct": true,
+          "id": "efa7c654a6b1d0ab3211b70c4423504887a2fbe2",
+          "message": "feat: add OpenAI Chat Completions provider for OpenRouter support\n\nAdd a third API provider backend (openai-chat) that speaks the standard\n/v1/chat/completions SSE protocol. This covers OpenRouter (200+ models),\nplus any OpenAI-compatible endpoint (Groq, Together, Ollama, etc.).\n\nNew files:\n- openai_chat.rs: provider struct, key resolution, streaming HTTP\n- openai_chat_shared.rs: message conversion, tool format, SSE state machine\n- provider-consolidation.md: architecture plan and migration guide\n\n10 OpenRouter models added to catalog (Gemini 3.1, Grok 4.20, Qwen 3.5,\nDevstral, Mistral Small, DeepSeek, Kimi). Agent builder updated with\nkey resolution for openrouter/groq/together/deepseek providers.",
+          "timestamp": "2026-03-21T22:53:35+08:00",
+          "tree_id": "64b902f400c57afa5419ced72f7a34f185e77ee3",
+          "url": "https://github.com/nwyin/tau/commit/efa7c654a6b1d0ab3211b70c4423504887a2fbe2"
+        },
+        "date": 1774133668206,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "agent_construction/new_agent",
+            "value": 2132,
+            "range": "± 31",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/10",
+            "value": 3763,
+            "range": "± 19",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/50",
+            "value": 13203,
+            "range": "± 147",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/100",
+            "value": 21459,
+            "range": "± 274",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/500",
+            "value": 95404,
+            "range": "± 269",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/10",
+            "value": 3392,
+            "range": "± 9",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/50",
+            "value": 17289,
+            "range": "± 73",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/100",
+            "value": 34704,
+            "range": "± 306",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/10",
+            "value": 12901,
+            "range": "± 78",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/50",
+            "value": 73801,
+            "range": "± 386",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/100",
+            "value": 145508,
+            "range": "± 692",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/10",
+            "value": 17060,
+            "range": "± 43",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/50",
+            "value": 91634,
+            "range": "± 1742",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/100",
+            "value": 182342,
+            "range": "± 1155",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/10",
+            "value": 2874,
+            "range": "± 41",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/100",
+            "value": 38914,
+            "range": "± 217",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/1000",
+            "value": 364117,
+            "range": "± 1130",
             "unit": "ns/iter"
           }
         ]
