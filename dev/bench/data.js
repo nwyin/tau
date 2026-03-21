@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1774060260394,
+  "lastUpdate": 1774072060615,
   "repoUrl": "https://github.com/nwyin/tau",
   "entries": {
     "tau benchmarks": [
@@ -755,6 +755,132 @@ window.BENCHMARK_DATA = {
             "name": "sse_parsing/events/1000",
             "value": 362052,
             "range": "± 1473",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "tommynguyen0512@gmail.com",
+            "name": "Tommy Bui Nguyen",
+            "username": "nwyin"
+          },
+          "committer": {
+            "email": "tommynguyen0512@gmail.com",
+            "name": "Tommy Bui Nguyen",
+            "username": "nwyin"
+          },
+          "distinct": true,
+          "id": "5a97a3a08cc5e5104ce6f12a7a634da9b676ab8c",
+          "message": "fix: set dummy API key in serve tests for CI\n\nThe serve integration tests exercise the JSON-RPC protocol, not LLM\ncalls. But agent construction requires a valid API key, which doesn't\nexist in CI. Set a dummy OPENAI_API_KEY env var so the process starts.",
+          "timestamp": "2026-03-21T13:42:34+08:00",
+          "tree_id": "b5aeeec9690af226a8a1e613f8dfcff8706e6e39",
+          "url": "https://github.com/nwyin/tau/commit/5a97a3a08cc5e5104ce6f12a7a634da9b676ab8c"
+        },
+        "date": 1774072059833,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "agent_construction/new_agent",
+            "value": 1956,
+            "range": "± 37",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/10",
+            "value": 4164,
+            "range": "± 58",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/50",
+            "value": 13971,
+            "range": "± 123",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/100",
+            "value": 25344,
+            "range": "± 135",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/500",
+            "value": 108469,
+            "range": "± 3630",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/10",
+            "value": 3231,
+            "range": "± 17",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/50",
+            "value": 15976,
+            "range": "± 147",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/100",
+            "value": 31958,
+            "range": "± 342",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/10",
+            "value": 11807,
+            "range": "± 430",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/50",
+            "value": 66760,
+            "range": "± 420",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/100",
+            "value": 138407,
+            "range": "± 410",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/10",
+            "value": 15648,
+            "range": "± 99",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/50",
+            "value": 83953,
+            "range": "± 4306",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/100",
+            "value": 166861,
+            "range": "± 2773",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/10",
+            "value": 2621,
+            "range": "± 4",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/100",
+            "value": 38457,
+            "range": "± 159",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/1000",
+            "value": 359614,
+            "range": "± 2037",
             "unit": "ns/iter"
           }
         ]
