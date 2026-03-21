@@ -108,5 +108,7 @@ pub async fn run_serve(
     }
 
     eprintln!("[serve] shutdown complete");
-    Ok(())
+    // Force exit — the blocking stdin reader thread would otherwise prevent
+    // the tokio runtime from shutting down cleanly.
+    std::process::exit(0);
 }
