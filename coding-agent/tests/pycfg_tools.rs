@@ -9,6 +9,14 @@ use coding_agent::tools::{CfgFunctionsTool, CfgGraphTool, CfgSummaryTool};
 use serde_json::json;
 use tempfile::TempDir;
 
+/// Returns true if pycfg is available on PATH.
+fn has_pycfg() -> bool {
+    std::process::Command::new("pycfg")
+        .arg("--version")
+        .output()
+        .is_ok()
+}
+
 fn text_content(result: &agent::types::AgentToolResult) -> String {
     result
         .content
@@ -104,6 +112,10 @@ fn test_cfg_graph_tool_name_and_schema() {
 
 #[tokio::test]
 async fn test_cfg_functions_returns_function_list() {
+    if !has_pycfg() {
+        eprintln!("skipping: pycfg not found on PATH");
+        return;
+    }
     let dir = TempDir::new().unwrap();
     let py = simple_python_file(&dir);
     let target = py.to_str().unwrap();
@@ -134,6 +146,10 @@ async fn test_cfg_functions_returns_function_list() {
 
 #[tokio::test]
 async fn test_cfg_summary_returns_per_function_metrics() {
+    if !has_pycfg() {
+        eprintln!("skipping: pycfg not found on PATH");
+        return;
+    }
     let dir = TempDir::new().unwrap();
     let py = simple_python_file(&dir);
     let target = py.to_str().unwrap();
@@ -167,6 +183,10 @@ async fn test_cfg_summary_returns_per_function_metrics() {
 
 #[tokio::test]
 async fn test_cfg_graph_returns_full_cfg() {
+    if !has_pycfg() {
+        eprintln!("skipping: pycfg not found on PATH");
+        return;
+    }
     let dir = TempDir::new().unwrap();
     let py = simple_python_file(&dir);
     let target = format!("{}::greet", py.to_str().unwrap());
