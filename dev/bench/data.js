@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1774134724739,
+  "lastUpdate": 1774136339051,
   "repoUrl": "https://github.com/nwyin/tau",
   "entries": {
     "tau benchmarks": [
@@ -1763,6 +1763,132 @@ window.BENCHMARK_DATA = {
             "name": "sse_parsing/events/1000",
             "value": 361636,
             "range": "± 1163",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "tommynguyen0512@gmail.com",
+            "name": "Tommy Bui Nguyen",
+            "username": "nwyin"
+          },
+          "committer": {
+            "email": "tommynguyen0512@gmail.com",
+            "name": "Tommy Bui Nguyen",
+            "username": "nwyin"
+          },
+          "distinct": true,
+          "id": "b445cf5f7186f3e8703fad5dff6731c49ca028a7",
+          "message": "fix benchmark adapters for tau binary rename, add tracking plan\n\nHarbor adapter:\n- Binary name coding-agent → tau throughout\n- Forward OPENROUTER_API_KEY to containers\n- Report version from TAU_VERSION env var\n- Use _BINARY_DEST constant for run command\n\nTerminal-bench adapter:\n- Binary path default /usr/local/bin/coding-agent → /usr/local/bin/tau\n- Process detection pgrep -f coding-agent → tau\n\nBoth install scripts updated to reference tau binary name.\n\nAdded docs/benchmark-tracking.md with design for release-gated\nterminal-bench evaluation with model × version matrix.",
+          "timestamp": "2026-03-22T07:32:31+08:00",
+          "tree_id": "bdf5fe3ad927fa6d8b76e9f56b123d0a4928a74f",
+          "url": "https://github.com/nwyin/tau/commit/b445cf5f7186f3e8703fad5dff6731c49ca028a7"
+        },
+        "date": 1774136338741,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "agent_construction/new_agent",
+            "value": 2145,
+            "range": "± 9",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/10",
+            "value": 3705,
+            "range": "± 227",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/50",
+            "value": 13019,
+            "range": "± 150",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/100",
+            "value": 21486,
+            "range": "± 416",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/500",
+            "value": 97257,
+            "range": "± 491",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/10",
+            "value": 3377,
+            "range": "± 34",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/50",
+            "value": 17131,
+            "range": "± 58",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/100",
+            "value": 34244,
+            "range": "± 616",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/10",
+            "value": 12988,
+            "range": "± 118",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/50",
+            "value": 73439,
+            "range": "± 471",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/100",
+            "value": 146237,
+            "range": "± 506",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/10",
+            "value": 16771,
+            "range": "± 70",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/50",
+            "value": 92036,
+            "range": "± 243",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/100",
+            "value": 182290,
+            "range": "± 652",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/10",
+            "value": 2894,
+            "range": "± 8",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/100",
+            "value": 38678,
+            "range": "± 212",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/1000",
+            "value": 364070,
+            "range": "± 1889",
             "unit": "ns/iter"
           }
         ]
