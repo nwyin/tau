@@ -23,8 +23,11 @@ impl ServeProcess {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
+            // Set a dummy API key so agent construction succeeds in CI
+            // (serve tests only exercise the JSON-RPC protocol, not LLM calls)
+            .env("OPENAI_API_KEY", "sk-test-dummy-key-for-serve-tests")
             .spawn()
-            .expect("failed to spawn coding-agent serve");
+            .expect("failed to spawn tau serve");
 
         let stdin = child.stdin.take().unwrap();
         let stdout = child.stdout.take().unwrap();
