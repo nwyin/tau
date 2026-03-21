@@ -69,4 +69,11 @@ pub enum Command {
         #[arg(long, value_delimiter = ',')]
         tools: Option<Vec<String>>,
     },
+
+    /// List all available models.
+    Models {
+        /// Filter models by provider (e.g. "openrouter", "anthropic", "openai")
+        #[arg(long, short)]
+        provider: Option<String>,
+    },
 }

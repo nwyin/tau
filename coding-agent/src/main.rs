@@ -15,6 +15,53 @@ use coding_agent::session::{SessionFile, SessionManager};
 use coding_agent::tools::tools_for_edit_mode;
 use coding_agent::trace::{sha256_prefix, TraceConfig, TraceSubscriber};
 
+fn print_models(filter_provider: Option<&str>) {
+    ai::register_builtin_providers();
+
+    let mut providers = ai::models::get_providers();
+    providers.sort();
+
+    for provider in &providers {
+        if let Some(filter) = filter_provider {
+            if !provider.contains(filter) {
+                continue;
+            }
+        }
+
+        let mut models = ai::models::get_models(provider);
+        models.sort_by(|a, b| a.id.cmp(&b.id));
+
+        if models.is_empty() {
+            continue;
+        }
+
+        println!("\n  {} ({} models)", provider, models.len());
+        println!(
+            "  {:<42} {:>7} {:>7}  {:>8}  API",
+            "MODEL ID", "$/M IN", "$/M OUT", "CONTEXT"
+        );
+        println!("  {}", "-".repeat(82));
+
+        for m in &models {
+            let ctx = if m.context_window >= 1_000_000 {
+                format!("{:.1}M", m.context_window as f64 / 1_000_000.0)
+            } else {
+                format!("{}K", m.context_window / 1000)
+            };
+            let reasoning = if m.reasoning { " *" } else { "" };
+            println!(
+                "  {:<42} {:>7.2} {:>7.2}  {:>8}  {}{}",
+                m.id, m.cost.input, m.cost.output, ctx, m.api, reasoning
+            );
+        }
+    }
+
+    println!();
+    println!("  * = reasoning model");
+    println!("  Set model with: tau -m <MODEL_ID>  or  TAU_MODEL=<MODEL_ID>");
+    println!();
+}
+
 fn emit_stats(stats: Option<&AgentStats>, print_stats: bool, stats_json_path: Option<&str>) {
     if let Some(s) = stats {
         if print_stats {
@@ -39,9 +86,16 @@ fn default_session_dir() -> PathBuf {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    // Dispatch to serve mode if subcommand is present
-    if let Some(Command::Serve { cwd, model, tools }) = cli.command {
-        return coding_agent::serve::run_serve(cwd, model, tools).await;
+    // Dispatch subcommands
+    match cli.command {
+        Some(Command::Serve { cwd, model, tools }) => {
+            return coding_agent::serve::run_serve(cwd, model, tools).await;
+        }
+        Some(Command::Models { provider }) => {
+            print_models(provider.as_deref());
+            return Ok(());
+        }
+        None => {}
     }
 
     // --- Interactive / one-shot mode (existing behavior) ---
