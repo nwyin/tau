@@ -220,11 +220,18 @@ async fn main() -> Result<()> {
             t.finalize();
         }
 
-        let exit_code = if result.is_err() || abort_count.load(Ordering::SeqCst) > 0 {
-            1
-        } else {
-            0
-        };
+        let had_error = result.is_err()
+            || abort_count.load(Ordering::SeqCst) > 0
+            || agent.with_state(|s| {
+                s.messages.iter().rev().any(|m| {
+                    matches!(
+                        m,
+                        agent::types::AgentMessage::Llm(ai::types::Message::Assistant(am))
+                            if am.stop_reason == ai::types::StopReason::Error
+                    )
+                })
+            });
+        let exit_code = if had_error { 1 } else { 0 };
 
         std::process::exit(exit_code);
     } else {

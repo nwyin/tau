@@ -256,13 +256,16 @@ async fn stream_assistant_response(
     // Convert to LLM messages
     let llm_messages = match (config.convert_to_llm)(messages).await {
         Ok(m) => m,
-        Err(_e) => {
-            return AssistantMessage::zero_usage(
+        Err(e) => {
+            eprintln!("[agent] convert_to_llm error: {}", e);
+            let mut msg = AssistantMessage::zero_usage(
                 &config.model.api,
                 &config.model.provider,
                 &config.model.id,
                 StopReason::Error,
             );
+            msg.error_message = Some(e.to_string());
+            return msg;
         }
     };
 
@@ -308,13 +311,15 @@ async fn stream_assistant_response(
 
     let event_stream = match stream_result {
         Ok(s) => s,
-        Err(_e) => {
-            let msg = AssistantMessage::zero_usage(
+        Err(e) => {
+            eprintln!("[agent] stream error: {}", e);
+            let mut msg = AssistantMessage::zero_usage(
                 &config.model.api,
                 &config.model.provider,
                 &config.model.id,
                 StopReason::Error,
             );
+            msg.error_message = Some(e.to_string());
             tx.push(AgentEvent::MessageStart {
                 message: AgentMessage::Llm(Message::Assistant(msg.clone())),
             });
@@ -337,8 +342,24 @@ async fn stream_assistant_response(
                 context.messages.push(msg.clone());
                 tx.push(AgentEvent::MessageStart { message: msg });
             }
-            ai::types::AssistantMessageEvent::Done { message, .. }
-            | ai::types::AssistantMessageEvent::Error { error: message, .. } => {
+            ai::types::AssistantMessageEvent::Done { message, .. } => {
+                // Replace partial in context with final
+                if let Some(last) = context.messages.last_mut() {
+                    *last = AgentMessage::Llm(Message::Assistant(message.clone()));
+                } else {
+                    context
+                        .messages
+                        .push(AgentMessage::Llm(Message::Assistant(message.clone())));
+                }
+                tx.push(AgentEvent::MessageEnd {
+                    message: AgentMessage::Llm(Message::Assistant(message.clone())),
+                });
+                return message.clone();
+            }
+            ai::types::AssistantMessageEvent::Error { error: message, .. } => {
+                if let Some(ref err) = message.error_message {
+                    eprintln!("[agent] provider error: {}", err);
+                }
                 // Replace partial in context with final
                 if let Some(last) = context.messages.last_mut() {
                     *last = AgentMessage::Llm(Message::Assistant(message.clone()));

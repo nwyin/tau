@@ -49,6 +49,7 @@ struct TraceInner {
     total_cost: f64,
     tool_calls: u32,
     final_status: String,
+    error_message: Option<String>,
     last_stop_reason: Option<StopReason>,
     max_turns: Option<u32>,
     /// active: tool_call_id -> (timestamp, tool_name, instant)
@@ -69,6 +70,7 @@ impl Default for TraceInner {
             total_cost: 0.0,
             tool_calls: 0,
             final_status: "completed".to_string(),
+            error_message: None,
             last_stop_reason: None,
             max_turns: None,
             tool_starts: HashMap::new(),
@@ -188,14 +190,15 @@ fn handle_event(s: &mut TraceInner, event: &AgentEvent, trace_dir: &Path) {
 
             s.final_status = determine_status(&s.last_stop_reason, s.turns, s.max_turns);
 
-            write_trace_event(
-                s,
-                &json!({
-                    "ts": now.to_rfc3339(),
-                    "event": "agent_end",
-                    "status": s.final_status,
-                }),
-            );
+            let mut agent_end = json!({
+                "ts": now.to_rfc3339(),
+                "event": "agent_end",
+                "status": s.final_status,
+            });
+            if let Some(ref err) = s.error_message {
+                agent_end["error_message"] = json!(err);
+            }
+            write_trace_event(s, &agent_end);
         }
 
         AgentEvent::TurnStart => {
@@ -216,9 +219,12 @@ fn handle_event(s: &mut TraceInner, event: &AgentEvent, trace_dir: &Path) {
             s.total_output_tokens += output_tokens;
             s.total_cost += cost;
 
-            // Track last stop reason for final_status determination.
+            // Track last stop reason and error for final_status determination.
             if let AgentMessage::Llm(Message::Assistant(am)) = message {
                 s.last_stop_reason = Some(am.stop_reason.clone());
+                if am.error_message.is_some() {
+                    s.error_message = am.error_message.clone();
+                }
             }
 
             write_trace_event(
@@ -306,6 +312,7 @@ fn write_run_json(s: &TraceInner, trace_dir: &Path, config: &TraceConfig) {
         "end_time": s.end_time.map(|t| t.to_rfc3339()),
         "wall_clock_ms": s.wall_clock_ms,
         "final_status": s.final_status,
+        "error_message": s.error_message,
         "turns": s.turns,
         "total_input_tokens": s.total_input_tokens,
         "total_output_tokens": s.total_output_tokens,
