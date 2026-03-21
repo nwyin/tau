@@ -97,6 +97,37 @@ Data collected 2026-03-19 by reading each harness's source code.
 | Plan→build agent switch | -- | yes | -- | -- | -- | yes (/plan) | -- | yes |
 | Inter-agent messaging | -- | -- | -- | -- | -- | yes (send_input) | -- | -- |
 
+**tau's position: harness ≠ orchestrator.**
+
+The trend is to embed multi-agent orchestration into the harness itself
+(Claude Code agent teams, Codex spawn/wait/send, opencode batch). tau
+takes a deliberately different approach: the harness is a single-agent
+primitive, and multi-agent orchestration lives in a separate layer
+(Hive).
+
+Rationale:
+
+- **The orchestration problem isn't solved.** Every harness experiments
+  differently (subagent tools, YAML pipelines, batch parallel). Embedding
+  an unsettled abstraction into the foundation cements a bet. Keeping it
+  separate lets us swap orchestration strategies without touching the
+  agent loop.
+- **Clean separation pays off in practice.** The tau↔Hive integration is
+  ~1K LOC total (~800 in tau's serve mode, ~400 in Hive's backend
+  adapter). Orchestration concerns (process pools, message routing,
+  partial failure handling, lease management) stay in Hive. Agent
+  concerns (tools, context, prompts, streaming) stay in tau.
+- **Embedding leaks complexity.** A harness with native swarm support
+  must manage process pools, shared filesystem state, inter-agent
+  message routing, and partial failure recovery — all inside what should
+  be a single-agent loop.
+
+The one thing worth adding harness-native: **parallel tool execution**
+(run N tool calls concurrently within a single turn). This covers the
+80% case (3 greps in parallel, 5 file reads at once) without any
+orchestration complexity. The 20% case (multiple agents on different
+subtasks, communicating results) belongs in the orchestrator.
+
 ---
 
 ## Permission Model
