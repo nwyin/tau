@@ -5,14 +5,13 @@ use std::sync::Arc;
 
 use agent::stats::AgentStats;
 use agent::types::AgentEvent;
-use agent::{Agent, AgentOptions, AgentStateInit};
 use ai::types::AssistantMessageEvent;
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use clap::Parser;
 
-use coding_agent::cli::Cli;
+use coding_agent::agent_builder::{build_agent, AgentBuildConfig};
+use coding_agent::cli::{Cli, Command};
 use coding_agent::session::{SessionFile, SessionManager};
-use coding_agent::tools;
 use coding_agent::tools::tools_for_edit_mode;
 use coding_agent::trace::{sha256_prefix, TraceConfig, TraceSubscriber};
 
@@ -40,88 +39,41 @@ fn default_session_dir() -> PathBuf {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    // Capture flags before cli fields are moved
+    // Dispatch to serve mode if subcommand is present
+    if let Some(Command::Serve { cwd, model, tools }) = cli.command {
+        return coding_agent::serve::run_serve(cwd, model, tools).await;
+    }
+
+    // --- Interactive / one-shot mode (existing behavior) ---
+
     let print_stats = cli.stats;
     let stats_json_path = cli.stats_json.clone();
     let prompt_arg = cli.prompt.clone();
     let trace_output = cli.trace_output.clone();
     let task_id = cli.task_id.clone();
 
-    // Load config
-    let config = coding_agent::config::load_config();
+    let built = build_agent(AgentBuildConfig {
+        model_id: cli.model,
+        system_prompt: cli.system_prompt,
+        tools: cli.tools,
+        max_turns: None,
+    })
+    .await?;
 
-    // Resolve model: --model flag > TAU_MODEL env > config > default
-    let model_id = cli
-        .model
-        .or_else(|| std::env::var("TAU_MODEL").ok())
-        .unwrap_or(config.model);
-
-    let max_turns: Option<u32> = std::env::var("TAU_MAX_TURNS")
+    let agent = built.agent;
+    let config = built.config;
+    let model_id = built.model_id;
+    let model_provider = built.model_provider;
+    let system_prompt_hash = sha256_prefix(&built.system_prompt_text);
+    let max_turns = std::env::var("TAU_MAX_TURNS")
         .ok()
         .and_then(|v| v.parse().ok())
         .or(config.max_turns);
 
-    // Register providers and resolve model
-    ai::register_builtin_providers();
-
-    let model = ai::models::find_model(&model_id)
-        .ok_or_else(|| anyhow!("Model '{}' not found in registry", model_id))?;
-    let mut model = (*model).clone();
-
-    // Resolve API key / auth based on model provider.
-    // For OpenAI models: OPENAI_API_KEY env > Codex OAuth (~/.codex/auth.json)
-    // For Anthropic models: ANTHROPIC_API_KEY env (required)
-    let codex_auth: Option<Arc<ai::codex_auth::CodexAuth>> =
-        if model.provider == "anthropic" || std::env::var("OPENAI_API_KEY").is_ok() {
-            None // Don't need Codex OAuth
-        } else {
-            match ai::codex_auth::CodexAuth::load() {
-                Ok(auth) => {
-                    eprintln!("[auth] Using Codex OAuth (~/.codex/auth.json)");
-                    Some(Arc::new(auth))
-                }
-                Err(_) => None,
-            }
-        };
-
-    // When using Codex OAuth, redirect requests to the ChatGPT backend
-    // and inject the account_id header.
-    if let Some(ref auth) = codex_auth {
-        model.base_url = ai::codex_auth::CHATGPT_BACKEND_URL.to_string();
-        if let Some(id) = auth.account_id().await {
-            let headers = model
-                .headers
-                .get_or_insert_with(std::collections::HashMap::new);
-            headers.insert("ChatGPT-Account-ID".to_string(), id);
-        }
-    }
-
-    // Validate we have some auth method for the model
-    let explicit_api_key: Option<String> = match model.provider.as_str() {
-        "anthropic" => Some(std::env::var("ANTHROPIC_API_KEY").map_err(|_| {
-            anyhow!(
-                "ANTHROPIC_API_KEY not set (required for model '{}')",
-                model_id
-            )
-        })?),
-        _ => {
-            let env_key = std::env::var("OPENAI_API_KEY").ok();
-            if env_key.is_none() && codex_auth.is_none() {
-                return Err(anyhow!(
-                    "No API key for model '{}'. Set OPENAI_API_KEY or run `codex login`.",
-                    model_id
-                ));
-            }
-            env_key
-        }
-    };
-
     // --- Session setup ---
     let session_mgr = SessionManager::new(default_session_dir());
 
-    // Determine session mode and load any pre-existing messages
     let (initial_messages, session_file_opt) = if let Some(ref id) = cli.session {
-        // Resume specific session
         let messages = session_mgr.load(id).map_err(|e| {
             eprintln!("Error: {}", e);
             e
@@ -134,7 +86,6 @@ async fn main() -> Result<()> {
         );
         (messages, Some(sf))
     } else if cli.resume {
-        // Resume most recent session
         match session_mgr.latest()? {
             Some(id) => {
                 let messages = session_mgr.load(&id)?;
@@ -151,76 +102,10 @@ async fn main() -> Result<()> {
                 (vec![], None)
             }
         }
-    } else if cli.no_session {
-        // Explicitly ephemeral
-        (vec![], None)
     } else {
-        // Default: ephemeral (no persistence unless --session/--resume)
+        // no_session or default: ephemeral (no persistence)
         (vec![], None)
     };
-
-    // Build agent — resolve tool list: --tools flag > config tools > default for edit_mode
-    let tools = if let Some(ref tool_names) = cli.tools {
-        eprintln!("[tools] enabled: {}", tool_names.join(", "));
-        tools::tools_from_allowlist(tool_names, &config.edit_mode)
-    } else if let Some(ref tool_names) = config.tools {
-        eprintln!("[tools] enabled: {}", tool_names.join(", "));
-        tools::tools_from_allowlist(tool_names, &config.edit_mode)
-    } else {
-        tools::tools_for_edit_mode(&config.edit_mode)
-    };
-    let system_prompt = cli.system_prompt.unwrap_or_else(|| {
-        coding_agent::system_prompt::build_system_prompt(
-            &tools,
-            &std::env::current_dir()
-                .unwrap_or_else(|_| std::path::PathBuf::from("."))
-                .to_string_lossy(),
-        )
-    });
-    let system_prompt_hash = sha256_prefix(&system_prompt);
-    let model_provider = model.provider.clone();
-    let agent = Agent::new(AgentOptions {
-        initial_state: Some(AgentStateInit {
-            model: Some(model),
-            system_prompt: Some(system_prompt),
-            tools: Some(tools),
-            thinking_level: None,
-        }),
-        convert_to_llm: None,
-        transform_context: None,
-        stream_fn: None,
-        steering_mode: None,
-        follow_up_mode: None,
-        session_id: None,
-        get_api_key: Some({
-            let codex = codex_auth.clone();
-            let key = explicit_api_key.clone();
-            Arc::new(move |_provider: String| {
-                let codex = codex.clone();
-                let key = key.clone();
-                Box::pin(async move {
-                    // Prefer explicit API key
-                    if let Some(k) = key {
-                        return Some(k);
-                    }
-                    // Fall back to Codex OAuth
-                    if let Some(ref auth) = codex {
-                        match auth.access_token().await {
-                            Ok(token) => return Some(token),
-                            Err(e) => {
-                                eprintln!("Warning: Codex OAuth error: {}", e);
-                            }
-                        }
-                    }
-                    None
-                })
-            })
-        }),
-        thinking_budgets: None,
-        transport: None,
-        max_retry_delay_ms: None,
-        max_turns,
-    });
 
     // Set up stats collection if requested
     let (stats, _stats_unsub) = if print_stats || stats_json_path.is_some() {

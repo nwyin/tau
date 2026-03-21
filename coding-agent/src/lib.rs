@@ -1,5 +1,8 @@
+pub mod agent_builder;
 pub mod cli;
 pub mod config;
+pub mod rpc;
+pub mod serve;
 pub mod session;
 pub mod system_prompt;
 pub mod tools;

@@ -25,26 +25,27 @@ coding-agent   built-in tools, system prompt, REPL + headless CLI
 
 **Hashline mode** — tau also ships hash-anchored line editing (invented by [Can Boluk](https://github.com/can1357) for [oh-my-pi](https://github.com/anthropics/omp)). Each line gets a content-hash tag; edits reference tags instead of reproducing text.
 
-## Quick start
+## Installation
+
+### From source (recommended for development)
+
+Requires [Rust toolchain](https://rustup.rs/) (1.75+).
 
 ```bash
-# OpenAI
-OPENAI_API_KEY=sk-... cargo run -p coding-agent
+# Clone and install
+git clone https://github.com/tnguyen21/tau.git
+cd tau
+cargo install --path coding-agent
 
-# Anthropic
-ANTHROPIC_API_KEY=sk-... cargo run -p coding-agent -- --model claude-sonnet-4-6
-
-# Headless (for scripting/benchmarks)
-cargo run -p coding-agent -- --prompt "List all Rust files in this repo"
-
-# With stats
-cargo run -p coding-agent -- --stats --prompt "Explain this repo"
+# Or install directly from GitHub without cloning
+cargo install --git https://github.com/tnguyen21/tau.git coding-agent
 ```
 
-## Prebuilt Linux Binary
+This puts `coding-agent` on your `$PATH`.
 
-CI builds a static `x86_64-unknown-linux-musl` `coding-agent` binary. Download it directly
-in a container:
+### Prebuilt Linux binary
+
+CI builds a static `x86_64-unknown-linux-musl` binary on every tagged release. Download it directly:
 
 ```bash
 curl -fsSL \
@@ -53,9 +54,42 @@ curl -fsSL \
 chmod +x /usr/local/bin/coding-agent
 ```
 
-The Harbor and Terminal-Bench installers default to that `latest` release asset. Override
-with `TAU_BINARY_VERSION`, `TAU_BINARY_REPO`, or `TAU_BINARY_URL` when needed. The full tag
-and release flow is documented in [Release And Container Install](docs/releases.md).
+Override the release source with `TAU_BINARY_VERSION`, `TAU_BINARY_REPO`, or `TAU_BINARY_URL` when needed. See [Release and container install](docs/releases.md) for details.
+
+### Structural analysis tools (optional)
+
+For call-graph and CFG analysis, install the companion binaries:
+
+```bash
+cargo install --git https://github.com/tnguyen21/pycg-rs.git pycg
+cargo install --git https://github.com/tnguyen21/pycfg-rs.git pycfg
+```
+
+These are only needed if you pass structural tools (`cg_*`, `cfg_*`) via `--tools`.
+
+## Quick start
+
+```bash
+# Set a provider key
+export ANTHROPIC_API_KEY=sk-ant-...
+# or
+export OPENAI_API_KEY=sk-...
+
+# Interactive REPL
+coding-agent
+
+# Choose a model
+coding-agent --model claude-sonnet-4-6
+
+# Headless (for scripting / benchmarks)
+coding-agent --prompt "List all Rust files in this repo"
+
+# Restrict tool access
+coding-agent --tools file_read,file_write,file_edit,glob,grep,bash
+
+# With stats
+coding-agent --stats --prompt "Explain this repo"
+```
 
 ## Providers
 

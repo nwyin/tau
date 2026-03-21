@@ -1,9 +1,12 @@
 /// CLI argument definitions for coding-agent.
-use clap::Parser;
+use clap::{Parser, Subcommand};
 
 #[derive(Parser, Debug)]
 #[command(name = "coding-agent", about = "A coding assistant agent")]
 pub struct Cli {
+    #[command(subcommand)]
+    pub command: Option<Command>,
+
     /// Run non-interactively with this prompt, then exit. Use "-" to read from stdin.
     #[arg(short, long)]
     pub prompt: Option<String>,
@@ -47,4 +50,23 @@ pub struct Cli {
     /// Task ID for benchmark identification
     #[arg(long, value_name = "ID")]
     pub task_id: Option<String>,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum Command {
+    /// Start a JSON-RPC server on stdio (one session per process).
+    /// Used as a backend for orchestrators like Hive.
+    Serve {
+        /// Working directory for this session
+        #[arg(long, default_value = ".")]
+        cwd: String,
+
+        /// Model ID (overrides TAU_MODEL env and config)
+        #[arg(long)]
+        model: Option<String>,
+
+        /// Comma-separated list of tools to enable
+        #[arg(long, value_delimiter = ',')]
+        tools: Option<Vec<String>>,
+    },
 }
