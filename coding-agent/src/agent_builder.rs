@@ -86,6 +86,28 @@ pub async fn build_agent(build_config: AgentBuildConfig) -> Result<BuiltAgent> {
                 model_id
             )
         })?),
+        "openrouter" => Some(std::env::var("OPENROUTER_API_KEY").map_err(|_| {
+            anyhow!(
+                "OPENROUTER_API_KEY not set (required for model '{}')",
+                model_id
+            )
+        })?),
+        "groq" => Some(
+            std::env::var("GROQ_API_KEY")
+                .map_err(|_| anyhow!("GROQ_API_KEY not set (required for model '{}')", model_id))?,
+        ),
+        "together" => Some(std::env::var("TOGETHER_API_KEY").map_err(|_| {
+            anyhow!(
+                "TOGETHER_API_KEY not set (required for model '{}')",
+                model_id
+            )
+        })?),
+        "deepseek" => Some(std::env::var("DEEPSEEK_API_KEY").map_err(|_| {
+            anyhow!(
+                "DEEPSEEK_API_KEY not set (required for model '{}')",
+                model_id
+            )
+        })?),
         _ => {
             let env_key = std::env::var("OPENAI_API_KEY").ok();
             if env_key.is_none() && codex_auth.is_none() {

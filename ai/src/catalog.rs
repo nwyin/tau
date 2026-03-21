@@ -48,8 +48,11 @@ const OPENAI_URL: &str = "https://api.openai.com/v1";
 const KIMI_URL: &str = "https://api.kimi.com/coding";
 const AM: &str = known_api::ANTHROPIC_MESSAGES;
 const OR: &str = known_api::OPENAI_RESPONSES;
+const OC: &str = known_api::OPENAI_CHAT;
 const TI: &[&str] = &["text", "image"];
 const T: &[&str] = &["text"];
+
+const OPENROUTER_URL: &str = "https://openrouter.ai/api/v1";
 
 const AN: Prov = Prov {
     api: AM,
@@ -65,6 +68,11 @@ const KI: Prov = Prov {
     api: AM,
     provider: "kimi-coding",
     base_url: KIMI_URL,
+};
+const RO: Prov = Prov {
+    api: OC,
+    provider: "openrouter",
+    base_url: OPENROUTER_URL,
 };
 
 pub fn builtin_models() -> Vec<Model> {
@@ -1032,6 +1040,160 @@ pub fn builtin_models() -> Vec<Model> {
             Limits {
                 cost_in: 0.0,
                 cost_out: 0.0,
+                cost_cr: 0.0,
+                cost_cw: 0.0,
+                ctx: 262_144,
+                max_tok: 32_768,
+            },
+        ),
+        // -----------------------------------------------------------------------
+        // openrouter (via OpenAI Chat Completions protocol)
+        // Model IDs and pricing from https://openrouter.ai/api/v1/models
+        // -----------------------------------------------------------------------
+        m(
+            "google/gemini-3.1-pro-preview",
+            "Gemini 3.1 Pro",
+            RO,
+            true,
+            TI,
+            Limits {
+                cost_in: 2.00,
+                cost_out: 12.00,
+                cost_cr: 0.0,
+                cost_cw: 0.0,
+                ctx: 1_048_576,
+                max_tok: 65_536,
+            },
+        ),
+        m(
+            "google/gemini-3.1-flash-lite-preview",
+            "Gemini 3.1 Flash Lite",
+            RO,
+            false,
+            TI,
+            Limits {
+                cost_in: 0.25,
+                cost_out: 1.50,
+                cost_cr: 0.0,
+                cost_cw: 0.0,
+                ctx: 1_048_576,
+                max_tok: 65_536,
+            },
+        ),
+        m(
+            "google/gemini-3-flash-preview",
+            "Gemini 3 Flash",
+            RO,
+            false,
+            TI,
+            Limits {
+                cost_in: 0.50,
+                cost_out: 3.00,
+                cost_cr: 0.0,
+                cost_cw: 0.0,
+                ctx: 1_048_576,
+                max_tok: 65_536,
+            },
+        ),
+        m(
+            "mistralai/devstral-2512",
+            "Devstral 2",
+            RO,
+            false,
+            T,
+            Limits {
+                cost_in: 0.40,
+                cost_out: 2.00,
+                cost_cr: 0.0,
+                cost_cw: 0.0,
+                ctx: 262_144,
+                max_tok: 32_768,
+            },
+        ),
+        m(
+            "mistralai/mistral-small-2603",
+            "Mistral Small 4",
+            RO,
+            false,
+            T,
+            Limits {
+                cost_in: 0.15,
+                cost_out: 0.60,
+                cost_cr: 0.0,
+                cost_cw: 0.0,
+                ctx: 262_144,
+                max_tok: 32_768,
+            },
+        ),
+        m(
+            "x-ai/grok-4.20-beta",
+            "Grok 4.20",
+            RO,
+            false,
+            T,
+            Limits {
+                cost_in: 2.00,
+                cost_out: 6.00,
+                cost_cr: 0.0,
+                cost_cw: 0.0,
+                ctx: 2_000_000,
+                max_tok: 65_536,
+            },
+        ),
+        m(
+            "qwen/qwen3.5-397b-a17b",
+            "Qwen 3.5 397B",
+            RO,
+            true,
+            T,
+            Limits {
+                cost_in: 0.39,
+                cost_out: 2.34,
+                cost_cr: 0.0,
+                cost_cw: 0.0,
+                ctx: 262_144,
+                max_tok: 32_768,
+            },
+        ),
+        m(
+            "qwen/qwen3-max-thinking",
+            "Qwen 3 Max Thinking",
+            RO,
+            true,
+            T,
+            Limits {
+                cost_in: 0.78,
+                cost_out: 3.90,
+                cost_cr: 0.0,
+                cost_cw: 0.0,
+                ctx: 262_144,
+                max_tok: 32_768,
+            },
+        ),
+        m(
+            "nex-agi/deepseek-v3.1-nex-n1",
+            "DeepSeek V3.1 Nex N1",
+            RO,
+            false,
+            T,
+            Limits {
+                cost_in: 0.27,
+                cost_out: 1.00,
+                cost_cr: 0.0,
+                cost_cw: 0.0,
+                ctx: 131_072,
+                max_tok: 16_384,
+            },
+        ),
+        m(
+            "moonshotai/kimi-k2.5",
+            "Kimi K2.5",
+            RO,
+            false,
+            T,
+            Limits {
+                cost_in: 0.45,
+                cost_out: 2.20,
                 cost_cr: 0.0,
                 cost_cw: 0.0,
                 ctx: 262_144,

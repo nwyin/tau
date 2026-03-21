@@ -11,12 +11,14 @@ pub type Provider = String;
 
 pub mod known_api {
     pub const OPENAI_RESPONSES: &str = "openai-responses";
+    pub const OPENAI_CHAT: &str = "openai-chat";
     pub const ANTHROPIC_MESSAGES: &str = "anthropic-messages";
 }
 
 pub mod known_provider {
     pub const ANTHROPIC: &str = "anthropic";
     pub const OPENAI: &str = "openai";
+    pub const OPENROUTER: &str = "openrouter";
 }
 
 // ---------------------------------------------------------------------------
