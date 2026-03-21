@@ -2,7 +2,7 @@
 use clap::{Parser, Subcommand};
 
 #[derive(Parser, Debug)]
-#[command(name = "coding-agent", about = "A coding assistant agent")]
+#[command(name = "tau", about = "A coding assistant agent")]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Command>,

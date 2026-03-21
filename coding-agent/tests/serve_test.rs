@@ -18,7 +18,7 @@ struct ServeProcess {
 
 impl ServeProcess {
     fn spawn() -> Self {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_coding-agent"))
+        let mut child = Command::new(env!("CARGO_BIN_EXE_tau"))
             .args(["serve", "--cwd", "."])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
