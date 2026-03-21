@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1774074959871,
+  "lastUpdate": 1774075883392,
   "repoUrl": "https://github.com/nwyin/tau",
   "entries": {
     "tau benchmarks": [
@@ -1259,6 +1259,132 @@ window.BENCHMARK_DATA = {
             "name": "sse_parsing/events/1000",
             "value": 362816,
             "range": "± 1840",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "tommynguyen0512@gmail.com",
+            "name": "Tommy Bui Nguyen",
+            "username": "nwyin"
+          },
+          "committer": {
+            "email": "tommynguyen0512@gmail.com",
+            "name": "Tommy Bui Nguyen",
+            "username": "nwyin"
+          },
+          "distinct": true,
+          "id": "f43bc8d37ec3d2b14d2d4b28f53456c3aaea608f",
+          "message": "docs: add underexplored harness design dimensions to feature comparison",
+          "timestamp": "2026-03-21T14:46:27+08:00",
+          "tree_id": "71c283986e2f98c130d378ddbe87d8a4da4a5f14",
+          "url": "https://github.com/nwyin/tau/commit/f43bc8d37ec3d2b14d2d4b28f53456c3aaea608f"
+        },
+        "date": 1774075882830,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "agent_construction/new_agent",
+            "value": 2294,
+            "range": "± 16",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/10",
+            "value": 3844,
+            "range": "± 12",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/50",
+            "value": 13274,
+            "range": "± 61",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/100",
+            "value": 23746,
+            "range": "± 62",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/500",
+            "value": 113038,
+            "range": "± 700",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/10",
+            "value": 3655,
+            "range": "± 51",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/50",
+            "value": 18244,
+            "range": "± 534",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/100",
+            "value": 36185,
+            "range": "± 204",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/10",
+            "value": 12800,
+            "range": "± 221",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/50",
+            "value": 73218,
+            "range": "± 1220",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/100",
+            "value": 145418,
+            "range": "± 416",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/10",
+            "value": 17312,
+            "range": "± 51",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/50",
+            "value": 92645,
+            "range": "± 945",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/100",
+            "value": 182738,
+            "range": "± 909",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/10",
+            "value": 2872,
+            "range": "± 47",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/100",
+            "value": 38801,
+            "range": "± 240",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/1000",
+            "value": 359977,
+            "range": "± 970",
             "unit": "ns/iter"
           }
         ]
