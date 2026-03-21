@@ -27,7 +27,36 @@ impl AgentTool for HashFileEditTool {
     }
 
     fn description(&self) -> &str {
-        "Edit a file using hash-tagged line references from hash_file_read. Each edit has an op (replace, append, prepend), a pos NUM#HASH anchor, optional end NUM#HASH for range replace, and a lines array with replacement content."
+        concat!(
+            "Applies precise file edits using LINE#HASH tags from hash_file_read output.\n\n",
+            "WORKFLOW:\n",
+            "1. You MUST issue a hash_file_read call before editing if you have no tagged context.\n",
+            "2. Pick the smallest operation per change site.\n",
+            "3. Submit one hash_file_edit call per file with all operations.\n\n",
+            "OPERATIONS:\n",
+            "- path: the file to edit.\n",
+            "- edits[n].op: \"replace\", \"append\", or \"prepend\".\n",
+            "- edits[n].pos: the anchor line as \"NUM#HASH\". For replace: start of range. For prepend: insert before. For append: insert after. Omit for file boundaries.\n",
+            "- edits[n].end: range replace only — last line (inclusive). Omit for single-line replace.\n",
+            "- edits[n].lines: replacement content as array of strings. Use null or [] to delete lines.\n\n",
+            "RULES:\n",
+            "- Every tag MUST be copied exactly from a fresh hash_file_read result as NUM#HASH.\n",
+            "- Edits are applied bottom-up, so earlier tags stay valid even when later ops add/remove lines.\n",
+            "- lines entries MUST be literal file content — copy indentation exactly from the read output.\n",
+            "- You MUST re-read after each edit call before issuing another on the same file.\n\n",
+            "RECOVERY:\n",
+            "- Tag mismatch error: retry using fresh tags from a new hash_file_read.\n",
+            "- No-op (identical content): do NOT resubmit. Re-read and adjust.\n\n",
+            "EXAMPLE (single-line replace):\n",
+            "If hash_file_read shows: 23#VP:  const timeout = 5000;\n",
+            "To change the value: {edits: [{op: \"replace\", pos: \"23#VP\", lines: [\"  const timeout = 30000;\"]}]}\n\n",
+            "EXAMPLE (range replace):\n",
+            "To replace lines 10-12: {edits: [{op: \"replace\", pos: \"10#ZM\", end: \"12#KT\", lines: [\"  new line 1\", \"  new line 2\"]}]}\n\n",
+            "EXAMPLE (insert after):\n",
+            "To add a line after line 5: {edits: [{op: \"append\", pos: \"5#QR\", lines: [\"  new_line = True\"]}]}\n\n",
+            "EXAMPLE (delete line):\n",
+            "To delete line 8: {edits: [{op: \"replace\", pos: \"8#SN\", lines: []}]}"
+        )
     }
 
     fn parameters(&self) -> &Value {

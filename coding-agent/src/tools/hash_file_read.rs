@@ -18,7 +18,14 @@ impl AgentTool for HashFileReadTool {
     }
 
     fn description(&self) -> &str {
-        "Read file contents with hash-tagged line references. Output format: NUM#HASH:content. Use NUM#HASH tags with hash_file_edit to make edits."
+        concat!(
+            "Read file contents with hash-tagged line references.\n\n",
+            "Output format: each line is prefixed with LINE#HASH:content (e.g. \"23#VP:  const x = 1;\").\n",
+            "Use the NUM#HASH tags as anchors when calling hash_file_edit.\n\n",
+            "- Use offset and limit for large files.\n",
+            "- You MUST use hash_file_read instead of bash for ALL file reading (cat, head, tail are forbidden).\n",
+            "- Re-read a file after editing it — hash_file_edit rejects stale hashes."
+        )
     }
 
     fn parameters(&self) -> &Value {
