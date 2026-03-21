@@ -3,14 +3,14 @@ set -euo pipefail
 
 TAU_BINARY_REPO="${TAU_BINARY_REPO:-tnguyen21/tau}"
 TAU_BINARY_TARGET="${TAU_BINARY_TARGET:-x86_64-unknown-linux-musl}"
-TAU_BINARY_NAME="${TAU_BINARY_NAME:-coding-agent}"
+TAU_BINARY_NAME="${TAU_BINARY_NAME:-tau}"
 TAU_BINARY_VERSION="${TAU_BINARY_VERSION:-latest}"
 
-# Path 1: Binary mounted at /mnt/coding-agent (local dev)
-if [ -f /mnt/coding-agent ]; then
-    cp /mnt/coding-agent /usr/local/bin/coding-agent
-    chmod +x /usr/local/bin/coding-agent
-    echo 'coding-agent installed from mount'
+# Path 1: Binary mounted at /mnt/tau (local dev)
+if [ -f /mnt/tau ]; then
+    cp /mnt/tau /usr/local/bin/tau
+    chmod +x /usr/local/bin/tau
+    echo 'tau installed from mount'
     exit 0
 fi
 
@@ -25,19 +25,19 @@ fi
 
 if [ -n "${TAU_BINARY_URL:-}" ]; then
     if command -v curl >/dev/null 2>&1; then
-        curl -fsSL "$TAU_BINARY_URL" -o /usr/local/bin/coding-agent
+        curl -fsSL "$TAU_BINARY_URL" -o /usr/local/bin/tau
     elif command -v wget >/dev/null 2>&1; then
-        wget -qO /usr/local/bin/coding-agent "$TAU_BINARY_URL"
+        wget -qO /usr/local/bin/tau "$TAU_BINARY_URL"
     elif command -v python3 >/dev/null 2>&1; then
-        python3 -c "import urllib.request; urllib.request.urlretrieve('$TAU_BINARY_URL', '/usr/local/bin/coding-agent')"
+        python3 -c "import urllib.request; urllib.request.urlretrieve('$TAU_BINARY_URL', '/usr/local/bin/tau')"
     else
         echo 'ERROR: No download tool available (need curl, wget, or python3)'
         exit 1
     fi
-    chmod +x /usr/local/bin/coding-agent
-    echo 'coding-agent installed from URL'
+    chmod +x /usr/local/bin/tau
+    echo 'tau installed from URL'
     exit 0
 fi
 
-echo 'ERROR: failed to install coding-agent from mount or release URL'
+echo 'ERROR: failed to install tau from mount or release URL'
 exit 1

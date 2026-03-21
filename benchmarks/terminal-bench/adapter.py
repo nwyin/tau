@@ -1,7 +1,7 @@
 """
 Tau adapter for Terminal-Bench evaluation framework.
 
-Wires the tau `coding-agent` binary into Terminal-Bench's BaseAgent interface,
+Wires the tau binary into Terminal-Bench's BaseAgent interface,
 enabling tau to be evaluated against Terminal-Bench's curated Docker-based tasks.
 """
 
@@ -21,7 +21,7 @@ except ImportError as e:
 
 class TauAgent(BaseAgent):
     """
-    Terminal-Bench agent adapter for the tau coding-agent binary.
+    Terminal-Bench agent adapter for the tau binary.
 
     The binary is expected to be installed at `binary_path` inside the Docker
     container. Use install.sh to set that up before running evaluations.
@@ -36,7 +36,7 @@ class TauAgent(BaseAgent):
         self,
         model: str = "claude-sonnet-4-20250514",
         max_turns: int = 50,
-        binary_path: str = "/usr/local/bin/coding-agent",
+        binary_path: str = "/usr/local/bin/tau",
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -46,11 +46,11 @@ class TauAgent(BaseAgent):
 
     def perform_task(self, instruction: str, session: TmuxSession) -> AgentResult:
         """
-        Run coding-agent inside the Terminal-Bench tmux session.
+        Run tau inside the Terminal-Bench tmux session.
 
         Steps:
         1. Export config env vars into the session.
-        2. Run the coding-agent binary with the task instruction.
+        2. Run the tau binary with the task instruction.
         3. Poll until the process exits (up to 1 hour).
         4. Read the stats JSON written by the agent.
         5. Return token usage via AgentResult.
@@ -76,7 +76,7 @@ class TauAgent(BaseAgent):
         timeout = 3600  # 1 hour max
         start = time.time()
         while time.time() - start < timeout:
-            result = session._run_command("pgrep -f coding-agent")
+            result = session._run_command("pgrep -f tau")
             if result.strip() == "":
                 break
             time.sleep(10)

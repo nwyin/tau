@@ -12,12 +12,12 @@ from harbor.models.trial.paths import EnvironmentPaths
 
 
 _CODEX_AUTH_PATH = Path.home() / ".codex" / "auth.json"
-_BINARY_NAME = "coding-agent"
+_BINARY_NAME = "tau"
 _BINARY_DEST = f"/usr/local/bin/{_BINARY_NAME}"
 
 
 def _find_binary() -> Path | None:
-    """Locate the coding-agent Linux binary, checking common locations."""
+    """Locate the tau Linux binary, checking common locations."""
     candidates = [
         # Explicit env override
         os.environ.get("TAU_BINARY_PATH"),
@@ -45,7 +45,7 @@ class TauAgent(BaseInstalledAgent):
         return "tau"
 
     def version(self) -> str | None:
-        return None
+        return os.environ.get("TAU_VERSION")
 
     @property
     def _install_agent_template_path(self) -> Path:
@@ -84,7 +84,7 @@ class TauAgent(BaseInstalledAgent):
         max_turns = os.environ.get("TAU_MAX_TURNS", "200")
         env: dict[str, str] = {"TAU_MAX_TURNS": max_turns, "TAU_MODEL": model}
 
-        for key in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY"):
+        for key in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "OPENROUTER_API_KEY"):
             if key in os.environ:
                 env[key] = os.environ[key]
 
@@ -104,7 +104,7 @@ class TauAgent(BaseInstalledAgent):
             ExecInput(command=" && ".join(setup_parts), env=env),
             ExecInput(
                 command=(
-                    f"/usr/local/bin/coding-agent"
+                    f"{_BINARY_DEST}"
                     f" --prompt {shlex.quote(instruction)}"
                     f" --model {model}"
                     f" --stats-json {stats_path}"
