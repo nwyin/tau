@@ -1,6 +1,6 @@
 //! Built-in model catalog — ported from models.generated.ts
 //!
-//! Providers included: anthropic, openai, kimi-coding.
+//! Providers included: anthropic, openai, openrouter.
 
 use crate::types::{known_api, Model, ModelCost};
 
@@ -45,7 +45,6 @@ fn m(id: &str, name: &str, prov: Prov, reasoning: bool, input: &[&str], lim: Lim
 
 const ANTHROPIC_URL: &str = "https://api.anthropic.com";
 const OPENAI_URL: &str = "https://api.openai.com/v1";
-const KIMI_URL: &str = "https://api.kimi.com/coding";
 const AM: &str = known_api::ANTHROPIC_MESSAGES;
 const OR: &str = known_api::OPENAI_RESPONSES;
 const OC: &str = known_api::OPENAI_CHAT;
@@ -63,11 +62,6 @@ const OA: Prov = Prov {
     api: OR,
     provider: "openai",
     base_url: OPENAI_URL,
-};
-const KI: Prov = Prov {
-    api: AM,
-    provider: "kimi-coding",
-    base_url: KIMI_URL,
 };
 const RO: Prov = Prov {
     api: OC,
@@ -1011,39 +1005,6 @@ pub fn builtin_models() -> Vec<Model> {
                 cost_cw: 0.0,
                 ctx: 200_000,
                 max_tok: 100_000,
-            },
-        ),
-        // -----------------------------------------------------------------------
-        // kimi-coding
-        // -----------------------------------------------------------------------
-        m(
-            "k2p5",
-            "Kimi K2.5",
-            KI,
-            true,
-            TI,
-            Limits {
-                cost_in: 0.0,
-                cost_out: 0.0,
-                cost_cr: 0.0,
-                cost_cw: 0.0,
-                ctx: 262_144,
-                max_tok: 32_768,
-            },
-        ),
-        m(
-            "kimi-k2-thinking",
-            "Kimi K2 Thinking",
-            KI,
-            true,
-            T,
-            Limits {
-                cost_in: 0.0,
-                cost_out: 0.0,
-                cost_cr: 0.0,
-                cost_cw: 0.0,
-                ctx: 262_144,
-                max_tok: 32_768,
             },
         ),
         // -----------------------------------------------------------------------

@@ -1,6 +1,11 @@
 # Test Migration TODO
 
-Scope: `tau` intentionally targets only OpenAI, Anthropic, and Kimi. Missing tests for Google, Bedrock, GitHub Copilot, and other non-target providers are intentionally deferred.
+Scope: `tau` intentionally targets three protocol surfaces:
+- direct OpenAI Responses
+- direct Anthropic Messages
+- OpenAI-compatible Chat Completions endpoints such as OpenRouter
+
+There is no separate Kimi provider. Kimi-family models are expected to run through the OpenRouter/OpenAI-chat path.
 
 ## 1. Agent mock-stream coverage
 
@@ -16,11 +21,11 @@ Scope: `tau` intentionally targets only OpenAI, Anthropic, and Kimi. Missing tes
 - [x] Port abort coverage into `tau/agent/tests/e2e.rs`.
 - [x] Port state update / event coverage into `tau/agent/tests/e2e.rs`.
 - [x] Port multi-turn context retention coverage into `tau/agent/tests/e2e.rs`.
-- [x] Keep provider matrix limited to OpenAI / Anthropic / Kimi as `tau` support evolves.
+- [x] Keep provider matrix limited to direct OpenAI, direct Anthropic, and OpenAI-compatible chat surfaces as `tau` support evolves.
 - [x] Agent tool definitions wired through to LLM context in `stream_assistant_response()` (commit `48ba375`).
 - [x] OpenAI Responses provider implemented and registered (commit `cac395b`).
 - [x] Anthropic provider implemented (commit 776127d).
-- [ ] Kimi provider not yet implemented (TODO stub only).
+- [x] Drop the separate Kimi-provider plan; Kimi rides the OpenRouter/OpenAI-chat backend.
 
 ## 3. High-value AI regression ports
 
@@ -49,11 +54,11 @@ Pared from 33 `#[ignore]` tests to 8 (commit `22b00fe`):
 - 1 in `ai/tests/tool_call_id_normalization.rs` — live OpenAI ID format validation
 - 3 in `ai/tests/openai_responses_provider.rs` — provider integration smoke tests
 
-Deleted test files (all were live-only, no offline tests): `abort.rs`, `tokens.rs`, `total_tokens.rs`, `empty.rs`, `tool_call_without_result.rs`. Deleted 13 Anthropic/Kimi agent e2e stubs (no providers exist).
+Deleted test files (all were live-only, no offline tests): `abort.rs`, `tokens.rs`, `total_tokens.rs`, `empty.rs`, `tool_call_without_result.rs`. Deleted 13 provider-specific agent e2e stubs that were outside the maintained direct-provider surface.
 
 Fixture-based contract tests in `ai/tests/openai_responses_provider.rs` provide offline coverage for SSE parsing, message conversion, tool call ID normalization, reasoning effort, and cost calculation.
 
 ## 6. Deferred by design
 
-- [ ] Leave non-target-provider ports out unless `tau` expands beyond OpenAI / Anthropic / Kimi.
-- Kimi provider implementation deferred — TODO stub in `ai/src/providers/` (tracked in §2 above).
+- [ ] Leave non-target-provider ports out unless `tau` expands beyond direct OpenAI / Anthropic plus the generic OpenAI-compatible chat backend.
+- [ ] Add more integration coverage for the `openai-chat` backend as additional OpenRouter model families become important.

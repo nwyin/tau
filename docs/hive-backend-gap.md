@@ -1,70 +1,40 @@
 # Gap Analysis: tau as a Hive Backend
 
-What tau needs to implement the `HiveBackend` interface and serve as an
-orchestrator-driven coding agent.
+Current state and remaining gaps for tau as a Hive backend.
 
 ## Context
 
-Hive's `HiveBackend` (defined in `hive/src/hive/backends/base.py`) requires two
-capabilities:
+Hive's `HiveBackend` needs two broad capabilities:
 
-1. **Session management** — create, message, abort, delete, query status, get
-   messages, handle permissions.
-2. **Event streaming** — emit `session.status` events so the orchestrator can
-   detect idle/busy transitions without polling.
+1. **Session management** — create, message, abort, delete, query status, and inspect history.
+2. **Event streaming** — emit enough status information for the orchestrator to avoid blind polling.
 
-The existing backends (ClaudeWSBackend, CodexAppServerBackend) both spawn CLI
-processes and bridge their protocols into this interface. A tau backend would
-replace the CLI process with tau's own agent loop, running in-process or as a
-subprocess that Hive controls.
+This document used to assume tau had no backend surface at all. That is no longer true: `tau serve` now exists as a stdio JSON-RPC backend for a single session/process.
 
 ---
 
-## 1. Server / RPC layer (not started)
+## 1. Server / RPC layer (landed for the single-session case)
 
 **What Hive needs:** A way to create sessions, send messages, query status, and
 receive events — either over WebSocket (like ClaudeWSBackend), stdio JSON-RPC
 (like CodexAppServerBackend), or HTTP.
 
-**What tau has:** Nothing. tau is a library + CLI binary. There is no server,
-no RPC protocol, no WebSocket endpoint, no stdio JSON-RPC handler.
+**What tau has:** `tau serve` in [coding-agent/src/serve.rs](../coding-agent/src/serve.rs), plus JSON-RPC transport and handlers under [coding-agent/src/rpc](../coding-agent/src/rpc). One process hosts one session and speaks stdio JSON-RPC.
 
 **Work required:**
 
-Build a server mode for tau. Two viable approaches:
-
-- **WebSocket server** (like ClaudeWSBackend): tau listens on a port, Hive
-  connects and speaks a message protocol. Hive would spawn `tau --serve
-  ws://127.0.0.1:<port>/<session_id>` or tau could host its own multi-session
-  WS server.
-- **Stdio JSON-RPC** (like CodexAppServerBackend): tau reads JSON lines on
-  stdin, writes responses/notifications on stdout. Hive spawns `tau app-server
-  --listen stdio://` and drives it. This is simpler to implement and test.
-
-Recommendation: start with stdio JSON-RPC. It avoids port management, works
-naturally with process lifecycle, and matches the pattern Hive already uses for
-Codex. The protocol needs:
-
-- Requests: `session/create`, `session/send`, `session/status`,
-  `session/abort`, `session/delete`, `session/list`, `session/messages`
-- Notifications (tau → Hive): `session.status` (idle/busy), `token_usage`
-
-**Estimated scope:** New `tau-server` crate or `--serve` mode in coding-agent.
-~800-1200 lines for the transport + protocol layer.
+**Remaining work:** Validate that the current request/notification surface matches what Hive wants, document the protocol, and decide whether one-process-per-session is sufficient long-term.
 
 ---
 
-## 2. Multi-session support (not started)
+## 2. Multi-session support (still not started, but maybe unnecessary)
 
 **What Hive needs:** Run N concurrent agent sessions in one process (or spawn N
 processes). Each session has its own model, system prompt, tools, working
 directory, and message history. Sessions are identified by ID and independently
 controllable.
 
-**What tau has:** The `Agent` struct supports exactly one session at a time.
-`coding-agent/src/main.rs` creates a single `Agent`, runs it, and exits. There
-is no session registry, no multi-session management, no way to create a second
-agent in the same process.
+**What tau has:** one session per `tau serve` process. This is enough if Hive is happy to spawn one process per worktree/session.
 
 **Work required:**
 
@@ -79,13 +49,11 @@ agent in the same process.
 - **Concurrent execution**: Multiple `Agent::prompt()` calls must run
   concurrently via tokio tasks.
 
-Recommendation: for the first cut, use one process per session (Hive spawns
-`tau --serve-session <id> --cwd <worktree>`). This sidesteps per-tool cwd
-scoping entirely. Multi-session-per-process can come later.
+Recommendation remains the same: keep one process per session unless process overhead becomes a demonstrated problem.
 
 ---
 
-## 3. Session status detection (not started)
+## 3. Session status detection (partially landed)
 
 **What Hive needs:** Know whether a session is `idle` (waiting for input) or
 `busy` (processing). The backend must emit `session.status` events when
@@ -93,10 +61,7 @@ transitions happen, and support `get_session_status()` polling as a fallback.
 
 Status values: `idle`, `busy`, `error`, `not_found`.
 
-**What tau has:** The `Agent` struct has `is_streaming: bool` in its state, and
-emits `AgentStart`/`AgentEnd` events. But there is no externally-queryable
-status API, no status event emission in a format Hive can consume, and no
-mapping from agent lifecycle to idle/busy.
+**What tau has:** the serve path already tracks session status and wires agent lifecycle into the RPC layer. This area should be treated as integration validation, not greenfield work.
 
 **Work required:**
 
@@ -105,22 +70,18 @@ mapping from agent lifecycle to idle/busy.
   built.
 - Emit status change notifications proactively (not just on poll).
 
-**Estimated scope:** Small — ~100 lines, mostly wiring existing events to the
-protocol layer.
+**Remaining work:** verify Hive sees enough detail for busy/idle/error transitions without polling hacks.
 
 ---
 
-## 4. External message injection (partially supported)
+## 4. External message injection (partially landed)
 
 **What Hive needs:** `send_message_async(session_id, parts, model, system,
 directory)` — send a user message to an existing session. Fire-and-forget (the
 session processes it asynchronously). The first message also carries the system
 prompt.
 
-**What tau has:** `Agent::prompt(input)` and `Agent::follow_up(msg)`. These
-exist but are synchronous from the caller's perspective (`prompt()` blocks
-until the agent loop completes). There's no async "fire and forget" message
-injection from an external caller.
+**What tau has:** the serve path wraps agent execution behind JSON-RPC handlers, so external callers can inject messages without manually embedding tau as a library.
 
 **Work required:**
 
@@ -130,7 +91,7 @@ injection from an external caller.
 - Handle the system prompt: on first message, set `agent.set_system_prompt()`
   before calling `prompt()`.
 
-**Estimated scope:** ~150 lines.
+**Remaining work:** confirm that the exact send/abort/status semantics line up with Hive's expectations.
 
 ---
 
@@ -176,28 +137,20 @@ feature (~500+ lines) but not needed for initial integration.
 
 ---
 
-## 7. Per-session working directory scoping (not started)
+## 7. Per-session working directory scoping (handled by the current one-process model)
 
 **What Hive needs:** Each worker session operates in its own git worktree.
 Tools must read/write/execute relative to that directory, not the daemon's cwd.
 
-**What tau has:** All tools operate on the process's cwd. BashTool runs `sh -c`
-in the current directory. FileReadTool/FileWriteTool use absolute paths but
-don't enforce a root. There is no concept of a per-session working directory.
+**What tau has:** `tau serve --cwd <worktree>` changes the process cwd up front, which is adequate for one process per session.
 
 **Work required:**
 
-If using one-process-per-session: just `cd` to the worktree before starting.
-Trivial.
-
-If using multi-session-per-process:
+If tau ever grows multi-session-per-process, tool cwd scoping becomes real work:
 - BashTool: pass `cwd` to `Command::new().current_dir(session_cwd)`
 - FileReadTool/FileWriteTool/FileEditTool: resolve paths relative to session
   cwd, prevent path traversal outside the worktree
 - GlobTool/GrepTool: scope searches to session cwd
-
-**Estimated scope:** ~200 lines for the multi-session approach. Free for
-one-process-per-session.
 
 ---
 
@@ -206,8 +159,7 @@ one-process-per-session.
 **What Hive needs:** Different sessions can use different models. The
 orchestrator passes `model` when sending messages.
 
-**What tau has:** `Agent::set_model()` exists. The model can be changed at any
-time. The model catalog covers Anthropic, OpenAI, and Kimi models.
+**What tau has:** `Agent::set_model()` exists. The model can be changed at any time. The model catalog covers direct Anthropic/OpenAI plus OpenRouter-backed families.
 
 **Work required:** Wire the `model` parameter from the RPC `send_message` call
 to `agent.set_model()`. Minimal.
@@ -241,14 +193,13 @@ to `agent.set_model()`. Minimal.
 
 ---
 
-## 10. Process lifecycle integration (not started)
+## 10. Process lifecycle integration (partially landed)
 
 **What Hive needs:** The backend manages the tau process. Hive spawns it,
 monitors it, and kills it on cleanup. ClaudeWSBackend uses process groups
 (SIGTERM → SIGKILL). CodexAppServerBackend uses stdin/stdout lifecycle.
 
-**What tau has:** tau is a normal CLI binary. No daemon mode, no graceful
-shutdown protocol, no health check endpoint.
+**What tau has:** `tau serve` handles Ctrl-C/shutdown, drains the active agent task, and exits explicitly once stdin closes.
 
 **Work required:**
 
@@ -258,7 +209,7 @@ shutdown protocol, no health check endpoint.
 - Health: respond to health check queries (or just: if the process is alive and
   responding to RPC, it's healthy).
 
-**Estimated scope:** ~150 lines.
+**Remaining work:** standardize a readiness/initialize handshake if Hive needs one, and document process lifecycle assumptions.
 
 ---
 
@@ -266,39 +217,27 @@ shutdown protocol, no health check endpoint.
 
 | # | Feature | Effort | Needed for MVP |
 |---|---------|--------|----------------|
-| 1 | Server/RPC layer (stdio JSON-RPC) | Large | Yes |
-| 2 | Multi-session or one-process-per-session | Medium | Yes (one-per-process is simpler) |
-| 3 | Session status detection | Small | Yes |
-| 4 | External message injection | Small | Yes |
+| 1 | Validate and document current RPC layer | Medium | Yes |
+| 2 | Keep one-process-per-session unless proven insufficient | Small | Yes |
+| 3 | Confirm status/event semantics with Hive | Small | Yes |
+| 4 | Confirm message injection semantics with Hive | Small | Yes |
 | 5 | Token usage reporting | Small | Yes |
 | 6 | Permission system | None (MVP) | No |
-| 7 | Per-session cwd scoping | None (if 1-per-process) | Depends on approach |
+| 7 | Per-session cwd scoping beyond the current process model | Medium | No |
 | 8 | Model routing per session | Trivial | Yes |
 | 9 | Session lifecycle management | Medium | Yes |
-| 10 | Process lifecycle integration | Small | Yes |
+| 10 | Process lifecycle/handshake polish | Small | Yes |
 
 ### Recommended approach
 
-**Phase 1 — One process per session (simplest viable backend):**
+**Phase 1 — Treat current `tau serve` as the integration target:**
 
-Hive spawns `tau --headless --cwd <worktree> --model <model>` as a subprocess.
-Hive writes a prompt to tau's stdin. tau runs the agent loop and exits. Hive
-monitors the process: running = busy, exited = idle/done.
+Hive spawns `tau serve --cwd <worktree>` as a subprocess and drives JSON-RPC over stdio.
 
-This requires almost no tau changes — just reliable exit codes and maybe a
-result file protocol (like `.hive-result.jsonl`). The Hive-side backend adapter
-is ~300 lines of Python wrapping subprocess management.
+**Phase 2 — Close the remaining gaps:**
 
-Downside: no mid-session message injection, no status events, no abort (only
-SIGTERM). Equivalent to how Hive's Claude backend works at the most basic level.
-
-**Phase 2 — Stdio JSON-RPC server:**
-
-Add `tau serve` that speaks JSON-RPC over stdin/stdout. One long-lived process,
-multiple sessions. Full lifecycle control, status events, token reporting. This
-is the real integration that unlocks feature parity with ClaudeWSBackend.
+Status semantics, token usage notifications, lifecycle cleanup, and protocol docs.
 
 **Phase 3 — Production hardening:**
 
-Permission system, sandboxing, connection pooling, health monitoring, graceful
-degradation.
+Permission system, sandboxing, health monitoring, and only then multi-session-per-process if it materially helps.

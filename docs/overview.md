@@ -12,7 +12,7 @@ coding-agent   built-in tools (bash, file read/write) + REPL/CLI
 
 ## Current state
 
-- **ai**: OpenAI Responses and Anthropic Messages providers implemented. Kimi is a TODO stub. Model catalog covers ~65 models across three providers. Property-based tests (proptest) for SSE parser and type serde.
+- **ai**: OpenAI Responses, OpenAI-compatible Chat Completions, and Anthropic Messages providers implemented. Model catalog covers direct OpenAI/Anthropic plus OpenRouter families. Property-based tests (proptest) for SSE parser and type serde.
 - **agent**: Feature-complete port of pi-mono's agent loop. `stream_fn` injection for testing, tool wiring to LLM context, full event system. Performance instrumentation via `AgentStats` subscriber.
 - **coding-agent**: Four tools (BashTool, FileReadTool, FileWriteTool, FileEditTool), interactive REPL, headless `--prompt` mode, JSONL session persistence (`--session`/`--resume`).
 
@@ -51,11 +51,11 @@ Top-level `stream()`, `stream_simple()`, `complete()`, `complete_simple()` look 
 
 **Implemented:** Anthropic Messages (`ai/src/providers/anthropic.rs`). Native JSON streaming, thinking support (budget-based and adaptive), tool argument accumulation, stop reason mapping.
 
-**TODO stub:** Kimi.
+OpenRouter-backed model families such as Gemini, Qwen, Grok, DeepSeek, and Kimi all route through the same `openai-chat` backend rather than bespoke providers.
 
 ### Model registry + catalog (`models.rs`, `catalog.rs`)
 
-Two-level map: `provider → model_id → Arc<Model>`. Auto-populates from catalog on first access. Scoped to anthropic, openai, kimi-coding (~60 models).
+Two-level map: `provider → model_id → Arc<Model>`. Auto-populates from catalog on first access. Scoped to anthropic, openai, and openrouter-backed model families.
 
 ---
 
@@ -110,9 +110,9 @@ All implement `AgentTool` and are collected via `coding_agent::tools::all_tools(
 ### Usage
 
 ```
-OPENAI_API_KEY=sk-... cargo run -p coding-agent
 OPENAI_API_KEY=sk-... cargo run -p coding-agent -- --prompt "List all Rust files"
 ANTHROPIC_API_KEY=sk-... cargo run -p coding-agent -- --model claude-sonnet-4-6 --prompt "Explain this repo"
+OPENROUTER_API_KEY=sk-... cargo run -p coding-agent -- --model moonshotai/kimi-k2.5 --prompt "Explain this repo"
 ```
 
 ---
@@ -132,7 +132,7 @@ ANTHROPIC_API_KEY=sk-... cargo run -p coding-agent -- --model claude-sonnet-4-6 
 
 **Why not port all of pi-mono's coding-agent?** pi-mono's `packages/coding-agent` is ~120 source files — TUI, session branching, compaction, extensions, skills, themes, RPC, OAuth, and package management. tau needs tools that let an LLM interact with the filesystem and shell, a way to run it, and good enough quality to benchmark. Everything else is optional.
 
-**Why OpenAI and Anthropic first?** These two cover the models that matter most for benchmarking. OpenAI was implemented first (well-documented Responses API), Anthropic second (validates the provider abstraction with a meaningfully different wire format). Kimi is a TODO stub.
+**Why OpenAI and Anthropic first?** These two cover the models that matter most for benchmarking. OpenAI was implemented first (well-documented Responses API), Anthropic second (validates the provider abstraction with a meaningfully different wire format). Everything else rides the OpenAI-compatible chat backend where practical, including Kimi via OpenRouter.
 
 **Live API test policy.** Live provider tests require double opt-in: `OPENAI_API_KEY` + `RUN_LIVE_PROVIDER_TESTS=1`. Unit tests are fully offline and deterministic. Fixture-based contract tests validate provider wire formats without network calls. See `docs/test-migration-todo.md`.
 

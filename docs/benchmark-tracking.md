@@ -205,16 +205,15 @@ Output: `benchmarks/results/SUMMARY.md` — committed alongside results.
       # (handled by a separate post-benchmark job)
 ```
 
-## Harness Adapter Updates Needed
+## Harness Adapter Status
 
-Before this works end-to-end, the Harbor adapter needs minor fixes:
+The rename-followup adapter work is already done in-tree:
 
-1. **Binary name**: `install-tau.sh.j2` and `tau_agent.py` still reference
-   `coding-agent` — update to `tau`
-2. **OpenRouter key forwarding**: `create_run_agent_commands()` only forwards
-   `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` — add `OPENROUTER_API_KEY`
-3. **Version reporting**: `version()` returns `None` — should return the git tag
-   or binary version string
+1. `install-tau.sh.j2` and `tau_agent.py` now use the `tau` binary name.
+2. Harbor forwards `OPENROUTER_API_KEY` alongside the existing provider keys.
+3. The Harbor adapter reports version from `TAU_VERSION`.
+
+The remaining work is CI orchestration, task subset definition, result aggregation, and release tagging discipline.
 
 ## Comparison with Other Harnesses
 

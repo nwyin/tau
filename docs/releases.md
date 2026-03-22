@@ -1,6 +1,6 @@
 # Release And Container Install
 
-This document covers the Linux release artifact for `coding-agent` and how benchmark
+This document covers the Linux release artifact for `tau` and how benchmark
 containers install it without building tau locally.
 
 ## What CI Publishes
@@ -9,7 +9,7 @@ On tags matching `v*`, GitHub Actions runs the musl build in
 [`build-musl`](../.github/workflows/ci.yml) and publishes a statically linked release asset:
 
 ```text
-coding-agent-x86_64-unknown-linux-musl
+tau-x86_64-unknown-linux-musl
 ```
 
 The same job also uploads a GitHub Actions artifact with the same binary for CI inspection.
@@ -26,13 +26,13 @@ git push origin v0.1.0
 Once the workflow finishes, the binary is downloadable from:
 
 ```text
-https://github.com/tnguyen21/tau/releases/latest/download/coding-agent-x86_64-unknown-linux-musl
+https://github.com/tnguyen21/tau/releases/latest/download/tau-x86_64-unknown-linux-musl
 ```
 
 Or pinned to a specific version:
 
 ```text
-https://github.com/tnguyen21/tau/releases/download/v0.1.0/coding-agent-x86_64-unknown-linux-musl
+https://github.com/tnguyen21/tau/releases/download/v0.1.0/tau-x86_64-unknown-linux-musl
 ```
 
 ## Installing In A Container
@@ -60,26 +60,26 @@ export TAU_BINARY_REPO=owner/repo
 Override with an explicit URL:
 
 ```bash
-export TAU_BINARY_URL=https://example.com/coding-agent
+export TAU_BINARY_URL=https://example.com/tau
 ```
 
 Manual install looks like:
 
 ```bash
 curl -fsSL \
-  https://github.com/tnguyen21/tau/releases/latest/download/coding-agent-x86_64-unknown-linux-musl \
-  -o /usr/local/bin/coding-agent
-chmod +x /usr/local/bin/coding-agent
+  https://github.com/tnguyen21/tau/releases/latest/download/tau-x86_64-unknown-linux-musl \
+  -o /usr/local/bin/tau
+chmod +x /usr/local/bin/tau
 ```
 
 ## Harbor Notes
 
 The Harbor adapter:
-- uploads a locally built binary if `TAU_BINARY_PATH`, `target/release/coding-agent`, or
-  `target/x86_64-unknown-linux-musl/release/coding-agent` exists
+- uploads a locally built binary if `TAU_BINARY_PATH`, `target/release/tau`, or
+  `target/x86_64-unknown-linux-musl/release/tau` exists
 - otherwise falls back to the install script
-- forwards `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, and any `TAU_BINARY_*` variables into the
-  container environment
+- forwards `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`, and any `TAU_BINARY_*`
+  variables into the container environment
 
 That means the normal Harbor path is:
 

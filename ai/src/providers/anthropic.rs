@@ -40,10 +40,7 @@ impl AnthropicProvider {
                 return Ok(key.to_string());
             }
         }
-        let env_var = match model.provider.as_str() {
-            "kimi-coding" => "KIMI_API_KEY",
-            _ => "ANTHROPIC_API_KEY",
-        };
+        let env_var = "ANTHROPIC_API_KEY";
         std::env::var(env_var).map_err(|_| {
             anyhow::anyhow!(
                 "No API key for provider '{}'. Set {} or pass api_key.",

@@ -1,5 +1,4 @@
 pub mod anthropic;
-mod kimi;
 pub mod openai_chat;
 pub mod openai_chat_shared;
 pub mod openai_responses;

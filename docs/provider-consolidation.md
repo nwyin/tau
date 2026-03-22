@@ -32,7 +32,7 @@ ai/src/providers/
 ├── anthropic.rs               # Anthropic Messages API (945 lines)
 ├── openai_responses.rs        # OpenAI Responses API (517 lines)
 ├── openai_responses_shared.rs # Shared OpenAI logic (873 lines)
-└── kimi.rs                    # Stub (1 line)
+└── openai_chat_shared.rs      # Shared Chat Completions helpers
 ```
 
 The `ApiProvider` trait is clean:
@@ -269,8 +269,6 @@ In `coding-agent/src/agent_builder.rs`, add OpenRouter to the provider/key resol
 // Existing:
 // "openai" → OPENAI_API_KEY
 // "anthropic" → ANTHROPIC_API_KEY
-// "kimi-coding" → KIMI_API_KEY
-
 // New:
 "openrouter" => std::env::var("OPENROUTER_API_KEY").ok(),
 "groq" => std::env::var("GROQ_API_KEY").ok(),
@@ -344,7 +342,7 @@ This is purely additive. No existing behavior changes:
 3. **Register in `mod.rs`** — one line addition
 4. **Add catalog entries** — new models with `api: "openai-chat"`
 5. **Update agent_builder** — new provider → env var mappings
-6. **Delete `kimi.rs` stub** — Kimi models can go through OpenRouter or direct with `openai-chat`
+6. **Delete `kimi.rs` stub** — Kimi models go through OpenRouter/OpenAI-chat, not a bespoke provider
 
 Existing `openai-responses` and `anthropic-messages` models continue to work unchanged.
 Users pick their preferred path by model selection:
@@ -378,5 +376,4 @@ estimate reflects that simplicity.
   body. Add when users need to pin upstream providers.
 - **Strict schema mode**: Some providers support `strict: true` on tool parameters
   (forces exact JSON schema compliance). Add when we see argument parsing failures.
-- **Kimi direct**: Remove the `kimi.rs` stub. Kimi can use `openai-chat` with
-  `base_url: "https://api.kimi.com/coding"` and `KIMI_API_KEY`.
+- **Kimi routing**: Keep Kimi on the generic OpenRouter/OpenAI-chat path unless there is a strong reason to carry a dedicated direct endpoint.

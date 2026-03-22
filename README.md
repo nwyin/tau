@@ -41,7 +41,7 @@ cargo install --path coding-agent
 cargo install --git https://github.com/tnguyen21/tau.git coding-agent
 ```
 
-This puts `coding-agent` on your `$PATH`.
+This puts `tau` on your `$PATH`.
 
 ### Prebuilt Linux binary
 
@@ -49,9 +49,9 @@ CI builds a static `x86_64-unknown-linux-musl` binary on every tagged release. D
 
 ```bash
 curl -fsSL \
-  https://github.com/tnguyen21/tau/releases/latest/download/coding-agent-x86_64-unknown-linux-musl \
-  -o /usr/local/bin/coding-agent
-chmod +x /usr/local/bin/coding-agent
+  https://github.com/tnguyen21/tau/releases/latest/download/tau-x86_64-unknown-linux-musl \
+  -o /usr/local/bin/tau
+chmod +x /usr/local/bin/tau
 ```
 
 Override the release source with `TAU_BINARY_VERSION`, `TAU_BINARY_REPO`, or `TAU_BINARY_URL` when needed. See [Release and container install](docs/releases.md) for details.
@@ -76,24 +76,29 @@ export ANTHROPIC_API_KEY=sk-ant-...
 export OPENAI_API_KEY=sk-...
 
 # Interactive REPL
-coding-agent
+tau
 
 # Choose a model
-coding-agent --model claude-sonnet-4-6
+tau --model claude-sonnet-4-6
 
 # Headless (for scripting / benchmarks)
-coding-agent --prompt "List all Rust files in this repo"
+tau --prompt "List all Rust files in this repo"
 
 # Restrict tool access
-coding-agent --tools file_read,file_write,file_edit,glob,grep,bash
+tau --tools file_read,file_write,file_edit,glob,grep,bash
 
 # With stats
-coding-agent --stats --prompt "Explain this repo"
+tau --stats --prompt "Explain this repo"
 ```
 
 ## Providers
 
-OpenAI (Responses API) and Anthropic (Messages API) are implemented. Both support streaming, tool use, thinking/reasoning, and cost tracking.
+tau supports three backend surfaces:
+- OpenAI Responses API for direct OpenAI models
+- Anthropic Messages API for direct Anthropic models
+- OpenAI-compatible Chat Completions endpoints, including OpenRouter model families such as Gemini, Qwen, Grok, DeepSeek, and Kimi
+
+There is no separate Kimi provider in tau; Kimi models are accessed through OpenRouter/OpenAI-compatible chat routing.
 
 ## Testing
 
