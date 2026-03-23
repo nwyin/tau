@@ -264,39 +264,142 @@ Currently unused.
 
 Models in the catalog already have `context_window: u64` and `max_tokens: u64`.
 
-### Phase 1: mechanical compaction (no LLM calls)
+### Decision: mechanical compaction only (no LLM calls)
 
-- chars/4 token estimation
-- Budget: `model.context_window * 0.80 - max_tokens - system_prompt_estimate`
-- If messages fit -> pass through unchanged
-- If over budget:
-  1. Truncate large tool results (>50KB or >2000 lines) to head+tail with
-     `[truncated N lines]` marker
-  2. Re-check budget
-  3. If still over: drop oldest turns from the front, keeping:
-     - First user message (original task context)
-     - Last N turns (recent working context)
-  4. Observation masking on dropped turns: replace tool result content with
-     `[output from <tool_name> omitted]` but keep the tool call visible
+We implement only mechanical (verbatim) compaction: truncate tool outputs,
+mask old observations, drop old turns. No LLM summarization.
 
-- Estimated scope: ~300 lines in `agent` crate
+**Rationale**: with 1M context models available (Gemini) and 200K standard
+(Claude, GPT), mechanical compaction is sufficient for most coding sessions.
+LLM summarization adds latency (~5-15s), cost (a full model call), and
+hallucination risk (the summary can misrepresent what happened). Mechanical
+compaction is instant, deterministic, and lossless for recent context.
 
-### Phase 2: LLM-assisted compaction
+If we need LLM summarization later, the `transform_context` hook makes it
+easy to add without changing the mechanical layer.
 
-- Structured summarization prompt (goal/progress/decisions/next steps/files)
-- Uses the session's current model
-- `/compact` manual command
-- Auto-compact at configurable threshold (default 75%)
-- Summary prefixed with marker so model knows it's working from a summary
-- File tracking: cumulative read/modified file lists across compactions
+### Implementation
 
-### Phase 3: refinements
+- **Token estimation**: `chars / 4` (industry standard; codex, oh-my-pi,
+  pi-mono all use this). Safety margin goes in the budget, not the estimator.
+- **Budget**: `model.context_window * 0.75 - max_tokens - system_prompt_estimate`
+  (the 0.75 factor absorbs estimation error; see "alternatives not taken" below)
+- **Trigger**: before every LLM call, via `transform_context` hook
+- **If messages fit**: pass through unchanged (zero overhead)
+- **If over budget**, two tiers applied in order:
+  1. **Truncate large tool results** (>50KB or >2000 lines) to head+tail
+     with `[truncated N lines]` marker. Re-check budget.
+  2. **Drop old turns with observation masking**: walk backwards from newest,
+     accumulate tokens until we fill the keep-recent budget. Everything
+     older (except the first user message) gets masked: tool result content
+     replaced with `[output from <tool_name> omitted]`, but tool call names
+     and arguments stay visible. The model can see *what* was done without
+     the full output.
+- **Turn boundaries**: cuts happen at turn boundaries only (never mid-turn).
+  A "turn" is a user message + the assistant response + all tool results
+  from that response. This avoids orphaned tool results or half-finished
+  assistant messages.
+- **First user message**: always preserved (contains the original task).
+- **Overflow fallback**: if after masking, the remaining messages still
+  exceed budget (e.g. a single enormous tool result in a recent turn),
+  truncate the largest tool result in the kept range and retry. Last
+  resort: return what fits and let the API reject if needed (reactive
+  fallback, like codex's `remove_first_item()` loop).
 
-- Progressive stages (OpenDev-style: mask at 80%, prune at 85%, compact at 95%)
-- Per-tool truncation policies (bash output vs file read vs grep)
-- Post-hoc calibration: compare estimated tokens to actual API usage,
-  adjust estimator
-- Split turn handling for single turns exceeding budget
-- `/context` command to inspect what's using space
-- Background compaction thread with cooldown
-- Prompt cache awareness (don't evict cached prefixes)
+### Alternatives not taken
+
+#### Token estimation
+
+| Approach | Used by | Accuracy | Tradeoff |
+|----------|---------|----------|----------|
+| **chars/4** | codex, oh-my-pi, pi-mono | Good for prose, slightly underestimates code | Industry default; simple; we compensate with 0.75 budget factor |
+| chars/3 | pi_agent_rust | Conservative (overestimates ~33%) | Safer but wastes ~25% of context window. Bakes conservatism into the estimator, making budget math harder to reason about |
+| Word-based heuristic | opendev | Better for mixed code/prose | ~50 lines of code for marginal accuracy gain. Splits on whitespace, counts punctuation, applies 0.75x word→token ratio |
+| Real tokenizer (tiktoken) | aider | Most accurate | Python-only, ~10-100ms for large contexts, model-specific (cl100k_base doesn't match Claude's tokenizer). Rust tiktoken bindings exist but add a dependency for a heuristic we can approximate |
+| Post-hoc calibration | none (surprisingly) | Could be most accurate | Every API response includes `usage.input_tokens` — ground truth for free. No harness actually calibrates their estimator against this. Worth exploring later but not for v1 |
+| Hybrid: API usage + chars/4 delta | none | Near-perfect for history, heuristic only for delta | Use `usage.input_tokens` from last API response as ground truth for everything up to that point; only estimate new messages (tool results, user input) with chars/4. Error bounded to delta (~1-2K tokens) not full history. Could tighten budget factor to 0.85-0.90 (10-15% more usable context). See "future work" for details |
+
+**Why chars/4 with a budget margin**: the estimation error is ~20-30% for
+code-heavy content. Rather than baking conservatism into the estimator
+(chars/3), we use a 75% budget factor. This is equivalent in safety but
+keeps the estimator honest — when we read "25K tokens estimated" we know
+it's a best-guess, not a padded number. If we later add calibration, we
+tighten the budget factor rather than changing the estimator. The hybrid
+API-usage approach is promising but untested — start simple, feel it out,
+then tighten.
+
+#### Compaction strategy
+
+| Approach | Used by | Tradeoff |
+|----------|---------|----------|
+| **Mechanical only** | tau (this design) | Zero cost, zero latency, zero hallucination. Loses more information than a summary, but code-on-disk is ground truth — model can re-read files |
+| Single-threshold LLM summary | oh-my-pi, pi-mono, codex | Better information preservation but costs a full model call (5-15s, ~5K tokens). Summary can hallucinate progress or decisions |
+| Progressive stages | opendev (6 stages, 70-99%) | Most graceful degradation. Cheap operations first (mask at 80%, prune at 85%), LLM only at 99%. More complex (~500 lines). Worth revisiting if mechanical proves insufficient |
+| Background compaction | pi_agent_rust (dedicated thread, 60s cooldown) | Non-blocking but adds concurrency. Agent keeps working while summary generates, swap messages atomically on completion. Overkill for mechanical compaction which is instant |
+
+**Why mechanical only**: with 200K-1M context windows, most coding sessions
+never hit the limit. When they do, the information lost by dropping old
+tool outputs is recoverable — the model can re-read files, re-run commands.
+LLM summarization is the right tool for multi-hour sessions with dozens of
+context switches, but that's a Phase 2 concern.
+
+#### Eviction policy
+
+| Approach | Used by | Tradeoff |
+|----------|---------|----------|
+| **Observation masking** | tau (this design), opendev | Keep tool call visible, replace output with placeholder. Model retains narrative of what happened. Costs a few tokens per masked call but preserves intent |
+| Full drop | codex, pi-mono | Remove old messages entirely. More aggressive space reclamation but model loses the thread of what was attempted. Can lead to repeated work |
+| Sliding window (message count) | opendev (500+ msgs: keep last 50) | Simple but message sizes vary wildly (3-word user message vs 50KB tool output). Token-based budget is strictly better |
+
+**Why masking over dropping**: JetBrains research (2025) found observation
+masking achieves 98% task accuracy at 3300+ tokens/sec with zero
+hallucination risk. The model knowing "I ran grep and got results" is
+significantly more useful than a gap in the conversation. The token cost
+of keeping masked entries is negligible.
+
+#### Turn boundary handling
+
+| Approach | Used by | Tradeoff |
+|----------|---------|----------|
+| **Turn-boundary cuts only** | tau (this design) | Simple, no orphaned messages. May waste up to one turn's worth of budget if the boundary doesn't align perfectly |
+| Mid-turn split with dual summaries | oh-my-pi, pi-mono | Recovers more context from partial turns. Requires generating two summaries (history + turn-prefix) and merging them. Only makes sense with LLM summarization |
+| Message-level granularity | codex (`remove_first_item`) | Maximum space efficiency but can orphan tool results from their calls. Codex handles this with retry loops |
+
+**Why turn boundaries**: mid-turn splitting only makes sense when you have
+LLM summarization to explain the partial turn. With mechanical compaction,
+a cleanly masked complete turn is better than a truncated half-turn that
+confuses the model. The budget waste is bounded by the size of one turn.
+
+### Future work (not planned, noted for reference)
+
+- **LLM-assisted compaction**: structured summary (goal/progress/decisions/
+  next steps/files), `/compact` command, auto-trigger at configurable
+  threshold. Would use the session's current model.
+- **Progressive stages**: OpenDev-style multi-threshold (warn → mask → prune →
+  compact). Only worth the complexity if mechanical proves insufficient.
+- **Hybrid API-usage estimation**: after each LLM call, record
+  `usage.input_tokens` as ground truth for the full conversation up to that
+  point. For the delta since then (tool results, new user message), estimate
+  with chars/4. Predicted next input = `last_input_tokens + last_output_tokens
+  + chars/4(delta)`. The heuristic error is bounded to the delta (~1-5K tokens)
+  rather than the full history (potentially 100K+). This would let us tighten
+  the budget factor from 0.75 to ~0.85-0.90, giving the model 10-15% more
+  usable context. The data is already available (`AssistantMessage.usage`);
+  implementation is ~30 lines in the transform_context callback. No harness
+  does this yet. First-turn fallback: pure chars/4 (no prior usage data).
+- **Post-hoc calibration**: compare chars/4 estimates to actual
+  `usage.input_tokens` from API responses. Adjust budget factor dynamically.
+  Simpler than hybrid (just adjust a ratio) but less precise (applies a
+  global correction rather than using per-call ground truth).
+- **Per-tool truncation policies**: different limits for bash output (noisy,
+  safe to truncate aggressively) vs file reads (structured, truncate
+  carefully) vs grep (line-oriented, cap at N results).
+- **File tracking across compactions**: maintain cumulative read/modified
+  file lists that survive masking (opendev, oh-my-pi, pi_agent_rust all
+  do this). Inject into context so the model knows what files are relevant.
+- **Prompt cache awareness**: don't evict messages that are part of a cached
+  prefix (Anthropic, OpenAI both support prompt caching). Evicting cached
+  content is doubly wasteful — you lose the cache AND the context.
+- **`/context` command**: inspect current token usage breakdown by message type.
+- **Background compaction**: pi_agent_rust-style dedicated thread with
+  cooldown. Only relevant for LLM summarization (mechanical is instant).
