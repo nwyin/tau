@@ -142,6 +142,7 @@ pub async fn build_agent(build_config: AgentBuildConfig) -> Result<BuiltAgent> {
     });
 
     let model_provider = model.provider.clone();
+    let model_for_compact = model.clone();
     let agent = Agent::new(AgentOptions {
         initial_state: Some(AgentStateInit {
             model: Some(model),
@@ -150,7 +151,10 @@ pub async fn build_agent(build_config: AgentBuildConfig) -> Result<BuiltAgent> {
             thinking_level: None,
         }),
         convert_to_llm: None,
-        transform_context: None,
+        transform_context: Some(Arc::new(move |messages, _cancel| {
+            let model = model_for_compact.clone();
+            Box::pin(async move { agent::context::compact_messages(messages, &model) })
+        })),
         stream_fn: None,
         steering_mode: None,
         follow_up_mode: None,
