@@ -1,7 +1,7 @@
-/// Tests for the web_fetch tool (all offline — no live HTTP calls).
-use coding_agent::tools::web_fetch::{strip_html, truncate_output, WebFetchTool};
 use agent::types::AgentTool;
 use ai::types::UserBlock;
+/// Tests for the web_fetch tool (all offline — no live HTTP calls).
+use coding_agent::tools::web_fetch::{strip_html, truncate_output, WebFetchTool};
 use serde_json::json;
 
 // INV-3: Tool metadata is correct.
@@ -141,15 +141,23 @@ fn truncate_output_respects_line_limit() {
         "truncated output must be near 2000 lines, got {}",
         line_count
     );
-    assert!(result.contains("truncated"), "must contain truncation marker");
+    assert!(
+        result.contains("truncated"),
+        "must contain truncation marker"
+    );
 }
 
 #[test]
 fn truncate_output_respects_byte_limit() {
     // 3000 lines * ~20 bytes = ~60KB > 50KB
-    let big: String = (0..3000).map(|i| format!("abcdefghijklmnop {}\n", i)).collect();
+    let big: String = (0..3000)
+        .map(|i| format!("abcdefghijklmnop {}\n", i))
+        .collect();
     let result = truncate_output(big);
-    assert!(result.contains("truncated"), "must contain truncation marker");
+    assert!(
+        result.contains("truncated"),
+        "must contain truncation marker"
+    );
 }
 
 #[test]

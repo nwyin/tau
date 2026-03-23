@@ -63,7 +63,10 @@ impl AgentTool for WebFetchTool {
             if !url.starts_with("http://") && !url.starts_with("https://") {
                 return Ok(AgentToolResult {
                     content: vec![UserBlock::Text {
-                        text: format!("Invalid URL: must start with http:// or https://. Got: {}", url),
+                        text: format!(
+                            "Invalid URL: must start with http:// or https://. Got: {}",
+                            url
+                        ),
                     }],
                     details: None,
                 });
@@ -317,7 +320,11 @@ pub fn truncate_output(text: String) -> String {
     // Show first half and last half, with truncation marker
     let half = MAX_OUTPUT_LINES / 2;
     let head = &lines[..half.min(lines.len())];
-    let tail_start = if lines.len() > half { lines.len() - half } else { 0 };
+    let tail_start = if lines.len() > half {
+        lines.len() - half
+    } else {
+        0
+    };
     let tail = &lines[tail_start..];
 
     let omitted = total_lines.saturating_sub(head.len() + tail.len());
