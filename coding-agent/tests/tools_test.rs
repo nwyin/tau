@@ -437,7 +437,7 @@ async fn test_file_edit_whitespace_exact_match() {
 
     let tool = FileEditTool::default();
 
-    // Using spaces instead of tab should NOT match
+    // Spaces instead of tab: fuzzy cascade (trim_both) recovers the match
     let result_spaces: AgentToolResult = tool
         .execute(
             "id18a".into(),
@@ -449,9 +449,11 @@ async fn test_file_edit_whitespace_exact_match() {
         .unwrap();
     let out_spaces = text_content(&result_spaces);
     assert!(
-        out_spaces.contains("not found"),
-        "spaces should not match tab, got: {out_spaces}"
+        out_spaces.contains("matched via trim_both"),
+        "spaces-vs-tab should fuzzy match via trim_both, got: {out_spaces}"
     );
+    // Reset file for the next sub-test
+    std::fs::write(&path, "fn foo() {\n\treturn 1;\n}\n").unwrap();
 
     // Using the exact tab should match
     let result_tab: AgentToolResult = tool
@@ -471,5 +473,142 @@ async fn test_file_edit_whitespace_exact_match() {
     assert_eq!(
         std::fs::read_to_string(&path).unwrap(),
         "fn foo() {\n\treturn 42;\n}\n"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Fuzzy matching cascade tests
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_fuzzy_trailing_whitespace_recovery() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("trail.txt");
+    // File has no trailing spaces
+    std::fs::write(&path, "hello world\ngoodbye\n").unwrap();
+
+    let tool = FileEditTool::default();
+    // old_string has trailing spaces on the first line
+    let result: AgentToolResult = tool
+        .execute(
+            "fz1".into(),
+            json!({"path": path.to_str().unwrap(), "old_string": "hello world   \ngoodbye", "new_string": "hi\nbye"}),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+    let out = text_content(&result);
+    assert!(
+        out.contains("matched via trim_end"),
+        "trailing ws should match via trim_end, got: {out}"
+    );
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "hi\nbye\n");
+}
+
+#[tokio::test]
+async fn test_fuzzy_unicode_recovery() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("unicode.txt");
+    // File has ASCII quotes
+    std::fs::write(&path, "let msg = \"hello\";\n").unwrap();
+
+    let tool = FileEditTool::default();
+    // old_string has smart quotes (common when model copies from training data)
+    let result: AgentToolResult = tool
+        .execute(
+            "fz2".into(),
+            json!({"path": path.to_str().unwrap(), "old_string": "let msg = \u{201c}hello\u{201d};", "new_string": "let msg = \"world\";"}),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+    let out = text_content(&result);
+    assert!(
+        out.contains("matched via unicode"),
+        "smart quotes should match via unicode, got: {out}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&path).unwrap(),
+        "let msg = \"world\";\n"
+    );
+}
+
+#[tokio::test]
+async fn test_fuzzy_ambiguous_rejected() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("ambig.txt");
+    // Two identical blocks differing only by indentation
+    std::fs::write(&path, "  foo()\n    foo()\n").unwrap();
+
+    let tool = FileEditTool::default();
+    // After trim_both, "foo()" appears twice — should be rejected
+    let result: AgentToolResult = tool
+        .execute(
+            "fz3".into(),
+            json!({"path": path.to_str().unwrap(), "old_string": "      foo()", "new_string": "bar()"}),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+    let out = text_content(&result);
+    assert!(
+        out.contains("not found"),
+        "ambiguous fuzzy match should be rejected, got: {out}"
+    );
+}
+
+#[tokio::test]
+async fn test_exact_match_preferred_over_fuzzy() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("exact.txt");
+    std::fs::write(&path, "  hello world\n").unwrap();
+
+    let tool = FileEditTool::default();
+    // Exact match exists — should use exact, not fuzzy
+    let result: AgentToolResult = tool
+        .execute(
+            "fz4".into(),
+            json!({"path": path.to_str().unwrap(), "old_string": "  hello world", "new_string": "  goodbye world"}),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+    let out = text_content(&result);
+    assert!(
+        out.contains("Replaced 1 occurrence") && !out.contains("matched via"),
+        "exact match should not mention fuzzy strategy, got: {out}"
+    );
+}
+
+#[tokio::test]
+async fn test_fuzzy_indent_shift_recovery() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("indent.txt");
+    // File has 2-space indent
+    std::fs::write(&path, "fn main() {\n  let x = 1;\n  let y = 2;\n}\n").unwrap();
+
+    let tool = FileEditTool::default();
+    // old_string has 4-space indent
+    let result: AgentToolResult = tool
+        .execute(
+            "fz5".into(),
+            json!({"path": path.to_str().unwrap(), "old_string": "    let x = 1;\n    let y = 2;", "new_string": "  let x = 10;\n  let y = 20;"}),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+    let out = text_content(&result);
+    assert!(
+        out.contains("matched via trim_both"),
+        "indent shift should match via trim_both, got: {out}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&path).unwrap(),
+        "fn main() {\n  let x = 10;\n  let y = 20;\n}\n"
     );
 }
