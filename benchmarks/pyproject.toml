@@ -1,0 +1,13 @@
+[project]
+name = "tau-benchmarks"
+version = "0.1.0"
+description = "Microbenchmarks for tau harness engineering"
+requires-python = ">=3.12"
+dependencies = []
+
+[project.optional-dependencies]
+harbor = ["harbor>=0.1.0"]
+terminal-bench = ["terminal-bench>=0.1.0"]
+
+[tool.ruff]
+line-length = 144

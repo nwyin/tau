@@ -25,3 +25,7 @@ __pycache__/
 # Benchmark results (may contain API keys or secrets)
 benchmarks/*/results/
 benchmarks/harbor/jobs/
+
+# Benchmark generated/derived data
+benchmarks/fuzzy-match/corpus/*.json
+benchmarks/.venv/
