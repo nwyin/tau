@@ -23,7 +23,12 @@ async fn test_missing_api_key_returns_helpful_error() {
 
     let tool = WebSearchTool;
     let result = tool
-        .execute("id1".into(), json!({"query": "rust programming"}), None, None)
+        .execute(
+            "id1".into(),
+            json!({"query": "rust programming"}),
+            None,
+            None,
+        )
         .await
         .unwrap();
 
@@ -109,7 +114,9 @@ fn test_truncate_output_by_bytes() {
 fn test_truncate_output_by_lines() {
     use coding_agent::tools::web_search::truncate_output;
 
-    let text = (0..100).map(|i| format!("line {}\n", i)).collect::<String>();
+    let text = (0..100)
+        .map(|i| format!("line {}\n", i))
+        .collect::<String>();
     let result = truncate_output(&text, 1_000_000, 10);
     let line_count = result.lines().count();
     // Should be 10 content lines + 1 truncation notice line

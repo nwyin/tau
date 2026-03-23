@@ -48,7 +48,8 @@ impl AgentTool for WebSearchTool {
                 _ => {
                     return Ok(AgentToolResult {
                         content: vec![UserBlock::Text {
-                            text: "EXA_API_KEY not set. Get an API key at https://exa.ai".to_string(),
+                            text: "EXA_API_KEY not set. Get an API key at https://exa.ai"
+                                .to_string(),
                         }],
                         details: None,
                     });
@@ -60,10 +61,7 @@ impl AgentTool for WebSearchTool {
                 .ok_or_else(|| anyhow::anyhow!("missing 'query' parameter"))?
                 .to_string();
 
-            let num_results = params["num_results"]
-                .as_u64()
-                .unwrap_or(5)
-                .min(10) as usize;
+            let num_results = params["num_results"].as_u64().unwrap_or(5).min(10) as usize;
 
             let client = reqwest::Client::builder()
                 .timeout(std::time::Duration::from_secs(25))
@@ -154,7 +152,11 @@ impl AgentTool for WebSearchTool {
                 let title = result["title"].as_str().unwrap_or("(no title)");
                 let url = result["url"].as_str().unwrap_or("(no url)");
                 let text = result["text"].as_str().unwrap_or("");
-                let text_snippet = if text.len() > 2000 { &text[..2000] } else { text };
+                let text_snippet = if text.len() > 2000 {
+                    &text[..2000]
+                } else {
+                    text
+                };
 
                 if i > 0 {
                     output.push_str("\n---\n\n");
@@ -203,8 +205,15 @@ pub fn truncate_output(text: &str, max_bytes: usize, max_lines: usize) -> String
     // Also check line count in the byte-truncated slice
     let line_count = truncated.lines().count();
     if line_count > max_lines {
-        let line_truncated: String = truncated.lines().take(max_lines).collect::<Vec<_>>().join("\n");
-        return format!("{}\n[output truncated at {} lines]", line_truncated, max_lines);
+        let line_truncated: String = truncated
+            .lines()
+            .take(max_lines)
+            .collect::<Vec<_>>()
+            .join("\n");
+        return format!(
+            "{}\n[output truncated at {} lines]",
+            line_truncated, max_lines
+        );
     }
 
     format!("{}\n[output truncated at {} bytes]", truncated, max_bytes)
