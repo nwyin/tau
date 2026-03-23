@@ -604,17 +604,12 @@ fn normalize_trim_both(text: &str) -> String {
 fn normalize_unicode(text: &str) -> String {
     let trimmed = normalize_trim_end(text);
     trimmed
-        .replace('\u{2018}', "'")
-        .replace('\u{2019}', "'")
-        .replace('\u{201c}', "\"")
-        .replace('\u{201d}', "\"")
+        .replace(['\u{2018}', '\u{2019}'], "'")
+        .replace(['\u{201c}', '\u{201d}'], "\"")
         .replace('\u{2013}', "-")
         .replace('\u{2014}', "--")
         .replace('\u{2026}', "...")
-        .replace('\u{00a0}', " ")
-        .replace('\u{2002}', " ")
-        .replace('\u{2003}', " ")
-        .replace('\u{2009}', " ")
+        .replace(['\u{00a0}', '\u{2002}', '\u{2003}', '\u{2009}'], " ")
 }
 
 /// Result of a successful fuzzy match.
@@ -633,8 +628,10 @@ struct FuzzyMatch {
 /// pass. Each pass normalizes both content and old_string symmetrically, finds
 /// the match position in normalized space, then maps it back to the original
 /// content by line index.
+type NormPass = (&'static str, fn(&str) -> String);
+
 fn fuzzy_find_unique(content: &str, old_string: &str) -> Option<FuzzyMatch> {
-    let passes: &[(&'static str, fn(&str) -> String)] = &[
+    let passes: &[NormPass] = &[
         ("trim_end", normalize_trim_end),
         ("trim_both", normalize_trim_both),
         ("unicode", normalize_unicode),

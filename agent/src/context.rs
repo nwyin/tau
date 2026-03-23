@@ -55,8 +55,13 @@ fn chars_for_content_block(block: &ContentBlock) -> usize {
         ContentBlock::Text { text, .. } => text.len(),
         ContentBlock::Thinking { thinking, .. } => thinking.len(),
         ContentBlock::Image { .. } => IMAGE_TOKEN_ESTIMATE * CHARS_PER_TOKEN,
-        ContentBlock::ToolCall { name, arguments, .. } => {
-            name.len() + serde_json::to_string(arguments).map(|s| s.len()).unwrap_or(0)
+        ContentBlock::ToolCall {
+            name, arguments, ..
+        } => {
+            name.len()
+                + serde_json::to_string(arguments)
+                    .map(|s| s.len())
+                    .unwrap_or(0)
         }
     }
 }
@@ -141,7 +146,10 @@ fn maybe_truncate_text(text: &str) -> String {
     let tail_start = lines.len().saturating_sub(tail_count);
     let tail = lines[tail_start..].join("\n");
 
-    format!("{}\n\n[... truncated {} lines ...]\n\n{}", head, omitted, tail)
+    format!(
+        "{}\n\n[... truncated {} lines ...]\n\n{}",
+        head, omitted, tail
+    )
 }
 
 /// Apply tier-1 truncation in-place across all ToolResult messages.
@@ -168,7 +176,11 @@ fn truncate_tool_outputs(messages: &mut [AgentMessage]) {
 /// - ToolResult content replaced with "[output from <name> omitted]".
 /// - Assistant text/thinking cleared; ToolCall blocks kept (show intent).
 /// - Custom messages kept verbatim (invisible to the LLM).
-fn mask_old_turns(messages: Vec<AgentMessage>, turns: &[Turn], keep_from: usize) -> Vec<AgentMessage> {
+fn mask_old_turns(
+    messages: Vec<AgentMessage>,
+    turns: &[Turn],
+    keep_from: usize,
+) -> Vec<AgentMessage> {
     let mut result = Vec::with_capacity(messages.len());
     let mut first_user_kept = false;
 
@@ -240,7 +252,10 @@ fn truncate_text_aggressive(text: &str) -> String {
     let tail_start = lines.len().saturating_sub(tail_count);
     let tail = lines[tail_start..].join("\n");
 
-    format!("{}\n\n[... truncated {} lines ...]\n\n{}", head, omitted, tail)
+    format!(
+        "{}\n\n[... truncated {} lines ...]\n\n{}",
+        head, omitted, tail
+    )
 }
 
 /// Iteratively find and aggressively truncate the largest remaining tool result
@@ -315,7 +330,10 @@ pub fn compact_messages(messages: Vec<AgentMessage>, model: &Model) -> Vec<Agent
     let after_t1 = estimate_tokens(&messages);
 
     if after_t1 <= budget {
-        eprintln!("[compact] {} -> {} tokens (tool output truncation)", before_tokens, after_t1);
+        eprintln!(
+            "[compact] {} -> {} tokens (tool output truncation)",
+            before_tokens, after_t1
+        );
         return messages;
     }
 
@@ -349,7 +367,10 @@ pub fn compact_messages(messages: Vec<AgentMessage>, model: &Model) -> Vec<Agent
     let after_t2 = estimate_tokens(&messages);
 
     if after_t2 <= budget {
-        eprintln!("[compact] {} -> {} tokens ({} turns masked)", before_tokens, after_t2, turns_masked);
+        eprintln!(
+            "[compact] {} -> {} tokens ({} turns masked)",
+            before_tokens, after_t2, turns_masked
+        );
         return messages;
     }
 
