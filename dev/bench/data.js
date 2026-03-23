@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1774247082015,
+  "lastUpdate": 1774247178306,
   "repoUrl": "https://github.com/nwyin/tau",
   "entries": {
     "tau benchmarks": [
@@ -2519,6 +2519,132 @@ window.BENCHMARK_DATA = {
             "name": "sse_parsing/events/1000",
             "value": 363458,
             "range": "± 1284",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "tommynguyen0512@gmail.com",
+            "name": "Tommy Bui Nguyen",
+            "username": "nwyin"
+          },
+          "committer": {
+            "email": "tommynguyen0512@gmail.com",
+            "name": "Tommy Bui Nguyen",
+            "username": "nwyin"
+          },
+          "distinct": true,
+          "id": "84bcf01af5e70cede56bc7a9fb98e675696423c7",
+          "message": "remove fuzzy-e2e benchmark\n\nRedundant with edit-bench which already measures end-to-end edit success.\nThe offline fuzzy-match benchmark proved the strategy; no need for a\nseparate $60-100 model-in-loop benchmark. 8 benchmarks -> 7, total\nestimated cost drops from $85-150 to $43-68.",
+          "timestamp": "2026-03-23T14:21:09+08:00",
+          "tree_id": "9be1280a7376873ba5535ac46ceea517cfc3c586",
+          "url": "https://github.com/nwyin/tau/commit/84bcf01af5e70cede56bc7a9fb98e675696423c7"
+        },
+        "date": 1774247177409,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "agent_construction/new_agent",
+            "value": 2192,
+            "range": "± 4",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/10",
+            "value": 3766,
+            "range": "± 33",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/50",
+            "value": 13096,
+            "range": "± 167",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/100",
+            "value": 21407,
+            "range": "± 107",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/500",
+            "value": 95909,
+            "range": "± 428",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/10",
+            "value": 3414,
+            "range": "± 14",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/50",
+            "value": 17134,
+            "range": "± 215",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/100",
+            "value": 34039,
+            "range": "± 204",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/10",
+            "value": 12871,
+            "range": "± 91",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/50",
+            "value": 73356,
+            "range": "± 351",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/100",
+            "value": 148616,
+            "range": "± 8622",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/10",
+            "value": 16865,
+            "range": "± 48",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/50",
+            "value": 91724,
+            "range": "± 396",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/100",
+            "value": 181857,
+            "range": "± 9941",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/10",
+            "value": 2969,
+            "range": "± 19",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/100",
+            "value": 38531,
+            "range": "± 131",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/1000",
+            "value": 361607,
+            "range": "± 2764",
             "unit": "ns/iter"
           }
         ]
