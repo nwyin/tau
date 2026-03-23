@@ -309,6 +309,7 @@ dependencies = [
  "clap",
  "globset",
  "ignore",
+ "reqwest",
  "serde",
  "serde_json",
  "sha2",
