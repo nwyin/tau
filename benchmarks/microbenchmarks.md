@@ -12,13 +12,12 @@ conventions. Each benchmark has a detailed `SPEC.md` in its directory.
 | # | Benchmark | Dir | Phase | Type | Cost | Fixtures | Key question |
 |---|-----------|-----|-------|------|------|----------|-------------|
 | 1 | Fuzzy match | [fuzzy-match/](fuzzy-match/) | 1 | offline | $0 | synthetic | Which strategies recover near-miss edits safely? |
-| 2 | Fuzzy edit e2e | [fuzzy-e2e/](fuzzy-e2e/) | 4 | online | $60-100 | **mined** | Does fuzzy improve end-to-end task completion? |
-| 3 | Post-edit diagnostics | [post-edit-diagnostics/](post-edit-diagnostics/) | 2 | online | $2-5 | hand-crafted + **mined** | Compiler check vs prompt-only vs full LSP? |
-| 4 | Compaction recall | [compaction-recall/](compaction-recall/) | 3 | online | $10-25 | synthetic | Which compaction strategy preserves facts best? |
-| 5 | Compaction efficiency | [compaction-efficiency/](compaction-efficiency/) | 3 | online | $8-12 | hand-crafted + **mined** | Where's the compression ratio knee? |
-| 6 | Parallel file ops | [parallel-ops/](parallel-ops/) | 2 | online | $2-3 | synthetic | Does parallel tool execution save enough time? |
-| 7 | Sub-agent decomposition | [subagent-decomposition/](subagent-decomposition/) | 4 | online | ~$18 | synthetic | Single-agent vs sub-agents vs Hive? |
-| 8 | Todo/plan tracking | [todo-tracking/](todo-tracking/) | 3 | online | $5-15 | hand-crafted | Mandatory plan injection vs optional tool? |
+| 2 | Post-edit diagnostics | [post-edit-diagnostics/](post-edit-diagnostics/) | 2 | online | $2-5 | hand-crafted + **mined** | Compiler check vs prompt-only vs full LSP? |
+| 3 | Compaction recall | [compaction-recall/](compaction-recall/) | 3 | online | $10-25 | synthetic | Which compaction strategy preserves facts best? |
+| 4 | Compaction efficiency | [compaction-efficiency/](compaction-efficiency/) | 3 | online | $8-12 | hand-crafted + **mined** | Where's the compression ratio knee? |
+| 5 | Parallel file ops | [parallel-ops/](parallel-ops/) | 2 | online | $2-3 | synthetic | Does parallel tool execution save enough time? |
+| 6 | Sub-agent decomposition | [subagent-decomposition/](subagent-decomposition/) | 4 | online | ~$18 | synthetic | Single-agent vs sub-agents vs Hive? |
+| 7 | Todo/plan tracking | [todo-tracking/](todo-tracking/) | 3 | online | $5-15 | hand-crafted | Mandatory plan injection vs optional tool? |
 
 Shared infrastructure: [shared/](shared/) — TauSession, BenchConfig, TaskResult,
 Reporter, ResultStore, commit miner. Ported from [edit-bench](~/projects/edit-bench/).
@@ -48,9 +47,9 @@ Real commits from real projects. `shared/miner.py` walks git history, filters
 by commit type, and extracts (input, expected, prompt) fixture directories.
 
 ```bash
-# Mine single-file edit tasks (for fuzzy-e2e)
+# Mine single-file edit tasks (for compaction-efficiency)
 uv run python -m shared.miner edit ~/projects/hive ~/projects/fastapi \
-    -o ../fuzzy-e2e/fixtures/mined/ --lang python --max-tasks 20
+    -o ../compaction-efficiency/fixtures/mined/ --lang python --max-tasks 20
 
 # Mine multi-file refactoring tasks (for post-edit-diagnostics)
 uv run python -m shared.miner refactor ~/projects/hive \
@@ -58,7 +57,7 @@ uv run python -m shared.miner refactor ~/projects/hive \
 ```
 
 Two mining strategies:
-- **edit**: single/few-file changes, <100 LOC diff → fuzzy-e2e, compaction-efficiency
+- **edit**: single/few-file changes, <100 LOC diff → compaction-efficiency
 - **refactor**: multi-file type/signature propagation, 2-8 files → post-edit-diagnostics
 
 Good repos to mine from: hive (492 commits), irradiate (223 commits),
@@ -90,12 +89,11 @@ Requires building compaction and todo tracking in tau first.
 4. Compaction recall + efficiency curve
 5. Todo multi-step completion benchmark
 
-### Phase 4: Full model-in-loop ($60-100, 2-3 days)
+### Phase 4: Full model-in-loop (~$18, 2-3 days)
 
 Expensive, run last. Depends on Phase 1-3 narrowing the design space.
 
-6. Fuzzy edit e2e — adapts edit-bench runner
-7. Sub-agent decomposition — multi-agent coordination
+6. Sub-agent decomposition — multi-agent coordination
 
 ### Cost summary
 
@@ -104,5 +102,5 @@ Expensive, run last. Depends on Phase 1-3 narrowing the design space.
 | Phase 1 | $0 | 1 day |
 | Phase 2 | $5-10 | 1-2 days |
 | Phase 3 | $20-40 | 3-5 days |
-| Phase 4 | $60-100 | 2-3 days |
-| **Total** | **$85-150** | **~2 weeks** |
+| Phase 4 | ~$18 | 2-3 days |
+| **Total** | **$43-68** | **~2 weeks** |
