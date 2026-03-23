@@ -1,0 +1,11 @@
+{
+  "task_type": "rename-module",
+  "complexity": "medium",
+  "extract_target": "formatting.py",
+  "extract_module": "formatting",
+  "expected_functions": ["format_date", "format_currency", "truncate_text"],
+  "caller_files": ["src/app.py", "src/report.py"],
+  "test_file": "test_formatting.py",
+  "error_turn": 4,
+  "description": "Rename a module and update all imports"
+}

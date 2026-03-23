@@ -28,4 +28,5 @@ benchmarks/harbor/jobs/
 
 # Benchmark generated/derived data
 benchmarks/fuzzy-match/corpus/*.json
+benchmarks/fuzzy-false-positive/corpus/*.json
 benchmarks/.venv/

@@ -1,0 +1,11 @@
+{
+  "task_type": "split-config",
+  "complexity": "medium",
+  "extract_target": "config.py",
+  "extract_module": "config",
+  "expected_functions": ["load_config"],
+  "caller_files": ["src/config.py"],
+  "test_file": "test_config.py",
+  "error_turn": 4,
+  "description": "Split a monolithic config into per-environment files"
+}

@@ -1,0 +1,1 @@
+There is a typo in `calculator.py`. The variable `reuslt` on line 15 should be `result`. Fix it.

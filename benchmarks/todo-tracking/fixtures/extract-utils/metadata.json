@@ -1,0 +1,11 @@
+{
+  "task_type": "extract-utils",
+  "complexity": "medium",
+  "extract_target": "utils.py",
+  "extract_module": "utils",
+  "expected_functions": ["format_response", "validate_id", "parse_query"],
+  "caller_files": ["src/handlers.py"],
+  "test_file": "test_utils.py",
+  "error_turn": 4,
+  "description": "Extract common functions from handlers into utils.py"
+}

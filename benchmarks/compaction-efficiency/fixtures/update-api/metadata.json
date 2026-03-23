@@ -1,0 +1,6 @@
+{
+  "complexity": "medium",
+  "description": "Change a function signature and update callers across 3 files",
+  "language": "python",
+  "expected_changes": { "files_modified": 3, "lines_changed": 12 }
+}

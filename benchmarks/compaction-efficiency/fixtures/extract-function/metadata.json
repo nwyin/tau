@@ -1,0 +1,6 @@
+{
+  "complexity": "medium",
+  "description": "Extract repeated validation logic into a helper function",
+  "language": "python",
+  "expected_changes": { "files_modified": 1, "lines_changed": 15 }
+}

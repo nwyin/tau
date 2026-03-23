@@ -1,0 +1,6 @@
+{
+  "complexity": "simple",
+  "description": "Fix a misspelled variable name",
+  "language": "python",
+  "expected_changes": { "files_modified": 1, "lines_changed": 2 }
+}

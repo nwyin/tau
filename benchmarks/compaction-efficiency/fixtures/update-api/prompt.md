@@ -1,0 +1,1 @@
+The `get_user` function in `src/db.py` currently returns `dict | None`. Change its signature to accept an optional `fields` parameter (`fields: list[str] | None = None`) that filters which keys are included in the returned dict. Update the callers in `src/api.py` and `tests/test_db.py` to pass `fields=["id", "name"]` where `get_user` is called.
