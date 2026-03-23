@@ -47,6 +47,21 @@ Data collected 2026-03-19 by reading each harness's source code.
 
 **Tool count (built-in)**: tau 6 | kimi-cli 17 (default agent) | pi-mono 7 | oh-my-pi ~25 | pi_agent_rust 8 | codex ~16 | crush ~16 | opencode ~15
 
+### Tool name mapping
+
+Actual tool names used by each harness (matters for training data transfer):
+
+| Tool | tau | kimi-cli | pi-mono | oh-my-pi | crush | codex | opencode |
+|------|:---:|:--------:|:-------:|:--------:|:-----:|:-----:|:-------:|
+| bash/shell | bash | Shell | bash | bash | bash | shell | bash |
+| file read | file_read | ReadFile | read | read | view | read_file | read |
+| file edit | file_edit | StrReplaceFile | edit | edit | edit | apply_patch | edit *or* apply_patch |
+| file write | file_write | WriteFile | write | write | write | (via apply_patch) | write |
+| grep | grep | Grep | grep | grep | grep | grep_files | grep |
+| glob/find | glob | Glob | find | find | glob | list_dir | glob |
+
+Every harness converges on the same six core tools: shell execution, file read, file edit, file write, content search, and file search. The divergence is in what else gets added on top, and in tool naming — which affects whether models can transfer training from one harness to another.
+
 ---
 
 ## Edit Strategy
@@ -62,6 +77,20 @@ Data collected 2026-03-19 by reading each harness's source code.
 | LSP format-on-write | -- | -- | -- | yes | -- | -- | -- | -- |
 | LSP diagnostics-on-edit | -- | -- | -- | yes | -- | -- | yes | yes |
 | Ghost snapshot (per-turn git commit) | -- | -- | -- | -- | -- | yes | -- | -- |
+
+### Edit strategy analysis
+
+The most interesting divergence across harnesses. Same model, different edit format, wildly different scores.
+
+**Exact string match** (tau, kimi-cli, pi-mono, crush, opencode for Claude): `{old_string, new_string}`. Simple for the model to understand. Fails when `old_string` appears multiple times or when the model hallucinates whitespace. pi-mono mitigates with fuzzy matching. kimi-cli adds batched replacement (list of exact replacements in one call). Low token cost per edit, high failure rate on large or repetitive files.
+
+**Unified diff / patch** (codex, opencode for GPT): More expressive — multi-hunk edits in one call. Models frequently produce malformed patches (wrong line numbers, missing context). opencode uses a custom patch DSL with function signatures as context anchors instead of line numbers, plus multi-file operations (add, delete, move) in one call. Higher expressiveness, higher fragility.
+
+**Hash-anchored lines** (oh-my-pi, tau): Every line tagged with a short content hash anchor. The model references lines by position+hash, which the tool validates. Eliminates ambiguity (no string matching), but requires re-read after every edit (hashes change). +8% avg across 16 models, 10x improvement for weak models.
+
+**AST-aware edit** (oh-my-pi only): `ast_grep` and `ast_edit` tools operate on syntax tree patterns. Structural matching eliminates whitespace sensitivity entirely. Most precise mechanism, but only works for languages with ast-grep support.
+
+**Model-aware switching** (opencode): Dynamically swaps tools based on which model is running. GPT gets `apply_patch`; Claude gets `edit` + `write`. The most pragmatic acknowledgment that different models have different tool-use strengths. Makes cross-model benchmarking harder since the tool surface isn't constant.
 
 ---
 
@@ -487,3 +516,20 @@ Based on the table above, here are the features that appear across 4+ harnesses 
 - **Three-crate layered architecture** — Clean separation of LLM primitives, agent loop, and coding harness. Most harnesses are monolithic.
 - **Property-based testing** — Only tau and pi_agent_rust have proptest coverage.
 - **Minimal footprint** — Easier to fork, hack, and understand than any other harness.
+
+### tau's design philosophy
+
+1. **Minimize the model's decision surface.** Fewer tools = fewer wrong choices = more predictable behavior. The model should spend tokens on the *task*, not on deciding *which tool to use*.
+2. **Bash is the escape hatch.** Anything not worth a dedicated tool goes through bash. The threshold for adding a tool: it must be measurably better than the bash equivalent across benchmarks.
+3. **Delegation lives outside the agent.** Sub-agents, planning, and coordination are handled by the hive orchestrator, not by giving the model tools to manage its own complexity.
+4. **Edit strategy as a variable, not a constant.** Both exact-match and hashline editing as switchable modes. The bet is that having both in one harness enables direct A/B comparison — and that better edit reliability matters more than more tool variety.
+5. **Benchmarking decides.** The toolset should grow based on measured impact, not feature parity with other harnesses.
+
+### What to consider adding next
+
+Based on convergence across harnesses and likely benchmark impact:
+
+- **Implicit LSP diagnostics** — opencode's approach of wiring LSP feedback into the edit tool result (not as a separate tool). The model gets type error feedback for free, without tool-choice overhead.
+- **Multiedit / batched replace** — kimi-cli, crush, and opencode all reduce round trips. Worth testing whether a batched exact-replace tool helps before jumping to patch mode.
+- **Model-aware tool filtering** — opencode's dynamic tool composition. If tau supports multiple models with different edit strengths, conditional tool selection could help. Adds complexity.
+- **Plan mode** — kimi-cli's version is stronger than a todo tool: read-only exploration plus explicit approval before writing. Worth studying for a safe "research first" mode.

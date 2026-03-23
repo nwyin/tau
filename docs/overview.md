@@ -14,7 +14,7 @@ coding-agent   built-in tools (bash, file read/write) + REPL/CLI
 
 - **ai**: OpenAI Responses, OpenAI-compatible Chat Completions, and Anthropic Messages providers implemented. Model catalog covers direct OpenAI/Anthropic plus OpenRouter families. Property-based tests (proptest) for SSE parser and type serde.
 - **agent**: Feature-complete port of pi-mono's agent loop. `stream_fn` injection for testing, tool wiring to LLM context, full event system. Performance instrumentation via `AgentStats` subscriber.
-- **coding-agent**: Four tools (BashTool, FileReadTool, FileWriteTool, FileEditTool), interactive REPL, headless `--prompt` mode, JSONL session persistence (`--session`/`--resume`).
+- **coding-agent**: Six tools (BashTool, FileReadTool, FileWriteTool, FileEditTool, GrepTool, GlobTool), interactive REPL, headless `--prompt` mode, JSONL session persistence (`--session`/`--resume`). FileReadTool and FileEditTool are mode-aware — a single `file_read`/`file_edit` tool name with behavior controlled by `edit_mode` config (replace or hashline).
 
 ---
 
@@ -94,11 +94,13 @@ Wraps the loop with state management:
 ### Tools
 
 - **BashTool** — runs shell commands via `sh -c`. Timeout support, cancellation, output truncation (2000 lines / 30KB), exit code reporting.
-- **FileReadTool** — reads text files with offset/limit. Line numbering, binary detection, truncation with continuation hints.
+- **FileReadTool** — reads text files with offset/limit. Mode-aware: replace mode uses `{num}\t{line}` format, hashline mode uses hash-anchored lines.
 - **FileWriteTool** — writes files, creates parent dirs.
-- **FileEditTool** — exact-match string replacement (`old_string` → `new_string`). Requires exactly 1 match. Reports helpful context on miss.
+- **FileEditTool** — mode-aware. Replace mode: exact-match string replacement (`old_string` → `new_string`). Hashline mode: hash-anchored positional edits (`{op, pos, end, lines}`).
+- **GrepTool** — searches file contents by regex pattern.
+- **GlobTool** — searches for files by name pattern.
 
-All implement `AgentTool` and are collected via `coding_agent::tools::all_tools()`.
+All implement `AgentTool` and are collected via `coding_agent::tools::tools_for_edit_mode()`.
 
 ### CLI modes
 

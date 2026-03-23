@@ -93,9 +93,86 @@ These don't need an API key and can run in CI.
 # Capability eval with a specific model
 OPENAI_API_KEY=sk-... ./benchmarks/flask-books/run.sh --model gpt-5.4-nano
 
-# Same eval, different model (once Anthropic provider lands)
+# Same eval, different model
 ANTHROPIC_API_KEY=sk-... ./benchmarks/flask-books/run.sh --model claude-haiku-4-5
 
 # System perf (no API key needed, once criterion benches exist)
 cargo bench
 ```
+
+---
+
+## Release-gated tracking
+
+Track tau's quality over time with a model x harness-version matrix:
+
+```
+                    v0.1.0    v0.2.0    v0.3.0    codex     claude-code
+gpt-5.4-mini          —        62%       68%       71%         —
+claude-sonnet-4.6      —        71%       75%        —         82%
+gemini-3.1-pro         —        58%        —         —          —
+devstral-2512          —        45%       52%        —          —
+```
+
+Three axes: across releases (did harness changes improve scores?), across models (which models work best with tau?), and vs other harnesses (how does tau compare?).
+
+### When to run
+
+**On release tags only.** Benchmarks are expensive (~$20-100 per matrix run), so they gate on `v*` tags, not every commit. For local iteration, use edit-bench (free, fast, local).
+
+### What to run
+
+**Terminal-bench-core** — 71 Docker-based tasks. For cost control, run a **stable subset of ~30 tasks** selected for category coverage, reasonable solve times, and discriminating power. Subset defined in `benchmarks/task-subset.txt`.
+
+Model matrix per release:
+
+| Model | Provider | Why |
+|-------|----------|-----|
+| `gpt-5.4-mini` | OpenAI (Responses) | Cheap, fast baseline |
+| `claude-sonnet-4.6` | Anthropic (Messages) | Strong, different provider |
+| `google/gemini-3.1-flash-lite-preview` | OpenRouter (Chat) | Tests the openai-chat backend |
+
+### Infrastructure
+
+The Harbor adapter (`benchmarks/harbor/tau_agent.py`) handles binary upload, API key forwarding, stats collection, and model selection. CI invocation:
+
+```bash
+harbor run \
+  --agent benchmarks.harbor.tau_agent:TauAgent \
+  --dataset terminal-bench-core@0.1.1 \
+  --tasks-file benchmarks/task-subset.txt \
+  --model $MODEL \
+  --output benchmarks/results/${VERSION}_${MODEL_SAFE}.json
+```
+
+### Results format
+
+Each run produces `benchmarks/results/{version}_{model}.json`:
+
+```json
+{
+  "version": "v0.2.0",
+  "model": "gpt-5.4-mini",
+  "summary": {
+    "total_tasks": 30,
+    "resolved": 19,
+    "accuracy": 0.633,
+    "total_cost_usd": 4.25
+  },
+  "tasks": [{ "task_id": "...", "resolved": true, "input_tokens": 45000, "wall_clock_sec": 85 }]
+}
+```
+
+An aggregation script (`benchmarks/aggregate.py`, TBD) reads all result JSONs and produces: matrix table, trend chart data, cost report, and regression detection (flag >5% accuracy drops).
+
+### Cost estimate
+
+Per release, 30 tasks x 3 models: ~$18 API + ~$5-10 Harbor compute = **~$25-30 per release**.
+
+### Implementation order
+
+1. Define task subset — curate `benchmarks/task-subset.txt`
+2. Write `aggregate.py` — reads result JSONs, produces `SUMMARY.md`
+3. Add CI job — benchmark workflow triggered on `v*` tags
+4. First release run — tag, validate end-to-end
+5. Manual baseline — record codex/claude-code scores for comparison columns
