@@ -1,41 +1,54 @@
 # Fuzzy Match Corpus
 
-JSON fixtures of `(file_content, old_string_attempt, ground_truth)` triples.
+JSON test corpora for fuzzy match benchmarking. Two types:
 
-## File format
+## Accuracy corpus (`synthetic.json`)
 
-Each `.json` file is an array of test cases:
+Near-miss edit perturbations. Each case: `(file_content, old_string, ground_truth)`.
 
 ```json
-[
-  {
-    "id": "trailing-ws-001",
-    "category": "trailing-ws",
-    "file_content": "fn foo() {  \n    bar();\n}\n",
-    "old_string": "fn foo() {\n    bar();\n}",
-    "ground_truth": {
-      "start_line": 0,
-      "end_line": 2,
-      "matched_text": "fn foo() {  \n    bar();\n}"
-    },
-    "notes": "Model omitted trailing spaces on line 1"
+{
+  "id": "trailing-ws-001",
+  "category": "trailing-ws",
+  "corpus_type": "accuracy",
+  "file_content": "fn foo() {  \n    bar();\n}\n",
+  "old_string": "fn foo() {\n    bar();\n}",
+  "ground_truth": {
+    "start_line": 0,
+    "end_line": 2,
+    "matched_text": "fn foo() {  \n    bar();\n}"
   }
-]
+}
 ```
 
-## Categories
+Categories: `trailing-ws`, `indent-shift`, `tabs-vs-spaces`, `unicode-punct`, `partial-block`
 
-- `trailing-ws` — trailing whitespace added/removed
-- `indent-shift` — indentation level differs by 1-3 levels
-- `tabs-vs-spaces` — tab/space substitution
-- `unicode-punct` — smart quotes, em-dashes
-- `stale-content` — content modified since model last read
-- `partial-block` — old_string is a subset of the actual block
-- `ambiguous` — old_string matches multiple locations
-- `hallucinated` — old_string contains content not in the file
+## Adversarial corpus (`adversarial.json`)
 
-## Sources
+Repetitive-structure files where fuzzy matching could pick the wrong location.
+Records all candidate locations so the runner can score wrong-location matches.
 
-1. Synthetic perturbations via `generate_corpus.py`
-2. Real model failures mined from tau/oh-my-pi benchmark traces
-3. Adversarial cases hand-crafted for false-positive testing
+```json
+{
+  "id": "ambig-struct_i-0001",
+  "category": "struct-impls",
+  "corpus_type": "adversarial",
+  "file_content": "... file with repeated similar blocks ...",
+  "old_string": "... perturbed version of block 3 ...",
+  "ground_truth": {
+    "target_index": 2,
+    "all_candidates": [
+      { "start_line": 10, "end_line": 18, "similarity": 0.85 },
+      { "start_line": 30, "end_line": 38, "similarity": 0.92 }
+    ],
+    "matched_text": "... exact text of block 3 ..."
+  }
+}
+```
+
+## Generation
+
+```bash
+python generate_corpus.py accuracy ../../coding-agent/src -o corpus/synthetic.json
+python generate_corpus.py adversarial ../../coding-agent/src -o corpus/adversarial.json
+```
