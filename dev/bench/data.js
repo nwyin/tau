@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1774247178306,
+  "lastUpdate": 1774256771947,
   "repoUrl": "https://github.com/nwyin/tau",
   "entries": {
     "tau benchmarks": [
@@ -2645,6 +2645,132 @@ window.BENCHMARK_DATA = {
             "name": "sse_parsing/events/1000",
             "value": 361607,
             "range": "± 2764",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "tommynguyen0512@gmail.com",
+            "name": "Tommy Bui Nguyen",
+            "username": "nwyin"
+          },
+          "committer": {
+            "email": "tommynguyen0512@gmail.com",
+            "name": "Tommy Bui Nguyen",
+            "username": "nwyin"
+          },
+          "distinct": true,
+          "id": "6cf5c1cf320d6838b8457098cece8b311e1034b2",
+          "message": "feat: implement mechanical context compaction\n\nAdd agent::context module with three-tier compaction to prevent context\nwindow overflow without any LLM calls:\n\n  Tier 1 — truncate tool outputs exceeding 50KB or 2000 lines (40%+40%)\n  Tier 2 — mask old turns, replacing tool-result content with omission\n            placeholders while keeping tool-call names visible\n  Fallback — aggressively truncate remaining large tool results (20%+20%)\n\nBudget: (context_window × 0.75) − max_tokens − 2000 token system-prompt\nestimate. Zero overhead when messages fit within budget (early return).\n\nWire the transform_context hook in agent_builder so compaction fires\nautomatically before every LLM call in the coding-agent binary.\n\n12 tests in agent/tests/context_test.rs covering all five invariants:\nINV-1 identity, INV-2 first-user-preserved, INV-3 turn integrity,\nINV-4 budget satisfied, INV-5 tool name in placeholder.",
+          "timestamp": "2026-03-23T16:58:26+08:00",
+          "tree_id": "27046160b5facf3d17789aed9733d1c0591b8e59",
+          "url": "https://github.com/nwyin/tau/commit/6cf5c1cf320d6838b8457098cece8b311e1034b2"
+        },
+        "date": 1774256771084,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "agent_construction/new_agent",
+            "value": 2178,
+            "range": "± 12",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/10",
+            "value": 3763,
+            "range": "± 36",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/50",
+            "value": 13094,
+            "range": "± 35",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/100",
+            "value": 23285,
+            "range": "± 123",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/500",
+            "value": 96912,
+            "range": "± 398",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/10",
+            "value": 3388,
+            "range": "± 128",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/50",
+            "value": 17383,
+            "range": "± 57",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/100",
+            "value": 34484,
+            "range": "± 117",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/10",
+            "value": 12938,
+            "range": "± 33",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/50",
+            "value": 75361,
+            "range": "± 190",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/100",
+            "value": 150737,
+            "range": "± 641",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/10",
+            "value": 17232,
+            "range": "± 73",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/50",
+            "value": 92611,
+            "range": "± 416",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/100",
+            "value": 183028,
+            "range": "± 480",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/10",
+            "value": 2867,
+            "range": "± 36",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/100",
+            "value": 38008,
+            "range": "± 214",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/1000",
+            "value": 363589,
+            "range": "± 2363",
             "unit": "ns/iter"
           }
         ]
