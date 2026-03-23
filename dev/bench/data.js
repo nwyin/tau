@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1774244603255,
+  "lastUpdate": 1774247082015,
   "repoUrl": "https://github.com/nwyin/tau",
   "entries": {
     "tau benchmarks": [
@@ -2393,6 +2393,132 @@ window.BENCHMARK_DATA = {
             "name": "sse_parsing/events/1000",
             "value": 364298,
             "range": "± 1651",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "tommynguyen0512@gmail.com",
+            "name": "Tommy Bui Nguyen",
+            "username": "nwyin"
+          },
+          "committer": {
+            "email": "tommynguyen0512@gmail.com",
+            "name": "Tommy Bui Nguyen",
+            "username": "nwyin"
+          },
+          "distinct": true,
+          "id": "4fa66ccbeb8325b44b8d798f180b5214d439c097",
+          "message": "consolidate fuzzy-match and fuzzy-false-positive into one benchmark\n\nMerge adversarial corpus generation into generate_corpus.py (accuracy\nvs adversarial subcommands). Unify runner to auto-detect corpus type\nand print the appropriate scorecard. Delete fuzzy-false-positive/\ndirectory. 9 benchmarks -> 8.",
+          "timestamp": "2026-03-23T14:14:41+08:00",
+          "tree_id": "b4f26e619352028b6e7356bcf15b5ef0c9aa5eac",
+          "url": "https://github.com/nwyin/tau/commit/4fa66ccbeb8325b44b8d798f180b5214d439c097"
+        },
+        "date": 1774247081468,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "agent_construction/new_agent",
+            "value": 2209,
+            "range": "± 12",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/10",
+            "value": 3853,
+            "range": "± 57",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/50",
+            "value": 13193,
+            "range": "± 66",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/100",
+            "value": 22773,
+            "range": "± 166",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/500",
+            "value": 103214,
+            "range": "± 1676",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/10",
+            "value": 3389,
+            "range": "± 13",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/50",
+            "value": 17330,
+            "range": "± 205",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/100",
+            "value": 33748,
+            "range": "± 733",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/10",
+            "value": 12886,
+            "range": "± 65",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/50",
+            "value": 73455,
+            "range": "± 376",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/100",
+            "value": 147242,
+            "range": "± 304",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/10",
+            "value": 16899,
+            "range": "± 61",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/50",
+            "value": 91930,
+            "range": "± 412",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/100",
+            "value": 182224,
+            "range": "± 420",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/10",
+            "value": 2875,
+            "range": "± 42",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/100",
+            "value": 38728,
+            "range": "± 431",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/1000",
+            "value": 363458,
+            "range": "± 1284",
             "unit": "ns/iter"
           }
         ]
