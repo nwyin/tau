@@ -68,6 +68,14 @@ pub enum Command {
         /// Comma-separated list of tools to enable
         #[arg(long, value_delimiter = ',')]
         tools: Option<Vec<String>>,
+
+        /// Directory for trace output (run.json + trace.jsonl)
+        #[arg(long, value_name = "DIR")]
+        trace_output: Option<String>,
+
+        /// Task ID for benchmark identification
+        #[arg(long, value_name = "ID")]
+        task_id: Option<String>,
     },
 
     /// List all available models.

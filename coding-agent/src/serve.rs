@@ -14,12 +14,16 @@ use crate::agent_builder::{build_agent, AgentBuildConfig};
 use crate::rpc::handler::{handle_request, usage_tracking_subscriber, ServerState, SessionStatus};
 use crate::rpc::transport::{spawn_stdin_reader, StdinMessage, StdoutWriter};
 use crate::rpc::types::*;
+use crate::tools::tools_for_edit_mode;
+use crate::trace::{sha256_prefix, TraceConfig, TraceSubscriber};
 
 /// Run the JSON-RPC serve loop.
 pub async fn run_serve(
     cwd: String,
     model: Option<String>,
     tools: Option<Vec<String>>,
+    trace_output: Option<String>,
+    task_id: Option<String>,
 ) -> Result<()> {
     // Set working directory for this session
     std::env::set_current_dir(&cwd)?;
@@ -41,6 +45,36 @@ pub async fn run_serve(
     let _usage_unsub = built
         .agent
         .subscribe(usage_tracking_subscriber(Arc::clone(&cumulative_usage)));
+
+    // Set up trace output if requested
+    let tool_names: Vec<String> = tools_for_edit_mode(&built.config.edit_mode)
+        .iter()
+        .map(|t| t.name().to_string())
+        .collect();
+    let system_prompt_hash = sha256_prefix(&built.system_prompt_text);
+    let max_turns = std::env::var("TAU_MAX_TURNS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .or(built.config.max_turns);
+    let (_trace, _trace_unsub) = if let Some(ref trace_dir) = trace_output {
+        let t = TraceSubscriber::new(
+            trace_dir,
+            TraceConfig {
+                run_id: uuid::Uuid::new_v4().to_string(),
+                task_id: task_id.clone(),
+                model_id: built.model_id.clone(),
+                provider: built.model_provider.clone(),
+                tool_names,
+                edit_mode: built.config.edit_mode.clone(),
+                system_prompt_hash,
+                max_turns,
+            },
+        );
+        let unsub = built.agent.subscribe(t.handler());
+        (Some(t), Some(unsub))
+    } else {
+        (None, None)
+    };
 
     // Build server state
     let state = Arc::new(ServerState {
@@ -105,6 +139,11 @@ pub async fn run_serve(
     if let Some(handle) = handle {
         eprintln!("[serve] waiting for agent task to finish...");
         let _ = tokio::time::timeout(Duration::from_secs(5), handle).await;
+    }
+
+    // Finalize trace before exit
+    if let Some(ref t) = _trace {
+        t.finalize();
     }
 
     eprintln!("[serve] shutdown complete");

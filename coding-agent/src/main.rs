@@ -88,8 +88,14 @@ async fn main() -> Result<()> {
 
     // Dispatch subcommands
     match cli.command {
-        Some(Command::Serve { cwd, model, tools }) => {
-            return coding_agent::serve::run_serve(cwd, model, tools).await;
+        Some(Command::Serve {
+            cwd,
+            model,
+            tools,
+            trace_output,
+            task_id,
+        }) => {
+            return coding_agent::serve::run_serve(cwd, model, tools, trace_output, task_id).await;
         }
         Some(Command::Models { provider }) => {
             print_models(provider.as_deref());
