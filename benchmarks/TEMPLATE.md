@@ -359,6 +359,108 @@ Standard flags across all online runners:
 
 ---
 
+## Result storage and querying
+
+Results are stored as JSON files locally and optionally synced to an
+S3-compatible remote (Cloudflare R2) for persistence across machines and CI.
+
+### Architecture
+
+```
+Local: benchmarks/{benchmark}/results/{run_id}.json  (gitignored)
+Remote: r2:tau-bench-results/{benchmark}/{run_id}.json
+Query: DuckDB reads both local files and S3 directly
+```
+
+### Setup (one-time)
+
+```bash
+# Install tools
+brew install duckdb rclone
+
+# Configure rclone for Cloudflare R2
+rclone config create r2 s3 provider=Cloudflare \
+    access_key_id=<KEY> secret_access_key=<SECRET> \
+    endpoint=https://<ACCOUNT_ID>.r2.cloudflarestorage.com
+
+# Set remote path (add to shell profile)
+export TAU_BENCH_REMOTE=r2:tau-bench-results
+```
+
+Without these, everything works in local-only mode.
+
+### Saving results
+
+From a benchmark runner:
+
+```python
+from shared.store import ResultStore
+
+store = ResultStore(benchmark="fuzzy-match")
+run_id = store.save(report)   # writes to results/{run_id}.json
+store.push(run_id)            # uploads to R2 (no-op if not configured)
+```
+
+The store automatically enriches reports with metadata: `run_id`, `timestamp`,
+`host`, `git_sha`, `git_dirty`.
+
+CLI:
+
+```bash
+# Save
+python -m shared.store save results/report.json --benchmark fuzzy-match
+
+# Push to remote
+python -m shared.store push --benchmark fuzzy-match
+
+# List runs (local + remote)
+python -m shared.store ls fuzzy-match
+
+# Pull from remote
+python -m shared.store pull --benchmark fuzzy-match
+```
+
+### Querying with DuckDB
+
+DuckDB reads JSON files natively — no schema setup, no server.
+
+```bash
+# Query local results
+duckdb -c "
+  SELECT benchmark, run_id, timestamp,
+         summary.pass_rate, summary.total_tokens
+  FROM read_json('benchmarks/*/results/*.json')
+  ORDER BY timestamp DESC
+  LIMIT 20;
+"
+
+# Compare variants within a benchmark
+duckdb -c "
+  SELECT r.variant,
+         count(*) as runs,
+         avg(r.success::int) as pass_rate,
+         avg(r.input_tokens + r.output_tokens) as avg_tokens
+  FROM read_json('benchmarks/fuzzy-e2e/results/*.json'),
+       unnest(results) as r
+  GROUP BY r.variant
+  ORDER BY pass_rate DESC;
+"
+
+# Query remote results (requires S3 credentials in env)
+duckdb -c "
+  SELECT * FROM read_json('s3://tau-bench-results/fuzzy-match/*.json');
+"
+```
+
+### Upgrade path
+
+If querying gets tedious or you want a web UI:
+1. **Evidence.dev** — markdown-based dashboards that query DuckDB. `npx evidence dev`
+2. **MLflow** — self-hosted experiment tracker with built-in comparison UI.
+   The JSON report format maps cleanly to MLflow's params/metrics model.
+
+---
+
 ## Writing a new benchmark
 
 1. Create `benchmarks/{name}/` directory

@@ -132,11 +132,34 @@ class Variant:
 
 Used by A/B test runners to define the configurations being compared.
 
+### `store.py` — ResultStore
+
+**Implemented.** Handles local result persistence and optional remote sync.
+
+```python
+class ResultStore:
+    def __init__(self, benchmark: str): ...
+    def save(self, report: dict) -> str:   # local write, returns run_id
+    def push(self, run_id: str = None):    # upload to R2 via rclone
+    def pull(self, run_id: str = None):    # download from R2
+    def ls(benchmark: str = None):         # list local + remote runs
+```
+
+Features:
+- Auto-enriches reports with `run_id`, `timestamp`, `host`, `git_sha`, `git_dirty`
+- Local-only by default (no config needed)
+- Remote sync via rclone when `TAU_BENCH_REMOTE` env var is set
+- CLI interface: `python -m shared.store save|push|pull|ls`
+
+See TEMPLATE.md "Result storage and querying" for full setup and DuckDB
+query examples.
+
 ## Architecture
 
 ```
 shared/
 ├── __init__.py
+├── store.py          # ResultStore (implemented)
 ├── session.py        # TauSession
 ├── config.py         # BenchConfig
 ├── result.py         # TaskResult, SessionResult
@@ -145,8 +168,9 @@ shared/
 └── variants.py       # Variant
 ```
 
-Estimated LOC: ~600 total
+Estimated LOC: ~800 total
 
+- store.py: ~200 (implemented)
 - session.py: ~200 (most complex — subprocess + JSON-RPC protocol)
 - config.py: ~60
 - result.py: ~40
@@ -180,8 +204,9 @@ actually using the shared code.
 
 ## Build order
 
-1. `session.py` — needed by all online benchmarks, port from edit-bench first
-2. `config.py` + `result.py` — trivial dataclasses
-3. `reporter.py` — needed before first benchmark run for output
-4. `verifier.py` — needed only when fuzzy-e2e or subagent-decomposition ships
-5. `variants.py` — trivial dataclass, build alongside first A/B benchmark
+1. ~~`store.py`~~ — **done**
+2. `session.py` — needed by all online benchmarks, port from edit-bench first
+3. `config.py` + `result.py` — trivial dataclasses
+4. `reporter.py` — needed before first benchmark run for output
+5. `verifier.py` — needed only when fuzzy-e2e or subagent-decomposition ships
+6. `variants.py` — trivial dataclass, build alongside first A/B benchmark
