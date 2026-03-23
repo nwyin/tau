@@ -69,7 +69,7 @@ Every harness converges on the same six core tools: shell execution, file read, 
 | Feature | tau | kimi-cli | pi-mono | oh-my-pi | pi_agent_rust | codex | crush | opencode |
 |---------|-----|----------|---------|----------|---------------|-------|-------|----------|
 | Exact string replace | yes | yes | yes | yes | yes | -- | yes | yes |
-| Fuzzy match fallback | -- | -- | yes | -- | -- | yes (context matching) | -- | yes (9 strategies) |
+| Fuzzy match fallback | yes (trimmed-cascade) | -- | yes | -- | -- | yes (context matching) | -- | yes (9 strategies) |
 | Hashline (hash-anchored) | yes | -- | -- | yes (default) | yes (default) | -- | -- | -- |
 | Unified diff / patch | -- | -- | -- | yes (patch mode) | -- | yes (primary) | -- | yes (GPT models) |
 | Multi-edit (batch) | -- | yes | -- | -- | -- | -- | yes | yes |
@@ -98,11 +98,11 @@ The most interesting divergence across harnesses. Same model, different edit for
 
 | Feature | tau | kimi-cli | pi-mono | oh-my-pi | pi_agent_rust | codex | crush | opencode |
 |---------|-----|----------|---------|----------|---------------|-------|-------|----------|
-| Auto-compaction | -- | yes | yes | yes | yes | yes | yes | yes |
+| Auto-compaction | yes (mechanical) | yes | yes | yes | yes | yes | yes | yes |
 | Manual /compact | -- | yes | yes | yes | yes | yes | yes | yes |
 | LLM-based summarization | -- | yes | yes | yes | yes | yes | yes | yes |
 | Background compaction | -- | -- | -- | -- | yes | -- | -- | -- |
-| Tool output pruning | -- | -- | -- | -- | -- | -- | -- | yes |
+| Tool output pruning | yes (truncate + mask) | -- | -- | -- | -- | -- | -- | yes |
 | Context overflow recovery | -- | -- | yes | yes | -- | -- | -- | yes |
 | Context promotion (model upgrade) | -- | -- | -- | yes | -- | -- | -- | -- |
 | TTSR (pattern-triggered rules) | -- | -- | -- | yes | -- | -- | -- | -- |
@@ -484,7 +484,7 @@ Based on the table above, here are the features that appear across 4+ harnesses 
 
 ### Must-have (present in 5+ harnesses)
 
-1. **Auto-compaction** — Every harness except tau has this. Without it, long sessions hit context limits and die. This is the single biggest gap.
+1. **~~Auto-compaction~~** — ✅ Implemented (mechanical: chars/4 estimation, tool output truncation, observation masking, turn-boundary eviction). LLM-based summarization and `/compact` command are future work.
 2. **Permission model** — At minimum, per-tool allow/deny. Every harness except tau has some form of this.
 3. **Sub-agent spawning** — kimi-cli, oh-my-pi, codex, and opencode have it natively; pi-mono has an extension example. Parallelism is the difference between "wait 5 minutes" and "wait 1 minute."
 4. **MCP support** — kimi-cli, oh-my-pi, codex, crush, and opencode all expose this. Unlocks external tool servers without writing code.
@@ -497,7 +497,7 @@ Based on the table above, here are the features that appear across 4+ harnesses 
 8. **LSP diagnostics on edit** — oh-my-pi, crush, opencode. Immediate feedback on syntax/type errors after edits.
 9. **Session picker / resume UX** — 6 harnesses now have a real picker, search flow, or browser session manager. tau has `--resume` but no browser.
 10. **Session undo/revert** — codex (ghost snapshot), oh-my-pi (checkpoint), opencode (git snapshot). Safety net for when the agent breaks things.
-11. **Fuzzy edit fallback** — pi-mono, codex, opencode. Models frequently produce slightly-wrong whitespace; fuzzy matching saves retries.
+11. **~~Fuzzy edit fallback~~** — ✅ Implemented (trimmed-cascade: trailing whitespace, both-side trim, unicode normalization). Benchmarks show 84% recovery on synthetic near-misses, 0% false positives, ~40μs. In practice never fires with current models (real failures are hallucinated content).
 
 ### Nice-to-have (quality-of-life)
 
