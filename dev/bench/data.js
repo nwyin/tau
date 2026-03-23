@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1774239608255,
+  "lastUpdate": 1774241451681,
   "repoUrl": "https://github.com/nwyin/tau",
   "entries": {
     "tau benchmarks": [
@@ -2141,6 +2141,132 @@ window.BENCHMARK_DATA = {
             "name": "sse_parsing/events/1000",
             "value": 362969,
             "range": "± 4906",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "tommynguyen0512@gmail.com",
+            "name": "Tommy Bui Nguyen",
+            "username": "nwyin"
+          },
+          "committer": {
+            "email": "tommynguyen0512@gmail.com",
+            "name": "Tommy Bui Nguyen",
+            "username": "nwyin"
+          },
+          "distinct": true,
+          "id": "4d7cb5389326fa57da53367760120d55f4d8d39a",
+          "message": "add result storage layer: local JSON + R2 remote sync via rclone\n\nshared/store.py handles saving benchmark results locally and optionally\npushing to Cloudflare R2 for persistence across machines and CI. Results\nare queryable with DuckDB on both local files and S3. Gracefully no-ops\nwhen rclone or TAU_BENCH_REMOTE aren't configured.",
+          "timestamp": "2026-03-23T12:45:37+08:00",
+          "tree_id": "197ac1dc7780a009e1023d2258fe974fedf02472",
+          "url": "https://github.com/nwyin/tau/commit/4d7cb5389326fa57da53367760120d55f4d8d39a"
+        },
+        "date": 1774241451194,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "agent_construction/new_agent",
+            "value": 2133,
+            "range": "± 34",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/10",
+            "value": 3734,
+            "range": "± 30",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/50",
+            "value": 12886,
+            "range": "± 128",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/100",
+            "value": 23199,
+            "range": "± 583",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/500",
+            "value": 94757,
+            "range": "± 822",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/10",
+            "value": 3420,
+            "range": "± 69",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/50",
+            "value": 17803,
+            "range": "± 279",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/100",
+            "value": 34645,
+            "range": "± 2550",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/10",
+            "value": 13234,
+            "range": "± 98",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/50",
+            "value": 75482,
+            "range": "± 294",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/100",
+            "value": 153164,
+            "range": "± 465",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/10",
+            "value": 17355,
+            "range": "± 60",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/50",
+            "value": 94300,
+            "range": "± 354",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/100",
+            "value": 185483,
+            "range": "± 604",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/10",
+            "value": 2852,
+            "range": "± 12",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/100",
+            "value": 38952,
+            "range": "± 178",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/1000",
+            "value": 360781,
+            "range": "± 1461",
             "unit": "ns/iter"
           }
         ]
