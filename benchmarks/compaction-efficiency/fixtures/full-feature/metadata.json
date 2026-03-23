@@ -1,0 +1,6 @@
+{
+  "complexity": "complex",
+  "description": "Add a caching layer to a data processing pipeline",
+  "language": "python",
+  "expected_changes": { "files_modified": 5, "lines_changed": 80 }
+}

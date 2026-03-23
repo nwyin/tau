@@ -1,0 +1,7 @@
+{
+  "debug": true,
+  "database_url": "sqlite:///dev.db",
+  "host": "localhost",
+  "port": 8000,
+  "log_level": "DEBUG"
+}

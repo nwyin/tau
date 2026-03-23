@@ -1,0 +1,6 @@
+{
+  "complexity": "simple",
+  "description": "Add a --verbose flag to an argparse CLI",
+  "language": "python",
+  "expected_changes": { "files_modified": 1, "lines_changed": 5 }
+}

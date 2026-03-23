@@ -1,0 +1,1 @@
+Add a `--verbose` flag to the CLI in `cli.py`. When `--verbose` is passed, print the parsed arguments before running the command. The verbose output should be: `Verbose: args={args}` where `{args}` is the namespace object.
