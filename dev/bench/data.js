@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1774194254590,
+  "lastUpdate": 1774239608255,
   "repoUrl": "https://github.com/nwyin/tau",
   "entries": {
     "tau benchmarks": [
@@ -2015,6 +2015,132 @@ window.BENCHMARK_DATA = {
             "name": "sse_parsing/events/1000",
             "value": 359659,
             "range": "± 1688",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "tommynguyen0512@gmail.com",
+            "name": "Tommy Bui Nguyen",
+            "username": "nwyin"
+          },
+          "committer": {
+            "email": "tommynguyen0512@gmail.com",
+            "name": "Tommy Bui Nguyen",
+            "username": "nwyin"
+          },
+          "distinct": true,
+          "id": "9487260af29a4eda2a1434698847dc59a8a455e3",
+          "message": "add benchmark specs and shared template for 9 microbenchmarks\n\nMove microbenchmarks.md from docs/ to benchmarks/, slim it to an\nindex table. Add TEMPLATE.md with shared patterns (fixture formats,\nsession management, A/B test pattern, reporting). Add SPEC.md for\neach benchmark with detailed fixtures, variants, metrics, and\ndecision criteria. Add shared/ infrastructure design (TauSession,\nBenchConfig, TaskResult, Reporter, Verifier).",
+          "timestamp": "2026-03-23T12:05:30+08:00",
+          "tree_id": "08d002214b5e01c21572798fa4b0d06822ce9e3b",
+          "url": "https://github.com/nwyin/tau/commit/9487260af29a4eda2a1434698847dc59a8a455e3"
+        },
+        "date": 1774239607965,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "agent_construction/new_agent",
+            "value": 2138,
+            "range": "± 98",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/10",
+            "value": 3710,
+            "range": "± 18",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/50",
+            "value": 13149,
+            "range": "± 76",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/100",
+            "value": 23210,
+            "range": "± 119",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/500",
+            "value": 96475,
+            "range": "± 630",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/10",
+            "value": 3431,
+            "range": "± 67",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/50",
+            "value": 17325,
+            "range": "± 60",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/100",
+            "value": 34547,
+            "range": "± 105",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/10",
+            "value": 12938,
+            "range": "± 69",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/50",
+            "value": 74011,
+            "range": "± 679",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/100",
+            "value": 150587,
+            "range": "± 1086",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/10",
+            "value": 17015,
+            "range": "± 118",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/50",
+            "value": 91661,
+            "range": "± 326",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/100",
+            "value": 182440,
+            "range": "± 524",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/10",
+            "value": 2880,
+            "range": "± 32",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/100",
+            "value": 38537,
+            "range": "± 125",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/1000",
+            "value": 362969,
+            "range": "± 4906",
             "unit": "ns/iter"
           }
         ]
