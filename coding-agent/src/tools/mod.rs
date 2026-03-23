@@ -8,6 +8,7 @@ pub mod hashline;
 pub mod pycfg;
 pub mod pycg;
 pub mod web_fetch;
+pub mod web_search;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -27,6 +28,7 @@ pub use pycg::{
     CgCalleesTool, CgCallersTool, CgNeighborsTool, CgPathTool, CgSummaryTool, CgSymbolsTool,
 };
 pub use web_fetch::WebFetchTool;
+pub use web_search::WebSearchTool;
 
 /// Return all built-in tools as a list ready to pass to the agent (replace mode).
 pub fn all_tools() -> Vec<Arc<dyn AgentTool>> {
@@ -72,6 +74,7 @@ pub fn all_known_tools(edit_mode: &str) -> HashMap<String, Arc<dyn AgentTool>> {
     map.insert("cg_neighbors".to_string(), CgNeighborsTool::arc());
     map.insert("cg_summary".to_string(), CgSummaryTool::arc());
     map.insert("web_fetch".to_string(), WebFetchTool::arc());
+    map.insert("web_search".to_string(), WebSearchTool::arc());
     map
 }
 
