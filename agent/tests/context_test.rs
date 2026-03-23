@@ -13,7 +13,9 @@ use agent::context::{compact_messages, compute_budget, estimate_tokens};
 use agent::types::AgentMessage;
 use ai::types::{Message, ToolResultMessage, UserBlock, UserContent};
 
-use common::{mock_assistant_message, mock_assistant_message_with_tool_call, mock_model, user_message};
+use common::{
+    mock_assistant_message, mock_assistant_message_with_tool_call, mock_model, user_message,
+};
 
 // ---------------------------------------------------------------------------
 // Local helpers
@@ -24,7 +26,9 @@ fn tool_result_msg(tool_call_id: &str, tool_name: &str, content: &str) -> AgentM
         role: "toolResult".into(),
         tool_call_id: tool_call_id.into(),
         tool_name: tool_name.into(),
-        content: vec![UserBlock::Text { text: content.into() }],
+        content: vec![UserBlock::Text {
+            text: content.into(),
+        }],
         details: None,
         is_error: false,
         timestamp: 0,
@@ -62,7 +66,10 @@ fn big_text(chars: usize) -> String {
 
 /// Generate a multi-line string with `n` lines, each ~10 chars.
 fn many_lines(n: usize) -> String {
-    (0..n).map(|i| format!("line {:06}", i)).collect::<Vec<_>>().join("\n")
+    (0..n)
+        .map(|i| format!("line {:06}", i))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 // ---------------------------------------------------------------------------
@@ -72,10 +79,7 @@ fn many_lines(n: usize) -> String {
 #[test]
 fn under_budget_returns_unchanged() {
     let model = mock_model(); // budget ≈ 2096 tokens
-    let messages = vec![
-        user_message("Hello"),
-        assistant_msg("World"),
-    ];
+    let messages = vec![user_message("Hello"), assistant_msg("World")];
     let result = compact_messages(messages.clone(), &model);
     assert_eq!(result.len(), messages.len());
     for (a, b) in result.iter().zip(messages.iter()) {
@@ -108,7 +112,10 @@ fn first_user_message_never_removed() {
     }
 
     let before = estimate_tokens(&messages);
-    assert!(before > budget, "test setup: messages must start over budget");
+    assert!(
+        before > budget,
+        "test setup: messages must start over budget"
+    );
 
     let result = compact_messages(messages, &model);
 
@@ -147,7 +154,10 @@ fn compaction_brings_under_budget() {
 
     let result = compact_messages(messages, &model);
     let after = estimate_tokens(&result);
-    assert!(after <= budget, "after compaction {after} should be ≤ budget {budget}");
+    assert!(
+        after <= budget,
+        "after compaction {after} should be ≤ budget {budget}"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -172,7 +182,10 @@ fn masked_tool_results_contain_tool_name() {
     ];
 
     let before = estimate_tokens(&messages);
-    assert!(before > budget, "test setup: messages must exceed budget ({before} > {budget})");
+    assert!(
+        before > budget,
+        "test setup: messages must exceed budget ({before} > {budget})"
+    );
 
     let result = compact_messages(messages, &model);
 
@@ -191,7 +204,10 @@ fn masked_tool_results_contain_tool_name() {
         }
     });
 
-    assert!(found, "a masked tool result should mention 'special_tool_xyz'");
+    assert!(
+        found,
+        "a masked tool result should mention 'special_tool_xyz'"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -268,9 +284,9 @@ fn tier1_large_tool_output_truncated_and_under_budget() {
     // The tool result must carry a truncation marker.
     let has_marker = result.iter().any(|msg| {
         if let AgentMessage::Llm(Message::ToolResult(tr)) = msg {
-            tr.content.iter().any(|b| {
-                matches!(b, UserBlock::Text { text } if text.contains("[... truncated"))
-            })
+            tr.content
+                .iter()
+                .any(|b| matches!(b, UserBlock::Text { text } if text.contains("[... truncated")))
         } else {
             false
         }
@@ -278,7 +294,10 @@ fn tier1_large_tool_output_truncated_and_under_budget() {
     assert!(has_marker, "large tool output should be truncated");
 
     let after = estimate_tokens(&result);
-    assert!(after <= budget, "after truncation {after} should be ≤ budget {budget}");
+    assert!(
+        after <= budget,
+        "after truncation {after} should be ≤ budget {budget}"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -305,20 +324,26 @@ fn tier1_at_line_limit_not_truncated() {
     // Under budget → returned unchanged, no truncation marker.
     let budget = compute_budget(&model);
     let before = estimate_tokens(&messages);
-    assert!(before <= budget, "test setup: output must fit in budget ({before} ≤ {budget})");
+    assert!(
+        before <= budget,
+        "test setup: output must fit in budget ({before} ≤ {budget})"
+    );
 
     let result = compact_messages(messages, &model);
 
     let has_marker = result.iter().any(|msg| {
         if let AgentMessage::Llm(Message::ToolResult(tr)) = msg {
-            tr.content.iter().any(|b| {
-                matches!(b, UserBlock::Text { text } if text.contains("[... truncated"))
-            })
+            tr.content
+                .iter()
+                .any(|b| matches!(b, UserBlock::Text { text } if text.contains("[... truncated")))
         } else {
             false
         }
     });
-    assert!(!has_marker, "exactly-at-limit output should NOT be truncated");
+    assert!(
+        !has_marker,
+        "exactly-at-limit output should NOT be truncated"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -359,16 +384,19 @@ fn tier2_old_turns_masked_recent_kept() {
         .iter()
         .filter(|msg| {
             if let AgentMessage::Llm(Message::ToolResult(tr)) = msg {
-                tr.content.iter().any(|b| {
-                    matches!(b, UserBlock::Text { text } if text.contains("omitted"))
-                })
+                tr.content
+                    .iter()
+                    .any(|b| matches!(b, UserBlock::Text { text } if text.contains("omitted")))
             } else {
                 false
             }
         })
         .count();
 
-    assert!(masked_count > 0, "old turns should have omission placeholders");
+    assert!(
+        masked_count > 0,
+        "old turns should have omission placeholders"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -450,9 +478,17 @@ fn overflow_fallback_truncates_recent_large_result() {
     let result = compact_messages(messages, &model);
 
     // Result should still have the tool result (just truncated), and be ≤ budget.
-    let has_tool_result = result.iter().any(|msg| matches!(msg, AgentMessage::Llm(Message::ToolResult(_))));
-    assert!(has_tool_result, "tool result should still be present after overflow fallback");
+    let has_tool_result = result
+        .iter()
+        .any(|msg| matches!(msg, AgentMessage::Llm(Message::ToolResult(_))));
+    assert!(
+        has_tool_result,
+        "tool result should still be present after overflow fallback"
+    );
 
     let after = estimate_tokens(&result);
-    assert!(after <= budget, "overflow fallback should bring {after} ≤ budget {budget}");
+    assert!(
+        after <= budget,
+        "overflow fallback should bring {after} ≤ budget {budget}"
+    );
 }
