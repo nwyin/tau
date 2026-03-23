@@ -30,7 +30,7 @@ fn test_allowlist_unknown_names_omitted() {
     assert_eq!(tools[1].name(), "glob");
 }
 
-// INV-3: Edit mode substitution — "file_read" in hashline mode resolves to HashFileReadTool
+// INV-3: Edit mode substitution — both modes return canonical names
 #[test]
 fn test_allowlist_hashline_edit_mode_substitution() {
     let names: Vec<String> = vec!["file_read".to_string(), "file_edit".to_string()];
@@ -42,10 +42,9 @@ fn test_allowlist_hashline_edit_mode_substitution() {
 
     let hashline_tools = tools_from_allowlist(&names, "hashline");
     assert_eq!(hashline_tools.len(), 2);
-    // Canonical name is always "file_read"/"file_edit" from the registry key perspective,
-    // but the underlying impl differs — hash tools report different names
-    assert_eq!(hashline_tools[0].name(), "hash_file_read");
-    assert_eq!(hashline_tools[1].name(), "hash_file_edit");
+    // Both modes now report the same canonical names
+    assert_eq!(hashline_tools[0].name(), "file_read");
+    assert_eq!(hashline_tools[1].name(), "file_edit");
 }
 
 // INV-4: Empty allowlist returns empty vec
@@ -60,18 +59,8 @@ fn test_allowlist_empty_returns_empty() {
 fn test_default_path_matches_tools_for_edit_mode() {
     for mode in &["replace", "hashline"] {
         let default = tools_for_edit_mode(mode);
-        // Collect the full allowlist from tools_for_edit_mode names
-        let names: Vec<String> = default
-            .iter()
-            .map(|t| {
-                // Map hash tool names back to canonical names for registry lookup
-                match t.name() {
-                    "hash_file_read" => "file_read".to_string(),
-                    "hash_file_edit" => "file_edit".to_string(),
-                    other => other.to_string(),
-                }
-            })
-            .collect();
+        // All tools now use canonical names regardless of mode
+        let names: Vec<String> = default.iter().map(|t| t.name().to_string()).collect();
         let from_allowlist = tools_from_allowlist(&names, mode);
         assert_eq!(
             default.len(),

@@ -1,6 +1,28 @@
 use serde::Deserialize;
 use std::path::Path;
 
+/// Edit mode controls the behavior of `file_read` and `file_edit` tools.
+///
+/// Both modes present the same tool names to the model (`file_read`, `file_edit`).
+/// The mode determines the parameter schema, description, and execution behavior.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum EditMode {
+    /// Search-and-replace: `{path, old_string, new_string}`
+    #[default]
+    Replace,
+    /// Hash-anchored edits: `{path, edits: [{op, pos, end, lines}]}`
+    Hashline,
+}
+
+impl EditMode {
+    pub fn parse(s: &str) -> Self {
+        match s {
+            "hashline" => EditMode::Hashline,
+            _ => EditMode::Replace,
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(default)]
 pub struct TauConfig {
@@ -18,6 +40,12 @@ impl Default for TauConfig {
             max_turns: None,
             tools: None,
         }
+    }
+}
+
+impl TauConfig {
+    pub fn edit_mode_enum(&self) -> EditMode {
+        EditMode::parse(&self.edit_mode)
     }
 }
 

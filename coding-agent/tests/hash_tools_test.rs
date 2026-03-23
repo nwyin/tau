@@ -1,8 +1,9 @@
 use agent::types::AgentTool;
 use agent::types::AgentToolResult;
 use ai::types::UserBlock;
+use coding_agent::config::EditMode;
 use coding_agent::tools::hashline;
-use coding_agent::tools::{HashFileEditTool, HashFileReadTool};
+use coding_agent::tools::{FileEditTool, FileReadTool};
 use serde_json::json;
 use tempfile::TempDir;
 
@@ -18,7 +19,15 @@ fn text_content(result: &AgentToolResult) -> String {
         .join("")
 }
 
-// ── HashFileReadTool tests ──────────────────────────────────────────────
+fn hashline_read() -> FileReadTool {
+    FileReadTool::new(EditMode::Hashline)
+}
+
+fn hashline_edit() -> FileEditTool {
+    FileEditTool::new(EditMode::Hashline)
+}
+
+// ── FileReadTool (hashline mode) tests ────────────────────────────────
 
 #[tokio::test]
 async fn test_hash_file_read_format() {
@@ -26,7 +35,7 @@ async fn test_hash_file_read_format() {
     let path = dir.path().join("test.txt");
     std::fs::write(&path, "line one\nline two\nline three\n").unwrap();
 
-    let tool = HashFileReadTool;
+    let tool = hashline_read();
     let result: AgentToolResult = tool
         .execute(
             "id1".into(),
@@ -53,7 +62,7 @@ async fn test_hash_file_read_offset_limit() {
     let path = dir.path().join("test.txt");
     std::fs::write(&path, "a\nb\nc\nd\ne\n").unwrap();
 
-    let tool = HashFileReadTool;
+    let tool = hashline_read();
     let result: AgentToolResult = tool
         .execute(
             "id2".into(),
@@ -77,7 +86,7 @@ async fn test_hash_file_read_empty_file() {
     let path = dir.path().join("empty.txt");
     std::fs::write(&path, "").unwrap();
 
-    let tool = HashFileReadTool;
+    let tool = hashline_read();
     let result: AgentToolResult = tool
         .execute(
             "id3".into(),
@@ -100,7 +109,7 @@ async fn test_hash_file_read_binary() {
     let path = dir.path().join("binary.bin");
     std::fs::write(&path, b"\xff\xfe\x00\x01\x80\x90").unwrap();
 
-    let tool = HashFileReadTool;
+    let tool = hashline_read();
     let result: AgentToolResult = tool
         .execute(
             "id4".into(),
@@ -119,7 +128,7 @@ async fn test_hash_file_read_binary() {
 
 #[tokio::test]
 async fn test_hash_file_read_not_found() {
-    let tool = HashFileReadTool;
+    let tool = hashline_read();
     let result: AgentToolResult = tool
         .execute(
             "id5".into(),
@@ -136,7 +145,7 @@ async fn test_hash_file_read_not_found() {
     );
 }
 
-// ── HashFileEditTool tests ──────────────────────────────────────────────
+// ── FileEditTool (hashline mode) tests ────────────────────────────────
 
 #[tokio::test]
 async fn test_hash_file_edit_replace_single() {
@@ -147,7 +156,7 @@ async fn test_hash_file_edit_replace_single() {
     let hash = hashline::compute_line_hash(2, "world");
     let pos = format!("2#{hash}");
 
-    let tool = HashFileEditTool;
+    let tool = hashline_edit();
     let result: AgentToolResult = tool
         .execute(
             "id6".into(),
@@ -181,7 +190,7 @@ async fn test_hash_file_edit_replace_range() {
     let pos = format!("2#{h2}");
     let end = format!("4#{h4}");
 
-    let tool = HashFileEditTool;
+    let tool = hashline_edit();
     let result: AgentToolResult = tool
         .execute(
             "id7".into(),
@@ -213,7 +222,7 @@ async fn test_hash_file_edit_append() {
     let hash = hashline::compute_line_hash(1, "first");
     let pos = format!("1#{hash}");
 
-    let tool = HashFileEditTool;
+    let tool = hashline_edit();
     let result: AgentToolResult = tool
         .execute(
             "id8".into(),
@@ -245,7 +254,7 @@ async fn test_hash_file_edit_prepend() {
     let hash = hashline::compute_line_hash(2, "second");
     let pos = format!("2#{hash}");
 
-    let tool = HashFileEditTool;
+    let tool = hashline_edit();
     let result: AgentToolResult = tool
         .execute(
             "id9".into(),
@@ -274,7 +283,7 @@ async fn test_hash_file_edit_hash_mismatch() {
     let path = dir.path().join("test.txt");
     std::fs::write(&path, "hello\nworld\n").unwrap();
 
-    let tool = HashFileEditTool;
+    let tool = hashline_edit();
     let result: AgentToolResult = tool
         .execute(
             "id10".into(),
@@ -307,7 +316,7 @@ async fn test_hash_file_edit_empty_lines_deletes() {
     let hash = hashline::compute_line_hash(2, "b");
     let pos = format!("2#{hash}");
 
-    let tool = HashFileEditTool;
+    let tool = hashline_edit();
     let result: AgentToolResult = tool
         .execute(
             "id11".into(),
@@ -339,7 +348,7 @@ async fn test_hash_file_edit_strip_prefixes() {
     let hash = hashline::compute_line_hash(1, "hello");
     let pos = format!("1#{hash}");
 
-    let tool = HashFileEditTool;
+    let tool = hashline_edit();
     let result: AgentToolResult = tool
         .execute(
             "id12".into(),
@@ -373,7 +382,7 @@ async fn test_hash_file_edit_multiple_edits_bottom_up() {
     let pos1 = format!("1#{h1}");
     let pos3 = format!("3#{h3}");
 
-    let tool = HashFileEditTool;
+    let tool = hashline_edit();
     let result: AgentToolResult = tool
         .execute(
             "id13".into(),
@@ -405,7 +414,7 @@ async fn test_hash_file_edit_append_no_pos() {
     let path = dir.path().join("test.txt");
     std::fs::write(&path, "a\nb\n").unwrap();
 
-    let tool = HashFileEditTool;
+    let tool = hashline_edit();
     let result: AgentToolResult = tool
         .execute(
             "id14".into(),
@@ -434,7 +443,7 @@ async fn test_hash_file_edit_prepend_no_pos() {
     let path = dir.path().join("test.txt");
     std::fs::write(&path, "a\nb\n").unwrap();
 
-    let tool = HashFileEditTool;
+    let tool = hashline_edit();
     let result: AgentToolResult = tool
         .execute(
             "id15".into(),
@@ -463,8 +472,8 @@ async fn test_hash_file_read_edit_round_trip() {
     let path = dir.path().join("test.txt");
     std::fs::write(&path, "alpha\nbeta\ngamma\ndelta\n").unwrap();
 
-    // Step 1: Read the file with HashFileReadTool
-    let read_tool = HashFileReadTool;
+    // Step 1: Read the file with hashline mode
+    let read_tool = hashline_read();
     let read_result: AgentToolResult = read_tool
         .execute(
             "id16a".into(),
@@ -486,7 +495,7 @@ async fn test_hash_file_read_edit_round_trip() {
     assert!(tag.contains('#'), "expected tag to contain '#', got: {tag}");
 
     // Step 3: Edit line 2 using the parsed tag
-    let edit_tool = HashFileEditTool;
+    let edit_tool = hashline_edit();
     let edit_result: AgentToolResult = edit_tool
         .execute(
             "id16b".into(),

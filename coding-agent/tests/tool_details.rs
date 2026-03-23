@@ -26,7 +26,7 @@ async fn file_read_details_correct_line_counts() {
     let path = dir.path().join("f.txt");
     std::fs::write(&path, "a\nb\nc\nd\ne\n").unwrap(); // 5 lines
 
-    let result = FileReadTool
+    let result = FileReadTool::default()
         .execute(
             "id".into(),
             json!({"path": path.to_str().unwrap()}),
@@ -51,7 +51,7 @@ async fn file_read_details_limited_lines_returned() {
     let path = dir.path().join("f.txt");
     std::fs::write(&path, "a\nb\nc\nd\ne\n").unwrap(); // 5 lines
 
-    let result = FileReadTool
+    let result = FileReadTool::default()
         .execute(
             "id".into(),
             json!({"path": path.to_str().unwrap(), "offset": 2, "limit": 2}),
@@ -74,7 +74,7 @@ async fn file_read_details_limited_lines_returned() {
 // error path: nonexistent file — details can be None
 #[tokio::test]
 async fn file_read_nonexistent_details_none() {
-    let result = FileReadTool
+    let result = FileReadTool::default()
         .execute(
             "id".into(),
             json!({"path": "/nonexistent/xyz.txt"}),
@@ -152,7 +152,7 @@ async fn file_edit_details_success() {
     let path = dir.path().join("e.txt");
     std::fs::write(&path, "foo\nbar\n").unwrap();
 
-    let result = FileEditTool
+    let result = FileEditTool::default()
         .execute(
             "id".into(),
             json!({"path": path.to_str().unwrap(), "old_string": "bar", "new_string": "baz"}),
@@ -175,7 +175,7 @@ async fn file_edit_details_no_match() {
     let path = dir.path().join("e.txt");
     std::fs::write(&path, "hello world\n").unwrap();
 
-    let result = FileEditTool
+    let result = FileEditTool::default()
         .execute(
             "id".into(),
             json!({"path": path.to_str().unwrap(), "old_string": "xyz", "new_string": "abc"}),

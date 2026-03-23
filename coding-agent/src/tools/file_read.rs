@@ -6,7 +6,56 @@ use anyhow::Result;
 use serde_json::{json, Value};
 use tokio_util::sync::CancellationToken;
 
-pub struct FileReadTool;
+use crate::config::EditMode;
+
+pub struct FileReadTool {
+    mode: EditMode,
+    description: String,
+    schema: Value,
+}
+
+impl FileReadTool {
+    pub fn new(mode: EditMode) -> Self {
+        let description = match mode {
+            EditMode::Replace => "Read the contents of a text file.".to_string(),
+            EditMode::Hashline => concat!(
+                "Read file contents with hash-tagged line references.\n\n",
+                "Output format: each line is prefixed with LINE#HASH:content ",
+                "(e.g. \"23#VP:  const x = 1;\").\n",
+                "Use the NUM#HASH tags as anchors when calling file_edit.\n\n",
+                "- Use offset and limit for large files.\n",
+                "- You MUST use file_read instead of bash for ALL file reading ",
+                "(cat, head, tail are forbidden).\n",
+                "- Re-read a file after editing it — file_edit rejects stale hashes."
+            )
+            .to_string(),
+        };
+        let schema = json!({
+            "type": "object",
+            "properties": {
+                "path": { "type": "string", "description": "Absolute or relative path to the file to read" },
+                "offset": { "type": "number", "description": "Line number to start reading from (1-indexed)" },
+                "limit": { "type": "number", "description": "Maximum number of lines to read (default: 2000)" }
+            },
+            "required": ["path"]
+        });
+        Self {
+            mode,
+            description,
+            schema,
+        }
+    }
+
+    pub fn arc(mode: EditMode) -> Arc<dyn AgentTool> {
+        Arc::new(Self::new(mode))
+    }
+}
+
+impl Default for FileReadTool {
+    fn default() -> Self {
+        Self::new(EditMode::Replace)
+    }
+}
 
 impl AgentTool for FileReadTool {
     fn name(&self) -> &str {
@@ -18,22 +67,11 @@ impl AgentTool for FileReadTool {
     }
 
     fn description(&self) -> &str {
-        "Read the contents of a text file"
+        &self.description
     }
 
     fn parameters(&self) -> &Value {
-        static SCHEMA: std::sync::OnceLock<Value> = std::sync::OnceLock::new();
-        SCHEMA.get_or_init(|| {
-            json!({
-                "type": "object",
-                "properties": {
-                    "path": { "type": "string", "description": "Absolute or relative path to the file to read" },
-                    "offset": { "type": "number", "description": "Line number to start reading from (1-indexed)" },
-                    "limit": { "type": "number", "description": "Maximum number of lines to read (default: 2000)" }
-                },
-                "required": ["path"]
-            })
-        })
+        &self.schema
     }
 
     fn execute(
@@ -43,6 +81,7 @@ impl AgentTool for FileReadTool {
         _signal: Option<CancellationToken>,
         _on_update: Option<ToolUpdateFn>,
     ) -> BoxFuture<Result<AgentToolResult>> {
+        let mode = self.mode.clone();
         Box::pin(async move {
             let path_str = params["path"]
                 .as_str()
@@ -118,12 +157,24 @@ impl AgentTool for FileReadTool {
             let end_idx = (start_idx + limit).min(total);
 
             let selected = &all_lines[start_idx..end_idx];
-            let mut output = String::new();
 
-            for (i, line) in selected.iter().enumerate() {
-                let line_num = start_idx + i + 1; // 1-indexed
-                output.push_str(&format!("{}\t{}\n", line_num, line));
-            }
+            // Format output based on edit mode
+            let mut output = match mode {
+                EditMode::Hashline => {
+                    let selected_text = selected.join("\n");
+                    let formatted =
+                        super::hashline::format_hash_lines(&selected_text, start_idx + 1);
+                    formatted + "\n"
+                }
+                EditMode::Replace => {
+                    let mut buf = String::new();
+                    for (i, line) in selected.iter().enumerate() {
+                        let line_num = start_idx + i + 1; // 1-indexed
+                        buf.push_str(&format!("{}\t{}\n", line_num, line));
+                    }
+                    buf
+                }
+            };
 
             if end_idx < total {
                 output.push_str(&format!(
@@ -146,11 +197,5 @@ impl AgentTool for FileReadTool {
                 })),
             })
         })
-    }
-}
-
-impl FileReadTool {
-    pub fn arc() -> Arc<dyn AgentTool> {
-        Arc::new(FileReadTool)
     }
 }

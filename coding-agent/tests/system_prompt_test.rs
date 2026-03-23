@@ -1,15 +1,15 @@
+use coding_agent::config::EditMode;
 use coding_agent::system_prompt::build_system_prompt;
 use coding_agent::tools::{
-    BashTool, FileEditTool, FileReadTool, FileWriteTool, GlobTool, GrepTool, HashFileEditTool,
-    HashFileReadTool,
+    BashTool, FileEditTool, FileReadTool, FileWriteTool, GlobTool, GrepTool,
 };
 use std::sync::Arc;
 
 fn all_tools() -> Vec<Arc<dyn agent::types::AgentTool>> {
     vec![
         BashTool::arc(),
-        FileReadTool::arc(),
-        FileEditTool::arc(),
+        FileReadTool::arc(EditMode::Replace),
+        FileEditTool::arc(EditMode::Replace),
         FileWriteTool::arc(),
         GlobTool::arc(),
         GrepTool::arc(),
@@ -52,8 +52,10 @@ fn system_prompt_contains_cwd_in_footer() {
 // INV-3: When file_read and file_edit are both present, "read before editing" guideline appears.
 #[test]
 fn system_prompt_read_before_edit_guideline_when_both_present() {
-    let tools: Vec<Arc<dyn agent::types::AgentTool>> =
-        vec![FileReadTool::arc(), FileEditTool::arc()];
+    let tools: Vec<Arc<dyn agent::types::AgentTool>> = vec![
+        FileReadTool::arc(EditMode::Replace),
+        FileEditTool::arc(EditMode::Replace),
+    ];
     let prompt = build_system_prompt(&tools, "/tmp");
     assert!(
         prompt.to_lowercase().contains("read files before editing"),
@@ -106,7 +108,7 @@ fn system_prompt_empty_tools_does_not_crash() {
 // INV-3 negative: Without file_read, the "read before editing" guideline is absent.
 #[test]
 fn system_prompt_no_read_before_edit_without_file_read() {
-    let tools: Vec<Arc<dyn agent::types::AgentTool>> = vec![FileEditTool::arc()];
+    let tools: Vec<Arc<dyn agent::types::AgentTool>> = vec![FileEditTool::arc(EditMode::Replace)];
     let prompt = build_system_prompt(&tools, "/tmp");
     assert!(
         !prompt.to_lowercase().contains("read files before editing"),
@@ -115,34 +117,42 @@ fn system_prompt_no_read_before_edit_without_file_read() {
     );
 }
 
-// Hashline tools → hashline guidelines present.
+// Hashline mode tools still report as file_read/file_edit and include the
+// "read before editing" guideline via the unified name.
 #[test]
-fn system_prompt_hashline_guidelines_when_hash_tools_present() {
+fn system_prompt_hashline_tools_use_canonical_names() {
     let tools: Vec<Arc<dyn agent::types::AgentTool>> = vec![
         BashTool::arc(),
-        HashFileReadTool::arc(),
-        HashFileEditTool::arc(),
+        FileReadTool::arc(EditMode::Hashline),
+        FileEditTool::arc(EditMode::Hashline),
         FileWriteTool::arc(),
     ];
     let prompt = build_system_prompt(&tools, "/tmp");
     assert!(
-        prompt.contains("hash_file_read"),
-        "prompt should mention hash_file_read, got:\n{}",
+        prompt.contains("file_read"),
+        "prompt should mention file_read, got:\n{}",
         prompt
     );
     assert!(
-        prompt.contains("hash_file_edit"),
-        "prompt should mention hash_file_edit, got:\n{}",
+        prompt.contains("file_edit"),
+        "prompt should mention file_edit, got:\n{}",
+        prompt
+    );
+    // Should NOT contain the old hash_file_* names
+    assert!(
+        !prompt.contains("hash_file_read"),
+        "prompt should NOT mention hash_file_read, got:\n{}",
         prompt
     );
     assert!(
-        prompt.contains("LINE#HASH"),
-        "prompt should contain hashline guideline, got:\n{}",
+        !prompt.contains("hash_file_edit"),
+        "prompt should NOT mention hash_file_edit, got:\n{}",
         prompt
     );
+    // The "read before editing" guideline should still appear (same tool names)
     assert!(
-        prompt.to_lowercase().contains("re-read"),
-        "prompt should contain re-read guideline, got:\n{}",
+        prompt.to_lowercase().contains("read files before editing"),
+        "prompt should contain read-before-edit guideline for hashline tools, got:\n{}",
         prompt
     );
 }
@@ -159,14 +169,14 @@ fn system_prompt_glob_guideline_when_glob_present() {
     );
 }
 
-// Standard tools → hashline guidelines absent.
+// Standard tools → no hashline-specific content in system prompt body.
 #[test]
 fn system_prompt_no_hashline_guidelines_with_standard_tools() {
     let tools = all_tools();
     let prompt = build_system_prompt(&tools, "/tmp");
     assert!(
         !prompt.contains("LINE#HASH"),
-        "standard tools should not have hashline guidelines, got:\n{}",
+        "standard tools should not have hashline guidelines in system prompt, got:\n{}",
         prompt
     );
 }

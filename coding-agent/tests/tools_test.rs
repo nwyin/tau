@@ -99,7 +99,7 @@ async fn test_file_read_numbered_lines() {
     let path = dir.path().join("test.txt");
     std::fs::write(&path, "line one\nline two\nline three\n").unwrap();
 
-    let tool = FileReadTool;
+    let tool = FileReadTool::default();
     let result: AgentToolResult = tool
         .execute(
             "id5".into(),
@@ -131,7 +131,7 @@ async fn test_file_read_offset_limit() {
     let path = dir.path().join("test.txt");
     std::fs::write(&path, "a\nb\nc\nd\ne\n").unwrap();
 
-    let tool = FileReadTool;
+    let tool = FileReadTool::default();
     let result: AgentToolResult = tool
         .execute(
             "id6".into(),
@@ -158,7 +158,7 @@ async fn test_file_read_offset_limit() {
 // INV-7: FileReadTool returns error for nonexistent files
 #[tokio::test]
 async fn test_file_read_not_found() {
-    let tool = FileReadTool;
+    let tool = FileReadTool::default();
     let result: AgentToolResult = tool
         .execute(
             "id7".into(),
@@ -183,7 +183,7 @@ async fn test_file_read_binary() {
     // Write invalid UTF-8 bytes
     std::fs::write(&path, b"\xff\xfe\x00\x01\x80\x90").unwrap();
 
-    let tool = FileReadTool;
+    let tool = FileReadTool::default();
     let result: AgentToolResult = tool
         .execute(
             "id8".into(),
@@ -280,7 +280,7 @@ async fn test_file_edit_basic_replacement() {
     let path = dir.path().join("edit.txt");
     std::fs::write(&path, "x=1\ny=2\n").unwrap();
 
-    let tool = FileEditTool;
+    let tool = FileEditTool::default();
     let result: AgentToolResult = tool
         .execute(
             "id12".into(),
@@ -305,7 +305,7 @@ async fn test_file_edit_multiple_matches() {
     let path = dir.path().join("dup.txt");
     std::fs::write(&path, "foo\nfoo\nbar\n").unwrap();
 
-    let tool = FileEditTool;
+    let tool = FileEditTool::default();
     let result: AgentToolResult = tool
         .execute(
             "id13".into(),
@@ -335,7 +335,7 @@ async fn test_file_edit_not_found() {
     let path = dir.path().join("nf.txt");
     std::fs::write(&path, "hello world\nsecond line\n").unwrap();
 
-    let tool = FileEditTool;
+    let tool = FileEditTool::default();
     let result: AgentToolResult = tool
         .execute(
             "id14".into(),
@@ -360,7 +360,7 @@ async fn test_file_edit_not_found() {
 // INV-15: Non-existent file returns "not found" error
 #[tokio::test]
 async fn test_file_edit_nonexistent_file() {
-    let tool = FileEditTool;
+    let tool = FileEditTool::default();
     let result: AgentToolResult = tool
         .execute(
             "id15".into(),
@@ -384,7 +384,7 @@ async fn test_file_edit_binary_file() {
     let path = dir.path().join("binary.bin");
     std::fs::write(&path, b"\xff\xfe\x00\x01\x80\x90").unwrap();
 
-    let tool = FileEditTool;
+    let tool = FileEditTool::default();
     let result: AgentToolResult = tool
         .execute(
             "id16".into(),
@@ -408,7 +408,7 @@ async fn test_file_edit_empty_new_string_deletes() {
     let path = dir.path().join("del.txt");
     std::fs::write(&path, "keep this\ndelete me\nkeep that\n").unwrap();
 
-    let tool = FileEditTool;
+    let tool = FileEditTool::default();
     let result: AgentToolResult = tool
         .execute(
             "id17".into(),
@@ -435,7 +435,7 @@ async fn test_file_edit_whitespace_exact_match() {
     // File has a tab-indented line
     std::fs::write(&path, "fn foo() {\n\treturn 1;\n}\n").unwrap();
 
-    let tool = FileEditTool;
+    let tool = FileEditTool::default();
 
     // Using spaces instead of tab should NOT match
     let result_spaces: AgentToolResult = tool
