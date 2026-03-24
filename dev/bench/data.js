@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1774326648381,
+  "lastUpdate": 1774339287270,
   "repoUrl": "https://github.com/nwyin/tau",
   "entries": {
     "tau benchmarks": [
@@ -3149,6 +3149,132 @@ window.BENCHMARK_DATA = {
             "name": "sse_parsing/events/1000",
             "value": 361397,
             "range": "± 1837",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "tommynguyen0512@gmail.com",
+            "name": "Tommy Bui Nguyen",
+            "username": "nwyin"
+          },
+          "committer": {
+            "email": "tommynguyen0512@gmail.com",
+            "name": "Tommy Bui Nguyen",
+            "username": "nwyin"
+          },
+          "distinct": true,
+          "id": "37944affe6c46bbf96094fde1bf4a22023ab60eb",
+          "message": "feat: add subagent tool for delegating tasks to isolated subprocess\n\nSpawns `tau -p \"<task>\" --yolo --no-skills --no-session` as a child\nprocess with configurable model and timeout (default 5min). Sub-agent\ngets fresh context with default tools minus subagent itself to prevent\nunbounded recursion. Output captured from stdout and returned as text.",
+          "timestamp": "2026-03-24T14:51:56+08:00",
+          "tree_id": "404882df4110a627a676539c8bf6d12ab9037d2d",
+          "url": "https://github.com/nwyin/tau/commit/37944affe6c46bbf96094fde1bf4a22023ab60eb"
+        },
+        "date": 1774339286437,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "agent_construction/new_agent",
+            "value": 2111,
+            "range": "± 63",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/10",
+            "value": 3793,
+            "range": "± 23",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/50",
+            "value": 12844,
+            "range": "± 60",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/100",
+            "value": 22936,
+            "range": "± 96",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/500",
+            "value": 94067,
+            "range": "± 1666",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/10",
+            "value": 3401,
+            "range": "± 77",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/50",
+            "value": 17413,
+            "range": "± 119",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/100",
+            "value": 34420,
+            "range": "± 232",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/10",
+            "value": 13064,
+            "range": "± 301",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/50",
+            "value": 74430,
+            "range": "± 731",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/100",
+            "value": 148168,
+            "range": "± 391",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/10",
+            "value": 17227,
+            "range": "± 53",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/50",
+            "value": 92581,
+            "range": "± 283",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/100",
+            "value": 184199,
+            "range": "± 11888",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/10",
+            "value": 2884,
+            "range": "± 9",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/100",
+            "value": 38682,
+            "range": "± 225",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/1000",
+            "value": 362894,
+            "range": "± 3628",
             "unit": "ns/iter"
           }
         ]
