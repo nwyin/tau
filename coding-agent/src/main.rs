@@ -15,6 +15,14 @@ use coding_agent::session::{SessionFile, SessionManager};
 use coding_agent::tools::tools_for_edit_mode;
 use coding_agent::trace::{sha256_prefix, TraceConfig, TraceSubscriber};
 
+fn term_width() -> usize {
+    // Try COLUMNS env, fall back to 120
+    std::env::var("COLUMNS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(120)
+}
+
 fn print_models(filter_provider: Option<&str>) {
     ai::register_builtin_providers();
 
@@ -234,8 +242,47 @@ async fn main() -> Result<()> {
                 }
             }
         }
-        AgentEvent::ToolExecutionStart { tool_name, .. } => {
-            eprintln!("[tool: {}]", tool_name);
+        AgentEvent::ToolExecutionStart {
+            tool_name, args, ..
+        } => {
+            let detail = match tool_name.as_str() {
+                "file_read" | "file_write" | "file_edit" => args
+                    .get("path")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+                "glob" => args
+                    .get("pattern")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+                "grep" => args
+                    .get("pattern")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+                "bash" => args.get("command").and_then(|v| v.as_str()).map(|s| {
+                    let line = s.lines().next().unwrap_or(s);
+                    let cols = term_width().saturating_sub(8 + tool_name.len());
+                    if line.len() > cols {
+                        format!("{}…", &line[..cols.saturating_sub(1)])
+                    } else if s.lines().count() > 1 {
+                        format!("{}…", line)
+                    } else {
+                        line.to_string()
+                    }
+                }),
+                "web_fetch" => args
+                    .get("url")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+                "web_search" => args
+                    .get("query")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+                _ => None,
+            };
+            match detail {
+                Some(d) => eprintln!("[tool: {}] {}", tool_name, d),
+                None => eprintln!("[tool: {}]", tool_name),
+            }
         }
         AgentEvent::ToolExecutionEnd {
             tool_name,
