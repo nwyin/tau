@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1774326202201,
+  "lastUpdate": 1774326648381,
   "repoUrl": "https://github.com/nwyin/tau",
   "entries": {
     "tau benchmarks": [
@@ -3023,6 +3023,132 @@ window.BENCHMARK_DATA = {
             "name": "sse_parsing/events/1000",
             "value": 360561,
             "range": "± 1495",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "tommynguyen0512@gmail.com",
+            "name": "Tommy Bui Nguyen",
+            "username": "nwyin"
+          },
+          "committer": {
+            "email": "tommynguyen0512@gmail.com",
+            "name": "Tommy Bui Nguyen",
+            "username": "nwyin"
+          },
+          "distinct": true,
+          "id": "2c17d44a80df4d6eefa64644364b1456f24285ed",
+          "message": "feat: verbose tool call logging with per-tool details",
+          "timestamp": "2026-03-24T12:26:02+08:00",
+          "tree_id": "1d6524e4a51262d5d4daf117a358a2b1bcecfc08",
+          "url": "https://github.com/nwyin/tau/commit/2c17d44a80df4d6eefa64644364b1456f24285ed"
+        },
+        "date": 1774326647469,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "agent_construction/new_agent",
+            "value": 2133,
+            "range": "± 108",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/10",
+            "value": 3651,
+            "range": "± 15",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/50",
+            "value": 12969,
+            "range": "± 44",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/100",
+            "value": 21576,
+            "range": "± 96",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/500",
+            "value": 95542,
+            "range": "± 357",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/10",
+            "value": 3424,
+            "range": "± 75",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/50",
+            "value": 17209,
+            "range": "± 52",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/100",
+            "value": 34524,
+            "range": "± 168",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/10",
+            "value": 13063,
+            "range": "± 32",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/50",
+            "value": 77406,
+            "range": "± 374",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/100",
+            "value": 149562,
+            "range": "± 605",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/10",
+            "value": 17169,
+            "range": "± 511",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/50",
+            "value": 94165,
+            "range": "± 516",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/100",
+            "value": 184453,
+            "range": "± 351",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/10",
+            "value": 2862,
+            "range": "± 6",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/100",
+            "value": 38706,
+            "range": "± 101",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/1000",
+            "value": 361397,
+            "range": "± 1837",
             "unit": "ns/iter"
           }
         ]
