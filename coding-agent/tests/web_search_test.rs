@@ -161,16 +161,21 @@ async fn test_empty_api_key_returns_error() {
     std::env::remove_var("EXA_API_KEY");
 }
 
-// web_search is in all_known_tools but NOT in tools_for_edit_mode
+// web_search is in both default tools and all_known_tools
 #[test]
-fn test_web_search_not_in_default_tools() {
+fn test_web_search_in_default_tools() {
     use coding_agent::tools::{all_known_tools, tools_for_edit_mode};
 
     let default_tools = tools_for_edit_mode("replace");
     let default_names: Vec<&str> = default_tools.iter().map(|t| t.name()).collect();
     assert!(
-        !default_names.contains(&"web_search"),
-        "web_search should not be in default tools, got: {:?}",
+        default_names.contains(&"web_search"),
+        "web_search should be in default tools, got: {:?}",
+        default_names
+    );
+    assert!(
+        default_names.contains(&"web_fetch"),
+        "web_fetch should be in default tools, got: {:?}",
         default_names
     );
 

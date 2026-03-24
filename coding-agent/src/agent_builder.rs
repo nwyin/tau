@@ -135,6 +135,19 @@ pub async fn build_agent(build_config: AgentBuildConfig) -> Result<BuiltAgent> {
         tools::tools_for_edit_mode(&config.edit_mode)
     };
 
+    // Warn about missing optional API keys for included tools
+    let has_web_search = tool_list.iter().any(|t| t.name() == "web_search");
+    if has_web_search
+        && std::env::var("EXA_API_KEY")
+            .ok()
+            .filter(|k| !k.is_empty())
+            .is_none()
+    {
+        eprintln!(
+            "[warn] web_search tool enabled but EXA_API_KEY not set — get one at https://exa.ai"
+        );
+    }
+
     // Load skills
     let no_skills = build_config.no_skills || config.skills.map(|s| !s).unwrap_or(false);
     let extra_paths: Vec<std::path::PathBuf> = build_config

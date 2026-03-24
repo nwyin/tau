@@ -209,8 +209,8 @@ async fn test_tools_sent_to_llm_context() {
     let tool_defs = ctx.tools.as_ref().expect("tools should be Some");
     assert_eq!(
         tool_defs.len(),
-        6,
-        "expected 6 tool definitions, got {}",
+        8,
+        "expected 8 tool definitions, got {}",
         tool_defs.len()
     );
 

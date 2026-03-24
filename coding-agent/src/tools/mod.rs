@@ -48,6 +48,8 @@ pub fn tools_for_edit_mode(edit_mode: &str) -> Vec<Arc<dyn AgentTool>> {
         FileWriteTool::arc(),
         GlobTool::arc(),
         GrepTool::arc(),
+        WebFetchTool::arc(),
+        WebSearchTool::arc(),
     ]
 }
 
