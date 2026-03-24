@@ -2,7 +2,7 @@
 
 Feature-level comparison across 9 harnesses: **tau**, **kimi-cli**, **pi-mono**, **oh-my-pi**, **pi_agent_rust**, **codex**, **crush**, **opencode**, and **slate**.
 
-Data collected 2026-03-19 by reading each harness's source code.
+Data collected 2026-03-19 by reading each harness's source code. tau column updated 2026-03-24.
 
 ---
 
@@ -20,8 +20,8 @@ Data collected 2026-03-19 by reading each harness's source code.
 | grep/rg | yes | yes | yes | yes | yes | yes | yes | yes | yes (ripgrep) |
 | glob/find | yes | yes | yes | yes | yes | -- | yes | yes | yes (search file mode) |
 | ls | -- | -- | yes | -- | yes | yes | yes | -- | yes (file list) |
-| web fetch | -- | yes | -- | yes | -- | -- | yes | yes | yes (websearch content) |
-| web search | -- | yes | -- | yes (10 providers) | -- | yes (Responses API) | yes | yes (Exa) | yes (Exa) |
+| web fetch | yes | yes | -- | yes | -- | -- | yes | yes | yes (websearch content) |
+| web search | yes (Exa) | yes | -- | yes (10 providers) | -- | yes (Responses API) | yes | yes (Exa) | yes (Exa) |
 | browser automation | -- | -- | -- | yes (Puppeteer) | -- | -- | -- | -- | -- |
 | LSP tool | -- | -- | -- | yes (11 ops) | -- | -- | yes (references) | yes (experimental) | -- |
 | notebook edit | -- | -- | -- | yes | -- | -- | -- | -- | -- |
@@ -45,7 +45,7 @@ Data collected 2026-03-19 by reading each harness's source code.
 | MCP tools (dynamic) | -- | yes | -- | yes | stub | yes | yes | yes | yes (connect/use) |
 | custom tools (extensions) | -- | yes | yes | yes | yes | via MCP/plugins | -- | yes | -- |
 
-**Tool count (built-in)**: tau 6 | kimi-cli 17 (default agent) | pi-mono 7 | oh-my-pi ~25 | pi_agent_rust 8 | codex ~16 | crush ~16 | opencode ~15 | slate 18 (incl. 7 control-flow)
+**Tool count (built-in)**: tau 8 | kimi-cli 17 (default agent) | pi-mono 7 | oh-my-pi ~25 | pi_agent_rust 8 | codex ~16 | crush ~16 | opencode ~15 | slate 18 (incl. 7 control-flow)
 
 ### Tool name mapping
 
@@ -190,7 +190,7 @@ subtasks, communicating results) belongs in the orchestrator.
 | Session sharing | -- | yes (ZIP/Markdown export) | yes (gist) | -- | yes (gist) | -- | yes | yes | -- |
 | HTML export | -- | -- | yes | -- | yes | -- | -- | -- | -- |
 | Headless/print mode | yes | yes | yes | -- | yes | yes (exec) | -- | yes | -- |
-| RPC mode | -- | yes (ACP + Wire) | yes | -- | yes | -- | -- | -- | -- |
+| RPC mode | yes (JSON-RPC on stdio) | yes (ACP + Wire) | yes | -- | yes | -- | -- | -- | -- |
 | App server (HTTP) | -- | yes (web + vis) | -- | -- | -- | yes | -- | yes | -- |
 | Stats (--stats) | yes | -- | yes | -- | yes | yes | yes | yes | yes (token/cost tracking) |
 | Session undo/revert | -- | -- | -- | yes (checkpoint) | -- | yes (ghost snapshot) | -- | yes (git snapshot) | -- |
@@ -222,7 +222,7 @@ subtasks, communicating results) belongs in the orchestrator.
 | Feature | tau | kimi-cli | pi-mono | oh-my-pi | pi_agent_rust | codex | crush | opencode | slate |
 |---------|-----|----------|---------|----------|---------------|-------|-------|----------|-------|
 | Extension API | -- | yes (plugins + YAML agents) | yes (TS) | yes (TS) | yes (JS/QuickJS + Rust + WASM) | yes (plugins) | -- | yes (TS plugin) | -- |
-| Skills (markdown) | -- | yes | yes | yes | yes | yes | yes | yes | yes (SKILL.md files) |
+| Skills (markdown) | yes (SKILL.md + /skill: commands) | yes | yes | yes | yes | yes | yes | yes | yes (SKILL.md files) |
 | Custom tool registration | -- | yes | yes | yes | yes | via MCP | -- | yes | -- |
 | Package manager (install/remove) | -- | -- | yes | yes | yes | -- | -- | -- | -- |
 | Hook system | -- | -- | yes (30+ events) | yes (20+ events) | -- | yes (5 lifecycle hooks) | -- | yes (plugin hooks) | yes (PostToolUse hooks) |
@@ -488,11 +488,11 @@ Based on the table above, here are the features that appear across 4+ harnesses 
 2. **~~Permission model~~** — ✅ Implemented (per-tool allow/deny/ask in config.toml, interactive y/n/always prompt, --yolo bypass, sensible defaults: read tools allow, write/exec tools ask).
 3. **Sub-agent spawning** — kimi-cli, oh-my-pi, codex, opencode, and slate have it natively; pi-mono has an extension example. Slate's approach is unique: the LLM generates JavaScript DSL code with `system.thread()` and `system.query()` calls. Parallelism is the difference between "wait 5 minutes" and "wait 1 minute."
 4. **MCP support** — kimi-cli, oh-my-pi, codex, crush, opencode, and slate all expose this. Unlocks external tool servers without writing code.
-5. **Skills (markdown)** — All harnesses except tau. Slate uses SKILL.md files. Reusable prompt snippets loaded as slash commands.
+5. **~~Skills (markdown)~~** — ✅ Implemented (SKILL.md files with YAML frontmatter, project-local `.tau/skills/` + user-global `~/.tau/skills/` discovery, `/skill:name` slash commands in REPL, `--skill` CLI flag).
 
 ### High-value (present in 3-4 harnesses, high daily-driver impact)
 
-6. **~~Web fetch/search~~** — kimi-cli, oh-my-pi, codex, crush, opencode, and slate (Exa via proxy). Needed for looking up docs, APIs, error messages.
+6. **~~Web fetch/search~~** — ✅ Implemented (web_search via Exa API, web_fetch via HTTP with HTML stripping; both in default tool set with graceful degradation when EXA_API_KEY missing).
 7. **Todo/plan tracking** — kimi-cli, oh-my-pi, codex, crush, opencode, and slate (YAML-based). Keeps the agent organized on multi-step tasks.
 8. **LSP diagnostics on edit** — oh-my-pi, crush, opencode. Immediate feedback on syntax/type errors after edits.
 9. **Session picker / resume UX** — 6 harnesses now have a real picker, search flow, or browser session manager. tau has `--resume` but no browser.
