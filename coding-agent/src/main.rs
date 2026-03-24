@@ -321,8 +321,33 @@ async fn main() -> Result<()> {
 
             abort_count.store(0, Ordering::SeqCst);
 
-            let input =
-                coding_agent::skills::expand_skill_command(&input, &skills).unwrap_or(input);
+            let input = match coding_agent::skills::expand_skill_command(&input, &skills) {
+                Some(expanded) => {
+                    let name = &input[7..input.find(' ').unwrap_or(input.len())];
+                    eprintln!("[skill: {}]", name);
+                    expanded
+                }
+                None => {
+                    if input.starts_with("/skill:") {
+                        let name = &input[7..input.find(' ').unwrap_or(input.len())];
+                        eprintln!(
+                            "Unknown skill '{}'. Available: {}",
+                            name,
+                            if skills.is_empty() {
+                                "(none)".to_string()
+                            } else {
+                                skills
+                                    .iter()
+                                    .map(|s| s.name.as_str())
+                                    .collect::<Vec<_>>()
+                                    .join(", ")
+                            }
+                        );
+                        continue;
+                    }
+                    input
+                }
+            };
 
             if let Err(e) = agent.prompt(input).await {
                 eprintln!("Error: {}", e);

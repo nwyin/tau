@@ -466,8 +466,10 @@ mod tests {
         fs::create_dir(dir.path().join(".git")).unwrap();
 
         let loaded = load_skills(dir.path(), false, &[]);
-        assert_eq!(loaded.skills.len(), 1);
-        assert_eq!(loaded.skills[0].description, "Project version");
+        // Should contain "dupe" from project (may also contain user-global skills from ~/.tau/skills/)
+        let dupe = loaded.skills.iter().find(|s| s.name == "dupe").unwrap();
+        assert_eq!(dupe.description, "Project version");
+        assert_eq!(dupe.source, SkillSource::Project);
     }
 
     #[test]
