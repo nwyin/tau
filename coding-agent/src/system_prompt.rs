@@ -61,6 +61,10 @@ pub fn build_system_prompt(tools: &[Arc<dyn AgentTool>], skills: &[Skill], cwd: 
             .push("Use glob for finding files by pattern — prefer it over bash find/ls commands.");
     }
 
+    if has("subagent") {
+        guidelines.push("Use subagent to delegate well-defined subtasks — especially exploratory research, file analysis, or work that would clutter your context. Give each sub-agent a clear, self-contained task description. Consider using a cheaper model (via the model parameter) for straightforward work.");
+    }
+
     // Always-on guidelines
     guidelines.push("Be concise in your responses.");
     guidelines.push("Show file paths clearly when working with files.");

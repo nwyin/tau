@@ -183,6 +183,18 @@ pub fn describe_tool_call(tool_name: &str, params: &Value) -> String {
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string(),
+        "subagent" => params
+            .get("task")
+            .and_then(|v| v.as_str())
+            .map(|s| {
+                let line = s.lines().next().unwrap_or(s);
+                if line.len() > 80 {
+                    format!("{}…", &line[..79])
+                } else {
+                    line.to_string()
+                }
+            })
+            .unwrap_or_default(),
         _ => String::new(),
     }
 }

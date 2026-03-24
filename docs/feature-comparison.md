@@ -33,7 +33,7 @@ Data collected 2026-03-19 by reading each harness's source code. tau column upda
 | ssh | -- | -- | -- | yes | -- | -- | -- | -- | -- |
 | calculator | -- | -- | -- | yes | -- | -- | -- | -- | -- |
 | todo/plan tracking | -- | yes | -- | yes | -- | yes (update_plan) | yes | yes | yes (YAML-based todo) |
-| sub-agent spawn | -- | yes | ext example | yes (8 types) | -- | yes (spawn/wait/send) | -- | yes | yes (orchestrate DSL) |
+| sub-agent spawn | yes | yes | ext example | yes (8 types) | -- | yes (spawn/wait/send) | -- | yes | yes (orchestrate DSL) |
 | batch parallel tools | -- | -- | -- | -- | -- | -- | -- | yes (25 concurrent) | -- |
 | download | -- | -- | -- | -- | -- | -- | yes | -- | -- |
 | sourcegraph | -- | -- | -- | -- | -- | -- | yes | -- | -- |
@@ -45,7 +45,7 @@ Data collected 2026-03-19 by reading each harness's source code. tau column upda
 | MCP tools (dynamic) | -- | yes | -- | yes | stub | yes | yes | yes | yes (connect/use) |
 | custom tools (extensions) | -- | yes | yes | yes | yes | via MCP/plugins | -- | yes | -- |
 
-**Tool count (built-in)**: tau 8 | kimi-cli 17 (default agent) | pi-mono 7 | oh-my-pi ~25 | pi_agent_rust 8 | codex ~16 | crush ~16 | opencode ~15 | slate 18 (incl. 7 control-flow)
+**Tool count (built-in)**: tau 9 | kimi-cli 17 (default agent) | pi-mono 7 | oh-my-pi ~25 | pi_agent_rust 8 | codex ~16 | crush ~16 | opencode ~15 | slate 18 (incl. 7 control-flow)
 
 ### Tool name mapping
 
@@ -116,7 +116,7 @@ The most interesting divergence across harnesses. Same model, different edit for
 
 | Feature | tau | kimi-cli | pi-mono | oh-my-pi | pi_agent_rust | codex | crush | opencode | slate |
 |---------|-----|----------|---------|----------|---------------|-------|-------|----------|-------|
-| Sub-agent spawning | -- | yes | ext example | yes (8 types) | -- | yes (spawn/wait/send/resume/close) | -- | yes | yes (orchestrate DSL: system.thread + system.query) |
+| Sub-agent spawning | yes (subprocess, model-selectable) | yes | ext example | yes (8 types) | -- | yes (spawn/wait/send/resume/close) | -- | yes | yes (orchestrate DSL: system.thread + system.query) |
 | Max concurrent sub-agents | -- | -- | -- | 32 | -- | -- | -- | -- | unlimited (Promise.all) |
 | Background async jobs | -- | yes (shell tasks, 4 default) | -- | yes (100 max) | -- | -- | -- | -- | -- |
 | Isolation (worktree) | -- | -- | -- | yes | -- | -- | -- | yes | yes (git worktree boundary) |
@@ -486,7 +486,7 @@ Based on the table above, here are the features that appear across 4+ harnesses 
 
 1. **~~Auto-compaction~~** — ✅ Implemented (mechanical: chars/4 estimation, tool output truncation, observation masking, turn-boundary eviction). LLM-based summarization and `/compact` command are future work.
 2. **~~Permission model~~** — ✅ Implemented (per-tool allow/deny/ask in config.toml, interactive y/n/always prompt, --yolo bypass, sensible defaults: read tools allow, write/exec tools ask).
-3. **Sub-agent spawning** — kimi-cli, oh-my-pi, codex, opencode, and slate have it natively; pi-mono has an extension example. Slate's approach is unique: the LLM generates JavaScript DSL code with `system.thread()` and `system.query()` calls. Parallelism is the difference between "wait 5 minutes" and "wait 1 minute."
+3. **~~Sub-agent spawning~~** — ✅ Implemented (subagent tool spawns isolated `tau -p` subprocess with configurable model, 5min default timeout, no recursion. Sub-agent gets fresh context + default tools minus subagent itself).
 4. **~~Skills (markdown)~~** — ✅ Implemented (SKILL.md files with YAML frontmatter, project-local `.tau/skills/` + user-global `~/.tau/skills/` discovery, `/skill:name` slash commands in REPL, `--skill` CLI flag).
 
 ### High-value (present in 3-4 harnesses, high daily-driver impact)

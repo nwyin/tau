@@ -287,6 +287,21 @@ async fn main() -> Result<()> {
                     .get("query")
                     .and_then(|v| v.as_str())
                     .map(|s| s.to_string()),
+                "subagent" => args.get("task").and_then(|v| v.as_str()).map(|s| {
+                    let line = s.lines().next().unwrap_or(s);
+                    let model_suffix = args
+                        .get("model")
+                        .and_then(|v| v.as_str())
+                        .map(|m| format!(" [{}]", m))
+                        .unwrap_or_default();
+                    let cols = term_width().saturating_sub(12 + tool_name.len());
+                    let truncated = if line.len() > cols {
+                        format!("{}…", &line[..cols.saturating_sub(1)])
+                    } else {
+                        line.to_string()
+                    };
+                    format!("{}{}", truncated, model_suffix)
+                }),
                 _ => None,
             };
             match detail {
