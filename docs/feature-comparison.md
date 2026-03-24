@@ -1,6 +1,6 @@
 # Coding Agent Harness Feature Comparison
 
-Feature-level comparison across 8 harnesses: **tau**, **kimi-cli**, **pi-mono**, **oh-my-pi**, **pi_agent_rust**, **codex**, **crush**, and **opencode**.
+Feature-level comparison across 9 harnesses: **tau**, **kimi-cli**, **pi-mono**, **oh-my-pi**, **pi_agent_rust**, **codex**, **crush**, **opencode**, and **slate**.
 
 Data collected 2026-03-19 by reading each harness's source code.
 
@@ -8,57 +8,57 @@ Data collected 2026-03-19 by reading each harness's source code.
 
 ## Tools
 
-| Tool | tau | kimi-cli | pi-mono | oh-my-pi | pi_agent_rust | codex | crush | opencode |
-|------|-----|----------|---------|----------|---------------|-------|-------|----------|
-| bash/shell | yes | yes | yes | yes | yes | yes | yes | yes |
-| file read | yes | yes | yes | yes | yes | yes | yes (view) | yes |
-| file write | yes | yes | yes | yes | yes | via shell | yes | yes |
-| file edit (exact match) | yes | yes | yes | yes | yes | -- | yes | yes |
-| multi-edit | -- | yes | -- | -- | -- | -- | yes | yes |
-| hashline edit | yes | -- | -- | yes (invented it) | yes (default) | -- | -- | -- |
-| apply_patch (unified diff) | -- | -- | -- | yes (patch mode) | -- | yes (primary) | -- | yes (GPT models) |
-| grep/rg | yes | yes | yes | yes | yes | yes | yes | yes |
-| glob/find | yes | yes | yes | yes | yes | -- | yes | yes |
-| ls | -- | -- | yes | -- | yes | yes | yes | -- |
-| web fetch | -- | yes | -- | yes | -- | -- | yes | yes |
-| web search | -- | yes | -- | yes (10 providers) | -- | yes (Responses API) | yes | yes (Exa) |
-| browser automation | -- | -- | -- | yes (Puppeteer) | -- | -- | -- | -- |
-| LSP tool | -- | -- | -- | yes (11 ops) | -- | -- | yes (references) | yes (experimental) |
-| notebook edit | -- | -- | -- | yes | -- | -- | -- | -- |
-| python/IPython | -- | -- | -- | yes | -- | -- | -- | -- |
-| JS REPL | -- | -- | -- | -- | -- | yes (persistent) | -- | -- |
-| ast-grep search/edit | -- | -- | -- | yes | -- | -- | -- | -- |
-| image generation | -- | -- | -- | yes (Gemini etc.) | -- | -- | -- | -- |
-| view image | -- | yes | -- | -- | -- | yes | -- | -- |
-| ssh | -- | -- | -- | yes | -- | -- | -- | -- |
-| calculator | -- | -- | -- | yes | -- | -- | -- | -- |
-| todo/plan tracking | -- | yes | -- | yes | -- | yes (update_plan) | yes | yes |
-| sub-agent spawn | -- | yes | ext example | yes (8 types) | -- | yes (spawn/wait/send) | -- | yes |
-| batch parallel tools | -- | -- | -- | -- | -- | -- | -- | yes (25 concurrent) |
-| download | -- | -- | -- | -- | -- | -- | yes | -- |
-| sourcegraph | -- | -- | -- | -- | -- | -- | yes | -- |
-| code search | -- | -- | -- | -- | -- | -- | -- | yes (Exa) |
-| checkpoint/rewind | -- | -- | -- | yes | -- | -- | -- | -- |
-| cancel background job | -- | yes | -- | yes | -- | -- | yes | -- |
-| artifacts | -- | -- | -- | yes | -- | yes | -- | -- |
-| request user input | -- | yes | -- | yes (ask) | -- | yes | -- | -- |
-| MCP tools (dynamic) | -- | yes | -- | yes | stub | yes | yes | yes |
-| custom tools (extensions) | -- | yes | yes | yes | yes | via MCP/plugins | -- | yes |
+| Tool | tau | kimi-cli | pi-mono | oh-my-pi | pi_agent_rust | codex | crush | opencode | slate |
+|------|-----|----------|---------|----------|---------------|-------|-------|----------|-------|
+| bash/shell | yes | yes | yes | yes | yes | yes | yes | yes | yes (PTY-based terminal + bash) |
+| file read | yes | yes | yes | yes | yes | yes | yes (view) | yes | yes (file read) |
+| file write | yes | yes | yes | yes | yes | via shell | yes | yes | yes (file write) |
+| file edit (exact match) | yes | yes | yes | yes | yes | -- | yes | yes | yes (search/replace) |
+| multi-edit | -- | yes | -- | -- | -- | -- | yes | yes | yes (sequential batch) |
+| hashline edit | yes | -- | -- | yes (invented it) | yes (default) | -- | -- | -- | -- |
+| apply_patch (unified diff) | -- | -- | -- | yes (patch mode) | -- | yes (primary) | -- | yes (GPT models) | -- |
+| grep/rg | yes | yes | yes | yes | yes | yes | yes | yes | yes (ripgrep) |
+| glob/find | yes | yes | yes | yes | yes | -- | yes | yes | yes (search file mode) |
+| ls | -- | -- | yes | -- | yes | yes | yes | -- | yes (file list) |
+| web fetch | -- | yes | -- | yes | -- | -- | yes | yes | yes (websearch content) |
+| web search | -- | yes | -- | yes (10 providers) | -- | yes (Responses API) | yes | yes (Exa) | yes (Exa) |
+| browser automation | -- | -- | -- | yes (Puppeteer) | -- | -- | -- | -- | -- |
+| LSP tool | -- | -- | -- | yes (11 ops) | -- | -- | yes (references) | yes (experimental) | -- |
+| notebook edit | -- | -- | -- | yes | -- | -- | -- | -- | -- |
+| python/IPython | -- | -- | -- | yes | -- | -- | -- | -- | -- |
+| JS REPL | -- | -- | -- | -- | -- | yes (persistent) | -- | -- | -- |
+| ast-grep search/edit | -- | -- | -- | yes | -- | -- | -- | -- | -- |
+| image generation | -- | -- | -- | yes (Gemini etc.) | -- | -- | -- | -- | -- |
+| view image | -- | yes | -- | -- | -- | yes | -- | -- | yes (file read asImage) |
+| ssh | -- | -- | -- | yes | -- | -- | -- | -- | -- |
+| calculator | -- | -- | -- | yes | -- | -- | -- | -- | -- |
+| todo/plan tracking | -- | yes | -- | yes | -- | yes (update_plan) | yes | yes | yes (YAML-based todo) |
+| sub-agent spawn | -- | yes | ext example | yes (8 types) | -- | yes (spawn/wait/send) | -- | yes | yes (orchestrate DSL) |
+| batch parallel tools | -- | -- | -- | -- | -- | -- | -- | yes (25 concurrent) | -- |
+| download | -- | -- | -- | -- | -- | -- | yes | -- | -- |
+| sourcegraph | -- | -- | -- | -- | -- | -- | yes | -- | -- |
+| code search | -- | -- | -- | -- | -- | -- | -- | yes (Exa) | -- |
+| checkpoint/rewind | -- | -- | -- | yes | -- | -- | -- | -- | -- |
+| cancel background job | -- | yes | -- | yes | -- | -- | yes | -- | yes (terminal kill) |
+| artifacts | -- | -- | -- | yes | -- | yes | -- | -- | yes (document store) |
+| request user input | -- | yes | -- | yes (ask) | -- | yes | -- | -- | yes (escalate) |
+| MCP tools (dynamic) | -- | yes | -- | yes | stub | yes | yes | yes | yes (connect/use) |
+| custom tools (extensions) | -- | yes | yes | yes | yes | via MCP/plugins | -- | yes | -- |
 
-**Tool count (built-in)**: tau 6 | kimi-cli 17 (default agent) | pi-mono 7 | oh-my-pi ~25 | pi_agent_rust 8 | codex ~16 | crush ~16 | opencode ~15
+**Tool count (built-in)**: tau 6 | kimi-cli 17 (default agent) | pi-mono 7 | oh-my-pi ~25 | pi_agent_rust 8 | codex ~16 | crush ~16 | opencode ~15 | slate 18 (incl. 7 control-flow)
 
 ### Tool name mapping
 
 Actual tool names used by each harness (matters for training data transfer):
 
-| Tool | tau | kimi-cli | pi-mono | oh-my-pi | crush | codex | opencode |
-|------|:---:|:--------:|:-------:|:--------:|:-----:|:-----:|:-------:|
-| bash/shell | bash | Shell | bash | bash | bash | shell | bash |
-| file read | file_read | ReadFile | read | read | view | read_file | read |
-| file edit | file_edit | StrReplaceFile | edit | edit | edit | apply_patch | edit *or* apply_patch |
-| file write | file_write | WriteFile | write | write | write | (via apply_patch) | write |
-| grep | grep | Grep | grep | grep | grep | grep_files | grep |
-| glob/find | glob | Glob | find | find | glob | list_dir | glob |
+| Tool | tau | kimi-cli | pi-mono | oh-my-pi | crush | codex | opencode | slate |
+|------|:---:|:--------:|:-------:|:--------:|:-----:|:-----:|:-------:|:-----:|
+| bash/shell | bash | Shell | bash | bash | bash | shell | bash | terminal *or* bash |
+| file read | file_read | ReadFile | read | read | view | read_file | read | file (command=read) |
+| file edit | file_edit | StrReplaceFile | edit | edit | edit | apply_patch | edit *or* apply_patch | edit |
+| file write | file_write | WriteFile | write | write | write | (via apply_patch) | write | file (command=write) |
+| grep | grep | Grep | grep | grep | grep | grep_files | grep | search *or* rg |
+| glob/find | glob | Glob | find | find | glob | list_dir | glob | search (command=file) |
 
 Every harness converges on the same six core tools: shell execution, file read, file edit, file write, content search, and file search. The divergence is in what else gets added on top, and in tool naming — which affects whether models can transfer training from one harness to another.
 
@@ -66,23 +66,23 @@ Every harness converges on the same six core tools: shell execution, file read, 
 
 ## Edit Strategy
 
-| Feature | tau | kimi-cli | pi-mono | oh-my-pi | pi_agent_rust | codex | crush | opencode |
-|---------|-----|----------|---------|----------|---------------|-------|-------|----------|
-| Exact string replace | yes | yes | yes | yes | yes | -- | yes | yes |
-| Fuzzy match fallback | yes (trimmed-cascade) | -- | yes | -- | -- | yes (context matching) | -- | yes (9 strategies) |
-| Hashline (hash-anchored) | yes | -- | -- | yes (default) | yes (default) | -- | -- | -- |
-| Unified diff / patch | -- | -- | -- | yes (patch mode) | -- | yes (primary) | -- | yes (GPT models) |
-| Multi-edit (batch) | -- | yes | -- | -- | -- | -- | yes | yes |
-| Switchable edit mode | yes | -- | -- | yes | -- | -- | -- | -- |
-| LSP format-on-write | -- | -- | -- | yes | -- | -- | -- | -- |
-| LSP diagnostics-on-edit | -- | -- | -- | yes | -- | -- | yes | yes |
-| Ghost snapshot (per-turn git commit) | -- | -- | -- | -- | -- | yes | -- | -- |
+| Feature | tau | kimi-cli | pi-mono | oh-my-pi | pi_agent_rust | codex | crush | opencode | slate |
+|---------|-----|----------|---------|----------|---------------|-------|-------|----------|-------|
+| Exact string replace | yes | yes | yes | yes | yes | -- | yes | yes | yes |
+| Fuzzy match fallback | yes (trimmed-cascade) | -- | yes | -- | -- | yes (context matching) | -- | yes (9 strategies) | yes (3-tier: exact, whitespace-normalized, line-by-line trimmed) |
+| Hashline (hash-anchored) | yes | -- | -- | yes (default) | yes (default) | -- | -- | -- | -- |
+| Unified diff / patch | -- | -- | -- | yes (patch mode) | -- | yes (primary) | -- | yes (GPT models) | -- (returns unified diff as result, not input) |
+| Multi-edit (batch) | -- | yes | -- | -- | -- | -- | yes | yes | yes (sequential batch) |
+| Switchable edit mode | yes | -- | -- | yes | -- | -- | -- | -- | -- |
+| LSP format-on-write | -- | -- | -- | yes | -- | -- | -- | -- | -- |
+| LSP diagnostics-on-edit | -- | -- | -- | yes | -- | -- | yes | yes | -- |
+| Ghost snapshot (per-turn git commit) | -- | -- | -- | -- | -- | yes | -- | -- | -- |
 
 ### Edit strategy analysis
 
 The most interesting divergence across harnesses. Same model, different edit format, wildly different scores.
 
-**Exact string match** (tau, kimi-cli, pi-mono, crush, opencode for Claude): `{old_string, new_string}`. Simple for the model to understand. Fails when `old_string` appears multiple times or when the model hallucinates whitespace. pi-mono mitigates with fuzzy matching. kimi-cli adds batched replacement (list of exact replacements in one call). Low token cost per edit, high failure rate on large or repetitive files.
+**Exact string match** (tau, kimi-cli, pi-mono, crush, opencode for Claude, slate): `{old_string, new_string}` or `{search, replace}`. Simple for the model to understand. Fails when `old_string` appears multiple times or when the model hallucinates whitespace. pi-mono mitigates with fuzzy matching. kimi-cli adds batched replacement (list of exact replacements in one call). slate uses a 3-tier fuzzy cascade (exact, whitespace-normalized, line-by-line trimmed) and returns unified diffs as confirmation. Low token cost per edit, high failure rate on large or repetitive files.
 
 **Unified diff / patch** (codex, opencode for GPT): More expressive — multi-hunk edits in one call. Models frequently produce malformed patches (wrong line numbers, missing context). opencode uses a custom patch DSL with function signatures as context anchors instead of line numbers, plus multi-file operations (add, delete, move) in one call. Higher expressiveness, higher fragility.
 
@@ -96,43 +96,43 @@ The most interesting divergence across harnesses. Same model, different edit for
 
 ## Context Management
 
-| Feature | tau | kimi-cli | pi-mono | oh-my-pi | pi_agent_rust | codex | crush | opencode |
-|---------|-----|----------|---------|----------|---------------|-------|-------|----------|
-| Auto-compaction | yes (mechanical) | yes | yes | yes | yes | yes | yes | yes |
-| Manual /compact | -- | yes | yes | yes | yes | yes | yes | yes |
-| LLM-based summarization | -- | yes | yes | yes | yes | yes | yes | yes |
-| Background compaction | -- | -- | -- | -- | yes | -- | -- | -- |
-| Tool output pruning | yes (truncate + mask) | -- | -- | -- | -- | -- | -- | yes |
-| Context overflow recovery | -- | -- | yes | yes | -- | -- | -- | yes |
-| Context promotion (model upgrade) | -- | -- | -- | yes | -- | -- | -- | -- |
-| TTSR (pattern-triggered rules) | -- | -- | -- | yes | -- | -- | -- | -- |
-| Autonomous memory (cross-session) | -- | -- | -- | yes | -- | yes | -- | -- |
-| Branch summarization | -- | -- | yes | -- | yes | -- | -- | -- |
-| Thinking level control | -- | yes | yes | yes | yes | yes (reasoning effort) | yes | -- |
+| Feature | tau | kimi-cli | pi-mono | oh-my-pi | pi_agent_rust | codex | crush | opencode | slate |
+|---------|-----|----------|---------|----------|---------------|-------|-------|----------|-------|
+| Auto-compaction | yes (mechanical) | yes | yes | yes | yes | yes | yes | yes | yes (rolling compression) |
+| Manual /compact | -- | yes | yes | yes | yes | yes | yes | yes | -- |
+| LLM-based summarization | -- | yes | yes | yes | yes | yes | yes | yes | yes (behaviorMode:"compression") |
+| Background compaction | -- | -- | -- | -- | yes | -- | -- | -- | -- |
+| Tool output pruning | yes (truncate + mask) | -- | -- | -- | -- | -- | -- | yes | yes (30KB truncation) |
+| Context overflow recovery | -- | -- | yes | yes | -- | -- | -- | yes | -- |
+| Context promotion (model upgrade) | -- | -- | -- | yes | -- | -- | -- | -- | -- |
+| TTSR (pattern-triggered rules) | -- | -- | -- | yes | -- | -- | -- | -- | -- |
+| Autonomous memory (cross-session) | -- | -- | -- | yes | -- | yes | -- | -- | -- |
+| Branch summarization | -- | -- | yes | -- | yes | -- | -- | -- | yes (episode-based compact traces) |
+| Thinking level control | -- | yes | yes | yes | yes | yes (reasoning effort) | yes | -- | yes (reasoningBudget) |
 
 ---
 
 ## Sub-agents / Parallel Execution
 
-| Feature | tau | kimi-cli | pi-mono | oh-my-pi | pi_agent_rust | codex | crush | opencode |
-|---------|-----|----------|---------|----------|---------------|-------|-------|----------|
-| Sub-agent spawning | -- | yes | ext example | yes (8 types) | -- | yes (spawn/wait/send/resume/close) | -- | yes |
-| Max concurrent sub-agents | -- | -- | -- | 32 | -- | -- | -- | -- |
-| Background async jobs | -- | yes (shell tasks, 4 default) | -- | yes (100 max) | -- | -- | -- | -- |
-| Isolation (worktree) | -- | -- | -- | yes | -- | -- | -- | yes |
-| Isolation (fuse overlay) | -- | -- | -- | yes | -- | -- | -- | -- |
-| Swarm orchestration | -- | -- | -- | yes (YAML pipelines) | -- | -- | -- | -- |
-| Parallel tool calls | -- | -- | -- | -- | yes (8 concurrent) | yes (read/write lock) | yes | yes (batch, 25) |
-| Plan→build agent switch | -- | yes | -- | -- | -- | yes (/plan) | -- | yes |
-| Inter-agent messaging | -- | -- | -- | -- | -- | yes (send_input) | -- | -- |
+| Feature | tau | kimi-cli | pi-mono | oh-my-pi | pi_agent_rust | codex | crush | opencode | slate |
+|---------|-----|----------|---------|----------|---------------|-------|-------|----------|-------|
+| Sub-agent spawning | -- | yes | ext example | yes (8 types) | -- | yes (spawn/wait/send/resume/close) | -- | yes | yes (orchestrate DSL: system.thread + system.query) |
+| Max concurrent sub-agents | -- | -- | -- | 32 | -- | -- | -- | -- | unlimited (Promise.all) |
+| Background async jobs | -- | yes (shell tasks, 4 default) | -- | yes (100 max) | -- | -- | -- | -- | -- |
+| Isolation (worktree) | -- | -- | -- | yes | -- | -- | -- | yes | yes (git worktree boundary) |
+| Isolation (fuse overlay) | -- | -- | -- | yes | -- | -- | -- | -- | -- |
+| Swarm orchestration | -- | -- | -- | yes (YAML pipelines) | -- | -- | -- | -- | yes (JS DSL code generation) |
+| Parallel tool calls | -- | -- | -- | -- | yes (8 concurrent) | yes (read/write lock) | yes | yes (batch, 25) | -- |
+| Plan→build agent switch | -- | yes | -- | -- | -- | yes (/plan) | -- | yes | yes (experimental PLAN_MODE) |
+| Inter-agent messaging | -- | -- | -- | -- | -- | yes (send_input) | -- | -- | yes (document store + trace references) |
 
 **tau's position: harness ≠ orchestrator.**
 
 The trend is to embed multi-agent orchestration into the harness itself
-(Claude Code agent teams, Codex spawn/wait/send, opencode batch). tau
-takes a deliberately different approach: the harness is a single-agent
-primitive, and multi-agent orchestration lives in a separate layer
-(Hive).
+(Claude Code agent teams, Codex spawn/wait/send, opencode batch, slate
+orchestrate DSL). tau takes a deliberately different approach: the
+harness is a single-agent primitive, and multi-agent orchestration
+lives in a separate layer (Hive).
 
 Rationale:
 
@@ -161,129 +161,129 @@ subtasks, communicating results) belongs in the orchestrator.
 
 ## Permission Model
 
-| Feature | tau | kimi-cli | pi-mono | oh-my-pi | pi_agent_rust | codex | crush | opencode |
-|---------|-----|----------|---------|----------|---------------|-------|-------|----------|
-| Per-tool permissions | -- | yes | ext example | yes | yes (capability policy) | yes | yes | yes |
-| Allow once / always | -- | yes (approve for session) | -- | -- | yes (with expiry) | -- | -- | yes |
-| Approval modes (suggest/auto/full) | -- | -- | -- | -- | -- | yes (4 levels) | -- | -- |
-| Guardian auto-reviewer | -- | -- | -- | -- | -- | yes (GPT-5.4 risk scoring) | -- | -- |
-| Bash command AST parsing | -- | -- | -- | -- | yes (ast-grep) | -- | -- | yes (tree-sitter) |
-| Secret redaction | -- | -- | -- | yes | yes | -- | -- | -- |
-| Sandbox (OS-level) | -- | -- | ext example | -- | -- | yes (seatbelt/landlock/restricted token) | -- | -- |
-| Network proxy (domain filtering) | -- | -- | -- | -- | yes | yes (HTTP+SOCKS5, MITM) | -- | -- |
-| Plan mode (read-only) | -- | yes | ext example | yes | -- | yes | -- | yes |
-| Exec policy rules engine | -- | -- | -- | -- | -- | yes (TOML allowlist/denylist) | -- | -- |
-| Extension capability policy | -- | -- | -- | -- | yes (safe/balanced/permissive) | -- | -- | -- |
-| Risk controller (anomaly detection) | -- | -- | -- | -- | yes | -- | -- | -- |
+| Feature | tau | kimi-cli | pi-mono | oh-my-pi | pi_agent_rust | codex | crush | opencode | slate |
+|---------|-----|----------|---------|----------|---------------|-------|-------|----------|-------|
+| Per-tool permissions | -- | yes | ext example | yes | yes (capability policy) | yes | yes | yes | yes (allow/deny/ask per tool) |
+| Allow once / always | -- | yes (approve for session) | -- | -- | yes (with expiry) | -- | -- | yes | yes (approve/always/reject) |
+| Approval modes (suggest/auto/full) | -- | -- | -- | -- | -- | yes (4 levels) | -- | -- | yes (4 modes: EXECUTION/AUTOACCEPT/YOLO/PLANNING) |
+| Guardian auto-reviewer | -- | -- | -- | -- | -- | yes (GPT-5.4 risk scoring) | -- | -- | -- |
+| Bash command AST parsing | -- | -- | -- | -- | yes (ast-grep) | -- | -- | yes (tree-sitter) | -- |
+| Secret redaction | -- | -- | -- | yes | yes | -- | -- | -- | yes (.env file protection, API key masking) |
+| Sandbox (OS-level) | -- | -- | ext example | -- | -- | yes (seatbelt/landlock/restricted token) | -- | -- | -- |
+| Network proxy (domain filtering) | -- | -- | -- | -- | yes | yes (HTTP+SOCKS5, MITM) | -- | -- | -- |
+| Plan mode (read-only) | -- | yes | ext example | yes | -- | yes | -- | yes | yes (experimental PLAN_MODE) |
+| Exec policy rules engine | -- | -- | -- | -- | -- | yes (TOML allowlist/denylist) | -- | -- | yes (JSON permission rules, glob patterns) |
+| Extension capability policy | -- | -- | -- | -- | yes (safe/balanced/permissive) | -- | -- | -- | -- |
+| Risk controller (anomaly detection) | -- | -- | -- | -- | yes | -- | -- | -- | yes (doom_loop detection) |
 
 ---
 
 ## Session Management
 
-| Feature | tau | kimi-cli | pi-mono | oh-my-pi | pi_agent_rust | codex | crush | opencode |
-|---------|-----|----------|---------|----------|---------------|-------|-------|----------|
-| Persistence format | JSONL | JSONL + `state.json` + `wire.jsonl` | JSONL (v3) | JSONL | JSONL (v3) + segment store + SQLite | SQLite | SQLite | SQLite |
-| Session resume | yes | yes | yes | yes | yes | yes | yes | yes |
-| Session picker (fuzzy) | -- | yes (browser/search) | yes | -- | yes | -- | yes | yes |
-| Branch/fork tree | -- | yes | yes | yes | yes | yes (fork) | -- | -- |
-| Session naming | -- | -- | yes | yes | yes | yes (rename) | -- | -- |
-| Session sharing | -- | yes (ZIP/Markdown export) | yes (gist) | -- | yes (gist) | -- | yes | yes |
-| HTML export | -- | -- | yes | -- | yes | -- | -- | -- |
-| Headless/print mode | yes | yes | yes | -- | yes | yes (exec) | -- | yes |
-| RPC mode | -- | yes (ACP + Wire) | yes | -- | yes | -- | -- | -- |
-| App server (HTTP) | -- | yes (web + vis) | -- | -- | -- | yes | -- | yes |
-| Stats (--stats) | yes | -- | yes | -- | yes | yes | yes | yes |
-| Session undo/revert | -- | -- | -- | yes (checkpoint) | -- | yes (ghost snapshot) | -- | yes (git snapshot) |
+| Feature | tau | kimi-cli | pi-mono | oh-my-pi | pi_agent_rust | codex | crush | opencode | slate |
+|---------|-----|----------|---------|----------|---------------|-------|-------|----------|-------|
+| Persistence format | JSONL | JSONL + `state.json` + `wire.jsonl` | JSONL (v3) | JSONL | JSONL (v3) + segment store + SQLite | SQLite | SQLite | SQLite | file-based KV store + SQLite (terminal history) |
+| Session resume | yes | yes | yes | yes | yes | yes | yes | yes | yes |
+| Session picker (fuzzy) | -- | yes (browser/search) | yes | -- | yes | -- | yes | yes | -- |
+| Branch/fork tree | -- | yes | yes | yes | yes | yes (fork) | -- | -- | -- |
+| Session naming | -- | -- | yes | yes | yes | yes (rename) | -- | -- | yes (auto-generated LLM titles) |
+| Session sharing | -- | yes (ZIP/Markdown export) | yes (gist) | -- | yes (gist) | -- | yes | yes | -- |
+| HTML export | -- | -- | yes | -- | yes | -- | -- | -- | -- |
+| Headless/print mode | yes | yes | yes | -- | yes | yes (exec) | -- | yes | -- |
+| RPC mode | -- | yes (ACP + Wire) | yes | -- | yes | -- | -- | -- | -- |
+| App server (HTTP) | -- | yes (web + vis) | -- | -- | -- | yes | -- | yes | -- |
+| Stats (--stats) | yes | -- | yes | -- | yes | yes | yes | yes | yes (token/cost tracking) |
+| Session undo/revert | -- | -- | -- | yes (checkpoint) | -- | yes (ghost snapshot) | -- | yes (git snapshot) | -- |
 
 ---
 
 ## Provider / Model Support
 
-| Feature | tau | kimi-cli | pi-mono | oh-my-pi | pi_agent_rust | codex | crush | opencode |
-|---------|-----|----------|---------|----------|---------------|-------|-------|----------|
-| Anthropic | yes | yes | yes | yes | yes | -- | yes | yes |
-| OpenAI | yes | yes | yes | yes | yes | yes (Responses API) | yes | yes |
-| Google/Gemini | -- | yes | yes | yes | yes | -- | -- | yes |
-| AWS Bedrock | -- | -- | -- | -- | yes | -- | -- | yes |
-| Azure OpenAI | -- | -- | -- | -- | yes | -- | -- | yes |
-| OpenRouter | -- | yes (OpenAI-compat) | yes | -- | yes | -- | yes | yes |
-| GitHub Copilot | -- | -- | yes | yes | yes | -- | yes | yes |
-| Ollama / local models | -- | -- | -- | -- | -- | yes | -- | -- |
-| 50+ OpenAI-compat presets | -- | -- | -- | -- | yes | -- | -- | -- |
-| Custom model config | -- | yes | yes | yes | yes | yes | yes | yes |
-| Model cycling (Ctrl+P) | -- | yes | yes | yes | yes | -- | yes | -- |
-| OAuth flows | -- | yes | yes | yes | yes | yes | yes | yes |
-| Vercel AI SDK abstraction | -- | -- | -- | -- | -- | -- | -- | yes |
+| Feature | tau | kimi-cli | pi-mono | oh-my-pi | pi_agent_rust | codex | crush | opencode | slate |
+|---------|-----|----------|---------|----------|---------------|-------|-------|----------|-------|
+| Anthropic | yes | yes | yes | yes | yes | -- | yes | yes | yes (via proxy) |
+| OpenAI | yes | yes | yes | yes | yes | yes (Responses API) | yes | yes | yes (via proxy) |
+| Google/Gemini | -- | yes | yes | yes | yes | -- | -- | yes | yes (via proxy) |
+| AWS Bedrock | -- | -- | -- | -- | yes | -- | -- | yes | -- |
+| Azure OpenAI | -- | -- | -- | -- | yes | -- | -- | yes | -- |
+| OpenRouter | -- | yes (OpenAI-compat) | yes | -- | yes | -- | yes | yes | -- |
+| GitHub Copilot | -- | -- | yes | yes | yes | -- | yes | yes | -- |
+| Ollama / local models | -- | -- | -- | -- | -- | yes | -- | -- | -- |
+| 50+ OpenAI-compat presets | -- | -- | -- | -- | yes | -- | -- | -- | -- |
+| Custom model config | -- | yes | yes | yes | yes | yes | yes | yes | yes (per-slot config in slate.jsonc) |
+| Model cycling (Ctrl+P) | -- | yes | yes | yes | yes | -- | yes | -- | yes (Shift+M, 6 slots) |
+| OAuth flows | -- | yes | yes | yes | yes | yes | yes | yes | yes (MCP OAuth) |
+| Vercel AI SDK abstraction | -- | -- | -- | -- | -- | -- | -- | yes | -- |
 
 ---
 
 ## Extension / Plugin System
 
-| Feature | tau | kimi-cli | pi-mono | oh-my-pi | pi_agent_rust | codex | crush | opencode |
-|---------|-----|----------|---------|----------|---------------|-------|-------|----------|
-| Extension API | -- | yes (plugins + YAML agents) | yes (TS) | yes (TS) | yes (JS/QuickJS + Rust + WASM) | yes (plugins) | -- | yes (TS plugin) |
-| Skills (markdown) | -- | yes | yes | yes | yes | yes | yes | yes |
-| Custom tool registration | -- | yes | yes | yes | yes | via MCP | -- | yes |
-| Package manager (install/remove) | -- | -- | yes | yes | yes | -- | -- | -- |
-| Hook system | -- | -- | yes (30+ events) | yes (20+ events) | -- | yes (5 lifecycle hooks) | -- | yes (plugin hooks) |
-| Custom themes | -- | -- | yes | yes | yes | yes (.tmTheme) | -- | yes |
-| Prompt templates | -- | yes | yes | yes | yes | -- | -- | -- |
-| Custom agents (markdown) | -- | yes (YAML) | -- | yes | -- | -- | -- | yes |
-| MCP client | -- | yes | stub | yes | stub | yes (stdio + HTTP) | yes | yes |
-| MCP server mode | -- | -- | -- | -- | -- | yes | -- | -- |
-| Apps/connectors marketplace | -- | -- | -- | -- | -- | yes | -- | -- |
-| Extension index/registry | -- | -- | -- | -- | yes (NPM/GitHub) | -- | -- | -- |
+| Feature | tau | kimi-cli | pi-mono | oh-my-pi | pi_agent_rust | codex | crush | opencode | slate |
+|---------|-----|----------|---------|----------|---------------|-------|-------|----------|-------|
+| Extension API | -- | yes (plugins + YAML agents) | yes (TS) | yes (TS) | yes (JS/QuickJS + Rust + WASM) | yes (plugins) | -- | yes (TS plugin) | -- |
+| Skills (markdown) | -- | yes | yes | yes | yes | yes | yes | yes | yes (SKILL.md files) |
+| Custom tool registration | -- | yes | yes | yes | yes | via MCP | -- | yes | -- |
+| Package manager (install/remove) | -- | -- | yes | yes | yes | -- | -- | -- | -- |
+| Hook system | -- | -- | yes (30+ events) | yes (20+ events) | -- | yes (5 lifecycle hooks) | -- | yes (plugin hooks) | yes (PostToolUse hooks) |
+| Custom themes | -- | -- | yes | yes | yes | yes (.tmTheme) | -- | yes | -- |
+| Prompt templates | -- | yes | yes | yes | yes | -- | -- | -- | -- |
+| Custom agents (markdown) | -- | yes (YAML) | -- | yes | -- | -- | -- | yes | yes (custom modes via markdown) |
+| MCP client | -- | yes | stub | yes | stub | yes (stdio + HTTP) | yes | yes | yes (stdio + HTTP, connect/use) |
+| MCP server mode | -- | -- | -- | -- | -- | yes | -- | -- | -- |
+| Apps/connectors marketplace | -- | -- | -- | -- | -- | yes | -- | -- | -- |
+| Extension index/registry | -- | -- | -- | -- | yes (NPM/GitHub) | -- | -- | -- | -- |
 
 ---
 
 ## UI/UX
 
-| Feature | tau | kimi-cli | pi-mono | oh-my-pi | pi_agent_rust | codex | crush | opencode |
-|---------|-----|----------|---------|----------|---------------|-------|-------|----------|
-| TUI framework | basic REPL | prompt-toolkit shell | custom (diff renderer) | pi-tui | charmed (bubbletea port) | ratatui (Rust) | bubbletea | SolidJS (@opentui) |
-| Themes | -- | -- | yes (JSON) | yes (65+) | yes (3 built-in) | yes (.tmTheme) | -- | yes (33) |
-| Markdown rendering | -- | -- | yes | yes | yes | yes | yes | -- |
-| Syntax highlighting | -- | -- | yes (cli-highlight) | yes (syntect/Rust) | yes (glamour) | yes (pulldown-cmark) | yes | -- |
-| Terminal image display | -- | -- | yes (Kitty/iTerm2) | yes (Kitty/iTerm2) | yes (Kitty/iTerm2) | -- | yes | -- |
-| Diff view | -- | yes (approval diff preview) | unified | unified | unified | yes (syntax-highlighted) | unified + split | -- |
-| Clipboard paste (text+image) | -- | yes | yes | yes | yes | yes (/copy) | -- | -- |
-| External editor | -- | yes | yes | -- | yes | yes ($VISUAL) | -- | -- |
-| Autocomplete | -- | yes | yes | yes | yes | yes (nucleo fuzzy) | yes | -- |
-| Configurable keybindings | -- | -- | yes | yes | yes | -- | -- | yes |
-| Speech-to-text / voice | -- | -- | -- | yes (Whisper) | -- | yes (realtime, gpt-4o-mini-transcribe) | -- | -- |
-| Desktop notifications | -- | -- | -- | -- | -- | yes (session hook) | yes | -- |
-| Web UI | -- | yes | yes (Lit) | -- | -- | yes (app-server + Electron) | -- | -- |
-| IDE integration | -- | yes (ACP + VS Code) | yes (RPC) | -- | yes (RPC) | yes (app-server) | -- | yes (ACP for Zed) |
+| Feature | tau | kimi-cli | pi-mono | oh-my-pi | pi_agent_rust | codex | crush | opencode | slate |
+|---------|-----|----------|---------|----------|---------------|-------|-------|----------|-------|
+| TUI framework | basic REPL | prompt-toolkit shell | custom (diff renderer) | pi-tui | charmed (bubbletea port) | ratatui (Rust) | bubbletea | SolidJS (@opentui) | React/Ink |
+| Themes | -- | -- | yes (JSON) | yes (65+) | yes (3 built-in) | yes (.tmTheme) | -- | yes (33) | -- |
+| Markdown rendering | -- | -- | yes | yes | yes | yes | yes | -- | -- |
+| Syntax highlighting | -- | -- | yes (cli-highlight) | yes (syntect/Rust) | yes (glamour) | yes (pulldown-cmark) | yes | -- | -- |
+| Terminal image display | -- | -- | yes (Kitty/iTerm2) | yes (Kitty/iTerm2) | yes (Kitty/iTerm2) | -- | yes | -- | -- |
+| Diff view | -- | yes (approval diff preview) | unified | unified | unified | yes (syntax-highlighted) | unified + split | -- | yes (unified diff in edit results) |
+| Clipboard paste (text+image) | -- | yes | yes | yes | yes | yes (/copy) | -- | -- | -- |
+| External editor | -- | yes | yes | -- | yes | yes ($VISUAL) | -- | -- | -- |
+| Autocomplete | -- | yes | yes | yes | yes | yes (nucleo fuzzy) | yes | -- | -- |
+| Configurable keybindings | -- | -- | yes | yes | yes | -- | -- | yes | -- |
+| Speech-to-text / voice | -- | -- | -- | yes (Whisper) | -- | yes (realtime, gpt-4o-mini-transcribe) | -- | -- | -- |
+| Desktop notifications | -- | -- | -- | -- | -- | yes (session hook) | yes | -- | -- |
+| Web UI | -- | yes | yes (Lit) | -- | -- | yes (app-server + Electron) | -- | -- | -- |
+| IDE integration | -- | yes (ACP + VS Code) | yes (RPC) | -- | yes (RPC) | yes (app-server) | -- | yes (ACP for Zed) | -- |
 
 ---
 
 ## Sandbox / Security
 
-| Feature | tau | kimi-cli | pi-mono | oh-my-pi | pi_agent_rust | codex | crush | opencode |
-|---------|-----|----------|---------|----------|---------------|-------|-------|----------|
-| macOS seatbelt | -- | -- | ext example | -- | -- | yes | -- | -- |
-| Linux bubblewrap + landlock | -- | -- | ext example | -- | -- | yes | -- | -- |
-| Windows restricted token | -- | -- | -- | -- | -- | yes | -- | -- |
-| Network namespace isolation | -- | -- | -- | -- | -- | yes | -- | -- |
-| MITM proxy with domain filtering | -- | -- | -- | -- | yes | yes | -- | -- |
-| Process hardening (no ptrace, no coredump) | -- | -- | -- | -- | -- | yes | -- | -- |
-| OTEL audit telemetry | -- | -- | -- | -- | -- | yes | -- | -- |
+| Feature | tau | kimi-cli | pi-mono | oh-my-pi | pi_agent_rust | codex | crush | opencode | slate |
+|---------|-----|----------|---------|----------|---------------|-------|-------|----------|-------|
+| macOS seatbelt | -- | -- | ext example | -- | -- | yes | -- | -- | -- |
+| Linux bubblewrap + landlock | -- | -- | ext example | -- | -- | yes | -- | -- | -- |
+| Windows restricted token | -- | -- | -- | -- | -- | yes | -- | -- | -- |
+| Network namespace isolation | -- | -- | -- | -- | -- | yes | -- | -- | -- |
+| MITM proxy with domain filtering | -- | -- | -- | -- | yes | yes | -- | -- | -- |
+| Process hardening (no ptrace, no coredump) | -- | -- | -- | -- | -- | yes | -- | -- | -- |
+| OTEL audit telemetry | -- | -- | -- | -- | -- | yes | -- | -- | yes (Sentry + OpenTelemetry) |
 
 ---
 
 ## Other Notable
 
-| Feature | tau | kimi-cli | pi-mono | oh-my-pi | pi_agent_rust | codex | crush | opencode |
-|---------|-----|----------|---------|----------|---------------|-------|-------|----------|
-| Language | Rust | Python | TypeScript | TypeScript | Rust | Rust + TypeScript | Go | TypeScript |
-| Native addon | -- | -- | -- | yes (N-API Rust) | -- | -- (pure Rust core) | -- | -- |
-| SDK/embedding API | -- | yes (Python SDK + ACP) | yes | -- | yes | yes (TS SDK) | -- | -- |
-| Feature flags system | -- | -- | -- | -- | -- | yes (50+ flags, lifecycle stages) | -- | yes (env var flags) |
-| Doctor/health check | -- | -- | -- | -- | yes | -- | -- | -- |
-| Trace JIT (hostcall optimization) | -- | -- | -- | -- | yes | -- | -- | -- |
-| Property-based testing | yes | -- | -- | -- | yes | -- | -- | -- |
-| Loom concurrency tests | -- | -- | -- | -- | yes | -- | -- | -- |
-| jemalloc | -- | -- | -- | -- | yes | -- | -- | -- |
+| Feature | tau | kimi-cli | pi-mono | oh-my-pi | pi_agent_rust | codex | crush | opencode | slate |
+|---------|-----|----------|---------|----------|---------------|-------|-------|----------|-------|
+| Language | Rust | Python | TypeScript | TypeScript | Rust | Rust + TypeScript | Go | TypeScript | TypeScript (Bun-compiled) |
+| Native addon | -- | -- | -- | yes (N-API Rust) | -- | -- (pure Rust core) | -- | -- | -- |
+| SDK/embedding API | -- | yes (Python SDK + ACP) | yes | -- | yes | yes (TS SDK) | -- | -- | -- |
+| Feature flags system | -- | -- | -- | -- | -- | yes (50+ flags, lifecycle stages) | -- | yes (env var flags) | yes (SLATE_EXPERIMENTAL_* env vars) |
+| Doctor/health check | -- | -- | -- | -- | yes | -- | -- | -- | -- |
+| Trace JIT (hostcall optimization) | -- | -- | -- | -- | yes | -- | -- | -- | -- |
+| Property-based testing | yes | -- | -- | -- | yes | -- | -- | -- | -- |
+| Loom concurrency tests | -- | -- | -- | -- | yes | -- | -- | -- | -- |
+| jemalloc | -- | -- | -- | -- | yes | -- | -- | -- | -- |
 
 ---
 
@@ -485,15 +485,15 @@ Based on the table above, here are the features that appear across 4+ harnesses 
 ### Must-have (present in 5+ harnesses)
 
 1. **~~Auto-compaction~~** — ✅ Implemented (mechanical: chars/4 estimation, tool output truncation, observation masking, turn-boundary eviction). LLM-based summarization and `/compact` command are future work.
-2. **Permission model** — At minimum, per-tool allow/deny. Every harness except tau has some form of this.
-3. **Sub-agent spawning** — kimi-cli, oh-my-pi, codex, and opencode have it natively; pi-mono has an extension example. Parallelism is the difference between "wait 5 minutes" and "wait 1 minute."
-4. **MCP support** — kimi-cli, oh-my-pi, codex, crush, and opencode all expose this. Unlocks external tool servers without writing code.
-5. **Skills (markdown)** — All harnesses except tau. Reusable prompt snippets loaded as slash commands.
+2. **Permission model** — At minimum, per-tool allow/deny. Every harness except tau has some form of this. Slate has a full rule-based system with allow/deny/ask actions, glob patterns, and 4 approval modes.
+3. **Sub-agent spawning** — kimi-cli, oh-my-pi, codex, opencode, and slate have it natively; pi-mono has an extension example. Slate's approach is unique: the LLM generates JavaScript DSL code with `system.thread()` and `system.query()` calls. Parallelism is the difference between "wait 5 minutes" and "wait 1 minute."
+4. **MCP support** — kimi-cli, oh-my-pi, codex, crush, opencode, and slate all expose this. Unlocks external tool servers without writing code.
+5. **Skills (markdown)** — All harnesses except tau. Slate uses SKILL.md files. Reusable prompt snippets loaded as slash commands.
 
 ### High-value (present in 3-4 harnesses, high daily-driver impact)
 
-6. **Web fetch/search** — kimi-cli, oh-my-pi, codex, crush, and opencode. Needed for looking up docs, APIs, error messages.
-7. **Todo/plan tracking** — kimi-cli, oh-my-pi, codex, crush, and opencode. Keeps the agent organized on multi-step tasks.
+6. **~~Web fetch/search~~** — kimi-cli, oh-my-pi, codex, crush, opencode, and slate (Exa via proxy). Needed for looking up docs, APIs, error messages.
+7. **Todo/plan tracking** — kimi-cli, oh-my-pi, codex, crush, opencode, and slate (YAML-based). Keeps the agent organized on multi-step tasks.
 8. **LSP diagnostics on edit** — oh-my-pi, crush, opencode. Immediate feedback on syntax/type errors after edits.
 9. **Session picker / resume UX** — 6 harnesses now have a real picker, search flow, or browser session manager. tau has `--resume` but no browser.
 10. **Session undo/revert** — codex (ghost snapshot), oh-my-pi (checkpoint), opencode (git snapshot). Safety net for when the agent breaks things.
@@ -505,7 +505,7 @@ Based on the table above, here are the features that appear across 4+ harnesses 
 13. **Terminal image display** — pi-mono, oh-my-pi, pi_agent_rust, crush.
 14. **Markdown rendering** — pi-mono, oh-my-pi, pi_agent_rust, codex, crush.
 15. **Configurable keybindings** — pi-mono, oh-my-pi, pi_agent_rust, opencode.
-16. **Multi-edit (batch)** — kimi-cli, crush, and opencode.
+16. **Multi-edit (batch)** — kimi-cli, crush, opencode, and slate.
 17. **Session branching/fork** — kimi-cli, pi-mono, oh-my-pi, pi_agent_rust, and codex.
 18. **Sandbox (OS-level)** — codex has the gold standard here; pi-mono has an extension example.
 19. **Voice / speech-to-text** — oh-my-pi (Whisper), codex (realtime).
