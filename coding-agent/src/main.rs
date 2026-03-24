@@ -120,11 +120,21 @@ async fn main() -> Result<()> {
     let trace_output = cli.trace_output.clone();
     let task_id = cli.task_id.clone();
 
+    // Interactive mode gets a permission prompt; non-interactive allows by default
+    let permission_prompt_fn: Option<coding_agent::permissions::PromptFn> = if prompt_arg.is_none()
+    {
+        Some(Arc::new(coding_agent::permissions::interactive_prompt))
+    } else {
+        None
+    };
+
     let built = build_agent(AgentBuildConfig {
         model_id: cli.model,
         system_prompt: cli.system_prompt,
         tools: cli.tools,
         max_turns: None,
+        yolo: cli.yolo,
+        permission_prompt_fn,
         no_skills: cli.no_skills,
         skill_paths: cli.skill_paths,
     })

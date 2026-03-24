@@ -8,6 +8,7 @@ use ai::types::Model;
 use anyhow::{anyhow, Result};
 
 use crate::config::{load_config, TauConfig};
+use crate::permissions::{self, PermissionService};
 use crate::skills::{self, Skill};
 use crate::tools;
 
@@ -17,6 +18,8 @@ pub struct AgentBuildConfig {
     pub system_prompt: Option<String>,
     pub tools: Option<Vec<String>>,
     pub max_turns: Option<u32>,
+    pub yolo: bool,
+    pub permission_prompt_fn: Option<permissions::PromptFn>,
     pub no_skills: bool,
     pub skill_paths: Vec<String>,
 }
@@ -29,6 +32,7 @@ pub struct BuiltAgent {
     pub model_provider: String,
     pub system_prompt_text: String,
     pub skills: Vec<Skill>,
+    pub permission_service: Arc<PermissionService>,
 }
 
 /// Build an Agent with all provider/key/model resolution handled.
@@ -148,6 +152,15 @@ pub async fn build_agent(build_config: AgentBuildConfig) -> Result<BuiltAgent> {
         );
     }
 
+    // Build permission service and wrap tools
+    let config_perms = config.permissions.clone().unwrap_or_default();
+    let mut perm_svc = PermissionService::new(&config_perms, build_config.yolo);
+    if let Some(prompt_fn) = build_config.permission_prompt_fn {
+        perm_svc.set_prompt_fn(prompt_fn);
+    }
+    let permission_service = Arc::new(perm_svc);
+    let tool_list = permissions::wrap_tools(tool_list, Arc::clone(&permission_service));
+
     // Load skills
     let no_skills = build_config.no_skills || config.skills.map(|s| !s).unwrap_or(false);
     let extra_paths: Vec<std::path::PathBuf> = build_config
@@ -234,5 +247,6 @@ pub async fn build_agent(build_config: AgentBuildConfig) -> Result<BuiltAgent> {
         model_provider,
         system_prompt_text,
         skills: loaded_skills.skills,
+        permission_service,
     })
 }

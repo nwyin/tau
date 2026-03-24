@@ -43,6 +43,10 @@ pub struct Cli {
     #[arg(long, value_delimiter = ',')]
     pub tools: Option<Vec<String>>,
 
+    /// Auto-approve all tool permissions (skip interactive prompts)
+    #[arg(long)]
+    pub yolo: bool,
+
     /// Disable automatic skill discovery
     #[arg(long)]
     pub no_skills: bool,

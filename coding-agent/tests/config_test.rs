@@ -70,3 +70,33 @@ fn config_max_turns_defaults_to_none() {
     let config = load_config_from(&path);
     assert!(config.max_turns.is_none());
 }
+
+#[test]
+fn config_permissions_from_toml() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("config.toml");
+    std::fs::write(
+        &path,
+        r#"
+[permissions]
+bash = "allow"
+file_read = "deny"
+file_edit = "ask"
+"#,
+    )
+    .unwrap();
+    let config = load_config_from(&path);
+    let perms = config.permissions.unwrap();
+    assert_eq!(perms.get("bash").unwrap(), "allow");
+    assert_eq!(perms.get("file_read").unwrap(), "deny");
+    assert_eq!(perms.get("file_edit").unwrap(), "ask");
+}
+
+#[test]
+fn config_permissions_defaults_to_none() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("config.toml");
+    std::fs::write(&path, "model = \"gpt-4o\"\n").unwrap();
+    let config = load_config_from(&path);
+    assert!(config.permissions.is_none());
+}

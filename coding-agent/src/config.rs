@@ -1,5 +1,7 @@
-use serde::Deserialize;
+use std::collections::HashMap;
 use std::path::Path;
+
+use serde::Deserialize;
 
 /// Edit mode controls the behavior of `file_read` and `file_edit` tools.
 ///
@@ -31,6 +33,7 @@ pub struct TauConfig {
     pub max_turns: Option<u32>,
     pub tools: Option<Vec<String>>,
     pub skills: Option<bool>, // default: true
+    pub permissions: Option<HashMap<String, String>>,
 }
 
 impl Default for TauConfig {
@@ -41,6 +44,7 @@ impl Default for TauConfig {
             max_turns: None,
             tools: None,
             skills: None,
+            permissions: None,
         }
     }
 }

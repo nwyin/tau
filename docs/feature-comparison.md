@@ -163,9 +163,9 @@ subtasks, communicating results) belongs in the orchestrator.
 
 | Feature | tau | kimi-cli | pi-mono | oh-my-pi | pi_agent_rust | codex | crush | opencode | slate |
 |---------|-----|----------|---------|----------|---------------|-------|-------|----------|-------|
-| Per-tool permissions | -- | yes | ext example | yes | yes (capability policy) | yes | yes | yes | yes (allow/deny/ask per tool) |
-| Allow once / always | -- | yes (approve for session) | -- | -- | yes (with expiry) | -- | -- | yes | yes (approve/always/reject) |
-| Approval modes (suggest/auto/full) | -- | -- | -- | -- | -- | yes (4 levels) | -- | -- | yes (4 modes: EXECUTION/AUTOACCEPT/YOLO/PLANNING) |
+| Per-tool permissions | yes (allow/deny/ask per tool in config.toml) | yes | ext example | yes | yes (capability policy) | yes | yes | yes | yes (allow/deny/ask per tool) |
+| Allow once / always | yes (y/n/always at prompt) | yes (approve for session) | -- | -- | yes (with expiry) | -- | -- | yes | yes (approve/always/reject) |
+| Approval modes (suggest/auto/full) | yes (--yolo) | -- | -- | -- | -- | yes (4 levels) | -- | -- | yes (4 modes: EXECUTION/AUTOACCEPT/YOLO/PLANNING) |
 | Guardian auto-reviewer | -- | -- | -- | -- | -- | yes (GPT-5.4 risk scoring) | -- | -- | -- |
 | Bash command AST parsing | -- | -- | -- | -- | yes (ast-grep) | -- | -- | yes (tree-sitter) | -- |
 | Secret redaction | -- | -- | -- | yes | yes | -- | -- | -- | yes (.env file protection, API key masking) |
@@ -485,7 +485,7 @@ Based on the table above, here are the features that appear across 4+ harnesses 
 ### Must-have (present in 5+ harnesses)
 
 1. **~~Auto-compaction~~** — ✅ Implemented (mechanical: chars/4 estimation, tool output truncation, observation masking, turn-boundary eviction). LLM-based summarization and `/compact` command are future work.
-2. **Permission model** — At minimum, per-tool allow/deny. Every harness except tau has some form of this. Slate has a full rule-based system with allow/deny/ask actions, glob patterns, and 4 approval modes.
+2. **~~Permission model~~** — ✅ Implemented (per-tool allow/deny/ask in config.toml, interactive y/n/always prompt, --yolo bypass, sensible defaults: read tools allow, write/exec tools ask).
 3. **Sub-agent spawning** — kimi-cli, oh-my-pi, codex, opencode, and slate have it natively; pi-mono has an extension example. Slate's approach is unique: the LLM generates JavaScript DSL code with `system.thread()` and `system.query()` calls. Parallelism is the difference between "wait 5 minutes" and "wait 1 minute."
 4. **MCP support** — kimi-cli, oh-my-pi, codex, crush, opencode, and slate all expose this. Unlocks external tool servers without writing code.
 5. **Skills (markdown)** — All harnesses except tau. Slate uses SKILL.md files. Reusable prompt snippets loaded as slash commands.
