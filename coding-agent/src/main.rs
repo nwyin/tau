@@ -117,11 +117,14 @@ async fn main() -> Result<()> {
         system_prompt: cli.system_prompt,
         tools: cli.tools,
         max_turns: None,
+        no_skills: cli.no_skills,
+        skill_paths: cli.skill_paths,
     })
     .await?;
 
     let agent = built.agent;
     let config = built.config;
+    let skills = built.skills;
     let model_id = built.model_id;
     let model_provider = built.model_provider;
     let system_prompt_hash = sha256_prefix(&built.system_prompt_text);
@@ -317,6 +320,9 @@ async fn main() -> Result<()> {
             }
 
             abort_count.store(0, Ordering::SeqCst);
+
+            let input =
+                coding_agent::skills::expand_skill_command(&input, &skills).unwrap_or(input);
 
             if let Err(e) = agent.prompt(input).await {
                 eprintln!("Error: {}", e);

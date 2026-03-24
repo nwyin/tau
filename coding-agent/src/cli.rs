@@ -43,6 +43,14 @@ pub struct Cli {
     #[arg(long, value_delimiter = ',')]
     pub tools: Option<Vec<String>>,
 
+    /// Disable automatic skill discovery
+    #[arg(long)]
+    pub no_skills: bool,
+
+    /// Load a skill from a specific path (repeatable; loaded even with --no-skills)
+    #[arg(long = "skill", value_name = "PATH")]
+    pub skill_paths: Vec<String>,
+
     /// Directory for trace output (run.json + trace.jsonl)
     #[arg(long, value_name = "DIR")]
     pub trace_output: Option<String>,

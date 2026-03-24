@@ -30,6 +30,7 @@ pub struct TauConfig {
     pub edit_mode: String, // "replace" | "hashline"
     pub max_turns: Option<u32>,
     pub tools: Option<Vec<String>>,
+    pub skills: Option<bool>, // default: true
 }
 
 impl Default for TauConfig {
@@ -39,6 +40,7 @@ impl Default for TauConfig {
             edit_mode: "replace".to_string(),
             max_turns: None,
             tools: None,
+            skills: None,
         }
     }
 }

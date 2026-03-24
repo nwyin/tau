@@ -2,6 +2,8 @@ use std::sync::Arc;
 
 use agent::types::AgentTool;
 
+use crate::skills::Skill;
+
 /// Truncate a description to the first sentence (up to the first '.').
 fn first_sentence(desc: &str) -> &str {
     if let Some(pos) = desc.find('.') {
@@ -11,8 +13,8 @@ fn first_sentence(desc: &str) -> &str {
     }
 }
 
-/// Build a dynamic system prompt from the registered tools and current working directory.
-pub fn build_system_prompt(tools: &[Arc<dyn AgentTool>], cwd: &str) -> String {
+/// Build a dynamic system prompt from the registered tools, skills, and current working directory.
+pub fn build_system_prompt(tools: &[Arc<dyn AgentTool>], skills: &[Skill], cwd: &str) -> String {
     let mut parts: Vec<String> = Vec::new();
 
     // 1. Identity
@@ -72,7 +74,23 @@ pub fn build_system_prompt(tools: &[Arc<dyn AgentTool>], cwd: &str) -> String {
         parts.push(section);
     }
 
-    // 4. Footer
+    // 4. Skills (progressive disclosure — only name + description + path)
+    if !skills.is_empty() && has("file_read") {
+        let mut section =
+            "Available skills (use file_read to load the full skill when the task matches its description):"
+                .to_string();
+        for skill in skills {
+            section.push_str(&format!(
+                "\n- {}: {}\n  Path: {}",
+                skill.name,
+                skill.description,
+                skill.file_path.display()
+            ));
+        }
+        parts.push(section);
+    }
+
+    // 5. Footer
     parts.push(format!("Current working directory: {}", cwd));
 
     parts.join("\n\n")

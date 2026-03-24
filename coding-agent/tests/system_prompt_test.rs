@@ -20,7 +20,7 @@ fn all_tools() -> Vec<Arc<dyn agent::types::AgentTool>> {
 #[test]
 fn system_prompt_contains_all_tool_names() {
     let tools = all_tools();
-    let prompt = build_system_prompt(&tools, "/tmp");
+    let prompt = build_system_prompt(&tools, &[], "/tmp");
     for tool in &tools {
         assert!(
             prompt.contains(tool.name()),
@@ -36,7 +36,7 @@ fn system_prompt_contains_all_tool_names() {
 fn system_prompt_contains_cwd_in_footer() {
     let tools = all_tools();
     let cwd = "/home/user/projects/myapp";
-    let prompt = build_system_prompt(&tools, cwd);
+    let prompt = build_system_prompt(&tools, &[], cwd);
     assert!(
         prompt.to_lowercase().contains("current working directory"),
         "prompt should contain 'current working directory'"
@@ -56,7 +56,7 @@ fn system_prompt_read_before_edit_guideline_when_both_present() {
         FileReadTool::arc(EditMode::Replace),
         FileEditTool::arc(EditMode::Replace),
     ];
-    let prompt = build_system_prompt(&tools, "/tmp");
+    let prompt = build_system_prompt(&tools, &[], "/tmp");
     assert!(
         prompt.to_lowercase().contains("read files before editing"),
         "prompt should contain read-before-edit guideline, got:\n{}",
@@ -69,7 +69,7 @@ fn system_prompt_read_before_edit_guideline_when_both_present() {
 #[test]
 fn system_prompt_bash_exploration_guideline_when_only_bash() {
     let tools: Vec<Arc<dyn agent::types::AgentTool>> = vec![BashTool::arc()];
-    let prompt = build_system_prompt(&tools, "/tmp");
+    let prompt = build_system_prompt(&tools, &[], "/tmp");
     assert!(
         prompt
             .to_lowercase()
@@ -83,7 +83,7 @@ fn system_prompt_bash_exploration_guideline_when_only_bash() {
 #[test]
 fn system_prompt_default_tool_set_is_sensible() {
     let tools = all_tools();
-    let prompt = build_system_prompt(&tools, "/workspace");
+    let prompt = build_system_prompt(&tools, &[], "/workspace");
 
     assert!(prompt.contains("expert coding assistant"));
     assert!(prompt.contains("Available tools:"));
@@ -95,7 +95,7 @@ fn system_prompt_default_tool_set_is_sensible() {
 #[test]
 fn system_prompt_empty_tools_does_not_crash() {
     let tools: Vec<Arc<dyn agent::types::AgentTool>> = vec![];
-    let prompt = build_system_prompt(&tools, "/some/dir");
+    let prompt = build_system_prompt(&tools, &[], "/some/dir");
 
     assert!(
         prompt.contains("(none)"),
@@ -109,7 +109,7 @@ fn system_prompt_empty_tools_does_not_crash() {
 #[test]
 fn system_prompt_no_read_before_edit_without_file_read() {
     let tools: Vec<Arc<dyn agent::types::AgentTool>> = vec![FileEditTool::arc(EditMode::Replace)];
-    let prompt = build_system_prompt(&tools, "/tmp");
+    let prompt = build_system_prompt(&tools, &[], "/tmp");
     assert!(
         !prompt.to_lowercase().contains("read files before editing"),
         "should NOT contain read-before-edit guideline without file_read, got:\n{}",
@@ -127,7 +127,7 @@ fn system_prompt_hashline_tools_use_canonical_names() {
         FileEditTool::arc(EditMode::Hashline),
         FileWriteTool::arc(),
     ];
-    let prompt = build_system_prompt(&tools, "/tmp");
+    let prompt = build_system_prompt(&tools, &[], "/tmp");
     assert!(
         prompt.contains("file_read"),
         "prompt should mention file_read, got:\n{}",
@@ -161,7 +161,7 @@ fn system_prompt_hashline_tools_use_canonical_names() {
 #[test]
 fn system_prompt_glob_guideline_when_glob_present() {
     let tools: Vec<Arc<dyn agent::types::AgentTool>> = vec![BashTool::arc(), GlobTool::arc()];
-    let prompt = build_system_prompt(&tools, "/tmp");
+    let prompt = build_system_prompt(&tools, &[], "/tmp");
     assert!(
         prompt.contains("glob for finding files by pattern"),
         "prompt should contain glob guideline, got:\n{}",
@@ -173,7 +173,7 @@ fn system_prompt_glob_guideline_when_glob_present() {
 #[test]
 fn system_prompt_no_hashline_guidelines_with_standard_tools() {
     let tools = all_tools();
-    let prompt = build_system_prompt(&tools, "/tmp");
+    let prompt = build_system_prompt(&tools, &[], "/tmp");
     assert!(
         !prompt.contains("LINE#HASH"),
         "standard tools should not have hashline guidelines in system prompt, got:\n{}",
@@ -185,7 +185,7 @@ fn system_prompt_no_hashline_guidelines_with_standard_tools() {
 #[test]
 fn system_prompt_grep_guideline_when_grep_present() {
     let tools: Vec<Arc<dyn agent::types::AgentTool>> = vec![BashTool::arc(), GrepTool::arc()];
-    let prompt = build_system_prompt(&tools, "/tmp");
+    let prompt = build_system_prompt(&tools, &[], "/tmp");
     assert!(
         prompt.to_lowercase().contains("use grep for searching"),
         "prompt should contain grep guideline, got:\n{}",
@@ -197,7 +197,7 @@ fn system_prompt_grep_guideline_when_grep_present() {
 #[test]
 fn system_prompt_no_bash_exploration_when_grep_present() {
     let tools: Vec<Arc<dyn agent::types::AgentTool>> = vec![BashTool::arc(), GrepTool::arc()];
-    let prompt = build_system_prompt(&tools, "/tmp");
+    let prompt = build_system_prompt(&tools, &[], "/tmp");
     assert!(
         !prompt
             .to_lowercase()

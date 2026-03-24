@@ -8,6 +8,7 @@ use ai::types::Model;
 use anyhow::{anyhow, Result};
 
 use crate::config::{load_config, TauConfig};
+use crate::skills::{self, Skill};
 use crate::tools;
 
 /// Configuration for building an agent, independent of CLI or serve mode.
@@ -16,6 +17,8 @@ pub struct AgentBuildConfig {
     pub system_prompt: Option<String>,
     pub tools: Option<Vec<String>>,
     pub max_turns: Option<u32>,
+    pub no_skills: bool,
+    pub skill_paths: Vec<String>,
 }
 
 /// Result of building an agent — the agent plus resolved metadata.
@@ -25,6 +28,7 @@ pub struct BuiltAgent {
     pub model_id: String,
     pub model_provider: String,
     pub system_prompt_text: String,
+    pub skills: Vec<Skill>,
 }
 
 /// Build an Agent with all provider/key/model resolution handled.
@@ -131,13 +135,36 @@ pub async fn build_agent(build_config: AgentBuildConfig) -> Result<BuiltAgent> {
         tools::tools_for_edit_mode(&config.edit_mode)
     };
 
+    // Load skills
+    let no_skills = build_config.no_skills || config.skills.map(|s| !s).unwrap_or(false);
+    let extra_paths: Vec<std::path::PathBuf> = build_config
+        .skill_paths
+        .iter()
+        .map(std::path::PathBuf::from)
+        .collect();
+    let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let loaded_skills = skills::load_skills(&cwd, no_skills, &extra_paths);
+    for diag in &loaded_skills.diagnostics {
+        eprintln!("Warning: skill {}: {}", diag.path.display(), diag.message);
+    }
+    if !loaded_skills.skills.is_empty() {
+        eprintln!(
+            "[skills] loaded: {}",
+            loaded_skills
+                .skills
+                .iter()
+                .map(|s| s.name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    }
+
     // Build system prompt
     let system_prompt_text = build_config.system_prompt.unwrap_or_else(|| {
         crate::system_prompt::build_system_prompt(
             &tool_list,
-            &std::env::current_dir()
-                .unwrap_or_else(|_| std::path::PathBuf::from("."))
-                .to_string_lossy(),
+            &loaded_skills.skills,
+            &cwd.to_string_lossy(),
         )
     });
 
@@ -193,5 +220,6 @@ pub async fn build_agent(build_config: AgentBuildConfig) -> Result<BuiltAgent> {
         model_id,
         model_provider,
         system_prompt_text,
+        skills: loaded_skills.skills,
     })
 }
