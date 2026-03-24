@@ -487,8 +487,7 @@ Based on the table above, here are the features that appear across 4+ harnesses 
 1. **~~Auto-compaction~~** — ✅ Implemented (mechanical: chars/4 estimation, tool output truncation, observation masking, turn-boundary eviction). LLM-based summarization and `/compact` command are future work.
 2. **~~Permission model~~** — ✅ Implemented (per-tool allow/deny/ask in config.toml, interactive y/n/always prompt, --yolo bypass, sensible defaults: read tools allow, write/exec tools ask).
 3. **Sub-agent spawning** — kimi-cli, oh-my-pi, codex, opencode, and slate have it natively; pi-mono has an extension example. Slate's approach is unique: the LLM generates JavaScript DSL code with `system.thread()` and `system.query()` calls. Parallelism is the difference between "wait 5 minutes" and "wait 1 minute."
-4. **MCP support** — kimi-cli, oh-my-pi, codex, crush, opencode, and slate all expose this. Unlocks external tool servers without writing code.
-5. **~~Skills (markdown)~~** — ✅ Implemented (SKILL.md files with YAML frontmatter, project-local `.tau/skills/` + user-global `~/.tau/skills/` discovery, `/skill:name` slash commands in REPL, `--skill` CLI flag).
+4. **~~Skills (markdown)~~** — ✅ Implemented (SKILL.md files with YAML frontmatter, project-local `.tau/skills/` + user-global `~/.tau/skills/` discovery, `/skill:name` slash commands in REPL, `--skill` CLI flag).
 
 ### High-value (present in 3-4 harnesses, high daily-driver impact)
 
