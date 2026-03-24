@@ -36,7 +36,7 @@ pub struct TauConfig {
 impl Default for TauConfig {
     fn default() -> Self {
         Self {
-            model: "gpt-4o-mini".to_string(),
+            model: "gpt-5.4-mini".to_string(),
             edit_mode: "replace".to_string(),
             max_turns: None,
             tools: None,
