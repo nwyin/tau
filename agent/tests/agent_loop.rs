@@ -270,6 +270,9 @@ async fn handles_tool_calls_and_results() {
 
 #[tokio::test]
 async fn injects_steering_messages_and_skips_remaining_tool_calls() {
+    // With parallel tool execution, all tools run concurrently. Steering is
+    // checked once after the batch completes. Both tools execute, but the
+    // steering message is still injected before the next LLM turn.
     let executed = Arc::new(std::sync::Mutex::new(vec![]));
     struct RecordingEchoTool(Arc<std::sync::Mutex<Vec<String>>>);
     impl agent::types::AgentTool for RecordingEchoTool {
@@ -311,20 +314,19 @@ async fn injects_steering_messages_and_skips_remaining_tool_calls() {
         }
     }
 
-    let queued_delivered = Arc::new(AtomicBool::new(false));
-    let queued_ref = Arc::clone(&queued_delivered);
+    let steering_delivered = Arc::new(AtomicBool::new(false));
+    let steering_ref = Arc::clone(&steering_delivered);
     let saw_interrupt = Arc::new(AtomicBool::new(false));
     let interrupt_ref = Arc::clone(&saw_interrupt);
     let call_index = Arc::new(AtomicUsize::new(0));
     let call_index_ref = Arc::clone(&call_index);
-    let executed_for_queue = Arc::clone(&executed);
 
     let mut config = base_config();
+    // Steering always returns an interrupt (once)
     config.get_steering_messages = Some(Arc::new(move || {
-        let queued_ref = Arc::clone(&queued_ref);
-        let executed = Arc::clone(&executed_for_queue);
+        let steering_ref = Arc::clone(&steering_ref);
         Box::pin(async move {
-            if executed.lock().unwrap().len() == 1 && !queued_ref.swap(true, Ordering::SeqCst) {
+            if !steering_ref.swap(true, Ordering::SeqCst) {
                 vec![user_message("interrupt")]
             } else {
                 vec![]
@@ -377,8 +379,12 @@ async fn injects_steering_messages_and_skips_remaining_tool_calls() {
         events.push(event);
     }
 
-    assert_eq!(*executed.lock().unwrap(), vec!["first".to_string()]);
+    // Both tools execute (parallel — no skipping)
+    let mut exec_values = executed.lock().unwrap().clone();
+    exec_values.sort();
+    assert_eq!(exec_values, vec!["first".to_string(), "second".to_string()]);
 
+    // Both tool results are present (no errors)
     let tool_ends: Vec<_> = events
         .iter()
         .filter_map(|event| match event {
@@ -390,11 +396,9 @@ async fn injects_steering_messages_and_skips_remaining_tool_calls() {
         .collect();
     assert_eq!(tool_ends.len(), 2);
     assert!(!tool_ends[0].0);
-    assert!(tool_ends[1].0);
-    assert!(
-        matches!(&tool_ends[1].1.content[0], UserBlock::Text { text } if text.contains("Skipped due to queued user message"))
-    );
+    assert!(!tool_ends[1].0);
 
+    // Steering message is injected and visible to the next LLM turn
     assert!(events.iter().any(|event| matches!(
         event,
         AgentEvent::MessageStart { message: AgentMessage::Llm(Message::User(msg)) }

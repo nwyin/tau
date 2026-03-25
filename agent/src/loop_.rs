@@ -429,10 +429,8 @@ async fn execute_tool_calls(
         })
         .collect();
 
-    let mut results = vec![];
-    let mut steering = None;
-
-    for (i, (call_id, call_name, args)) in tool_calls.iter().enumerate() {
+    // Emit all ToolExecutionStart events up front
+    for (call_id, call_name, args) in &tool_calls {
         tx.push(AgentEvent::ToolExecutionStart {
             tool_call_id: call_id.clone(),
             tool_name: call_name.clone(),
@@ -440,37 +438,62 @@ async fn execute_tool_calls(
                 args.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
             ),
         });
+    }
 
-        let tool = tools.iter().find(|t| t.name() == call_name);
-        let (exec_result, is_error) = match tool {
-            None => (
-                AgentToolResult {
-                    content: vec![UserBlock::Text {
-                        text: format!("Tool {} not found", call_name),
-                    }],
-                    details: None,
-                },
-                true,
-            ),
-            Some(t) => {
-                let params = serde_json::Value::Object(
-                    args.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
-                );
-                match t
-                    .execute(call_id.clone(), params, cancel.clone(), None)
-                    .await
-                {
-                    Ok(r) => (r, false),
-                    Err(e) => (
+    // Execute all tool calls concurrently
+    let futures: Vec<_> = tool_calls
+        .iter()
+        .map(|(call_id, call_name, args)| {
+            let tool = tools.iter().find(|t| t.name() == call_name).cloned();
+            let call_id = call_id.clone();
+            let call_name = call_name.clone();
+            let args = args.clone();
+            let cancel = cancel.clone();
+            tokio::spawn(async move {
+                let (exec_result, is_error) = match tool {
+                    None => (
                         AgentToolResult {
                             content: vec![UserBlock::Text {
-                                text: e.to_string(),
+                                text: format!("Tool {} not found", call_name),
                             }],
                             details: None,
                         },
                         true,
                     ),
-                }
+                    Some(t) => {
+                        let params = serde_json::Value::Object(
+                            args.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
+                        );
+                        match t.execute(call_id.clone(), params, cancel, None).await {
+                            Ok(r) => (r, false),
+                            Err(e) => (
+                                AgentToolResult {
+                                    content: vec![UserBlock::Text {
+                                        text: e.to_string(),
+                                    }],
+                                    details: None,
+                                },
+                                true,
+                            ),
+                        }
+                    }
+                };
+                (call_id, call_name, exec_result, is_error)
+            })
+        })
+        .collect();
+
+    let completed = futures::future::join_all(futures).await;
+
+    // Emit results in order, preserving original tool call sequence
+    let mut results = vec![];
+    for join_result in completed {
+        let (call_id, call_name, exec_result, is_error) = match join_result {
+            Ok(r) => r,
+            Err(e) => {
+                // JoinError (panic in task) — shouldn't happen but handle gracefully
+                eprintln!("[agent] tool task panicked: {}", e);
+                continue;
             }
         };
 
@@ -483,10 +506,10 @@ async fn execute_tool_calls(
 
         let tr = ToolResultMessage {
             role: "toolResult".into(),
-            tool_call_id: call_id.clone(),
-            tool_name: call_name.clone(),
-            content: exec_result.content.clone(),
-            details: exec_result.details.clone(),
+            tool_call_id: call_id,
+            tool_name: call_name,
+            content: exec_result.content,
+            details: exec_result.details,
             is_error,
             timestamp: chrono::Utc::now().timestamp_millis(),
         };
@@ -498,65 +521,22 @@ async fn execute_tool_calls(
         tx.push(AgentEvent::MessageEnd {
             message: AgentMessage::Llm(Message::ToolResult(tr)),
         });
-
-        // Check steering after each tool
-        let s = get_steering(config).await;
-        if !s.is_empty() {
-            // Skip remaining tool calls
-            for (skip_id, skip_name, skip_args) in &tool_calls[i + 1..] {
-                let skipped = skip_tool_call(skip_id, skip_name, skip_args, tx);
-                results.push(skipped);
-            }
-            steering = Some(s);
-            break;
-        }
     }
+
+    // Check steering once after all tools complete
+    let steering = {
+        let s = get_steering(config).await;
+        if s.is_empty() {
+            None
+        } else {
+            Some(s)
+        }
+    };
 
     ToolExecResult {
         tool_results: results,
         steering,
     }
-}
-
-fn skip_tool_call(
-    id: &str,
-    name: &str,
-    args: &std::collections::HashMap<String, serde_json::Value>,
-    tx: &mut AgentEventSender,
-) -> ToolResultMessage {
-    let result = AgentToolResult {
-        content: vec![UserBlock::Text {
-            text: "Skipped due to queued user message.".into(),
-        }],
-        details: None,
-    };
-    tx.push(AgentEvent::ToolExecutionStart {
-        tool_call_id: id.into(),
-        tool_name: name.into(),
-        args: serde_json::Value::Object(args.iter().map(|(k, v)| (k.clone(), v.clone())).collect()),
-    });
-    tx.push(AgentEvent::ToolExecutionEnd {
-        tool_call_id: id.into(),
-        tool_name: name.into(),
-        result: result.clone(),
-        is_error: true,
-    });
-    let tr = ToolResultMessage {
-        role: "toolResult".into(),
-        tool_call_id: id.into(),
-        tool_name: name.into(),
-        content: result.content,
-        details: None,
-        is_error: true,
-        timestamp: chrono::Utc::now().timestamp_millis(),
-    };
-    tx.push(AgentEvent::MessageStart {
-        message: AgentMessage::Llm(Message::ToolResult(tr.clone())),
-    });
-    tx.push(AgentEvent::MessageEnd {
-        message: AgentMessage::Llm(Message::ToolResult(tr.clone())),
-    });
-    tr
 }
 
 // ---------------------------------------------------------------------------
