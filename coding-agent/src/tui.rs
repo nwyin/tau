@@ -77,6 +77,10 @@ struct App {
     auto_scroll: bool,
     streaming_text: String,
     is_thinking: bool,
+    /// Full assistant message accumulated for markdown re-rendering on completion.
+    assistant_buf: String,
+    /// Index into output_lines where the current assistant message started.
+    assistant_start_idx: usize,
 
     // Input
     input: String,
@@ -109,6 +113,8 @@ impl App {
             auto_scroll: true,
             streaming_text: String::new(),
             is_thinking: false,
+            assistant_buf: String::new(),
+            assistant_start_idx: 0,
 
             input: String::new(),
             cursor_pos: 0,
@@ -512,6 +518,9 @@ impl App {
     /// Process a text delta from the assistant.
     fn append_text_delta(&mut self, delta: &str) {
         self.streaming_text.push_str(delta);
+        if !self.is_thinking {
+            self.assistant_buf.push_str(delta);
+        }
 
         // Split completed lines into output_lines, keep partial last line
         while let Some(newline_pos) = self.streaming_text.find('\n') {
@@ -529,6 +538,30 @@ impl App {
             if self.auto_scroll {
                 self.scroll_offset = 0;
             }
+        }
+    }
+
+    /// Mark where the current assistant message starts in the output buffer.
+    fn mark_assistant_start(&mut self) {
+        self.assistant_buf.clear();
+        self.assistant_start_idx = self.output_lines.len();
+    }
+
+    /// Replace raw streamed lines with markdown-rendered lines.
+    fn render_assistant_markdown(&mut self) {
+        if self.assistant_buf.trim().is_empty() {
+            return;
+        }
+        let rendered = crate::markdown::render(&self.assistant_buf);
+        // Remove the raw lines we streamed
+        self.output_lines.truncate(self.assistant_start_idx);
+        // Add the markdown-rendered lines
+        for line in rendered {
+            self.output_lines.push(line);
+        }
+        self.assistant_buf.clear();
+        if self.auto_scroll {
+            self.scroll_offset = 0;
         }
     }
 }
@@ -1057,6 +1090,9 @@ fn handle_agent_event(app: &mut App, event: &AgentEvent) {
             assistant_event, ..
         } => match assistant_event.as_ref() {
             AssistantMessageEvent::TextDelta { delta, .. } => {
+                if app.assistant_buf.is_empty() && app.streaming_text.is_empty() {
+                    app.mark_assistant_start();
+                }
                 app.is_thinking = false;
                 app.append_text_delta(delta);
             }
@@ -1069,6 +1105,11 @@ fn handle_agent_event(app: &mut App, event: &AgentEvent) {
         AgentEvent::ToolExecutionStart {
             tool_name, args, ..
         } => {
+            // Flush and render any assistant text before tool output
+            if !app.assistant_buf.is_empty() {
+                app.flush_streaming();
+                app.render_assistant_markdown();
+            }
             app.active_tools.push(tool_name.clone());
 
             let detail = extract_tool_detail(tool_name, args);
@@ -1110,6 +1151,7 @@ fn handle_agent_event(app: &mut App, event: &AgentEvent) {
         }
         AgentEvent::AgentEnd { .. } => {
             app.flush_streaming();
+            app.render_assistant_markdown();
             app.is_busy = false;
             app.push_separator();
         }

@@ -1,6 +1,7 @@
 pub mod agent_builder;
 pub mod cli;
 pub mod config;
+pub mod markdown;
 pub mod permissions;
 pub mod rpc;
 pub mod serve;
