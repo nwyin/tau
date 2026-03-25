@@ -594,11 +594,12 @@ async fn run_app(
     });
     config.permission_service.set_prompt_fn(perm_prompt_fn);
 
-    // Permission state
-    let mut pending_permission: Option<(
+    // Permission state: queue of (tool_name, display_text, response_sender)
+    let mut perm_queue: Vec<(
+        String,
         String,
         std::sync::mpsc::Sender<permissions::PromptResult>,
-    )> = None;
+    )> = Vec::new();
 
     // Subscribe to agent events → channel
     let tx_agent = tx.clone();
@@ -641,34 +642,40 @@ async fn run_app(
     app.push_separator();
 
     loop {
-        terminal.draw(|f| ui(f, &app, &pending_permission))?;
+        let perm_display = perm_queue.first().map(|(_, d, _)| d.clone());
+        let perm_count = perm_queue.len();
+        terminal.draw(|f| ui(f, &app, &perm_display, perm_count))?;
 
-        // Check for permission requests (non-blocking)
-        // After abort, auto-deny any lingering permission requests
+        // Drain all pending permission requests into the queue
         if !app.is_busy {
-            while let Ok((_desc, _text, resp_tx)) = perm_req_rx.try_recv() {
+            // After abort, auto-deny all
+            while let Ok((_name, _text, resp_tx)) = perm_req_rx.try_recv() {
                 let _ = resp_tx.send(permissions::PromptResult::Deny);
             }
-        } else if pending_permission.is_none() {
-            if let Ok((tool_name, desc_text, resp_tx)) = perm_req_rx.try_recv() {
+            for (_name, _display, resp_tx) in perm_queue.drain(..) {
+                let _ = resp_tx.send(permissions::PromptResult::Deny);
+            }
+        } else {
+            while let Ok((tool_name, desc_text, resp_tx)) = perm_req_rx.try_recv() {
                 let display = if desc_text.is_empty() {
                     tool_name.clone()
                 } else {
                     format!("{}: {}", tool_name, desc_text)
                 };
-                pending_permission = Some((display, resp_tx));
+                perm_queue.push((tool_name, display, resp_tx));
             }
         }
 
         tokio::select! {
             Some(Ok(term_event)) = reader.next() => {
-                if let Some((ref _tool, ref resp_tx)) = pending_permission {
-                    // In permission mode: accept y/n/a, or Ctrl-C to deny and abort
+                if !perm_queue.is_empty() {
+                    // In permission mode
                     match term_event {
                         Event::Key(KeyEvent { code: KeyCode::Char('c'), modifiers: KeyModifiers::CONTROL, .. }) => {
-                            // Ctrl-C: deny the permission and abort
-                            let _ = resp_tx.send(permissions::PromptResult::Deny);
-                            pending_permission = None;
+                            // Ctrl-C: deny all and abort
+                            for (_name, _display, resp_tx) in perm_queue.drain(..) {
+                                let _ = resp_tx.send(permissions::PromptResult::Deny);
+                            }
                             agent.abort();
                             app.is_busy = false;
                             app.active_tools.clear();
@@ -680,15 +687,39 @@ async fn run_app(
                             app.push_separator();
                         }
                         Event::Key(KeyEvent { code: KeyCode::Char(c), modifiers: KeyModifiers::NONE | KeyModifiers::SHIFT, .. }) => {
-                            let result = match c {
-                                'y' | 'Y' => Some(permissions::PromptResult::Allow),
-                                'a' | 'A' => Some(permissions::PromptResult::AlwaysAllow),
-                                'n' | 'N' => Some(permissions::PromptResult::Deny),
-                                _ => None,
-                            };
-                            if let Some(r) = result {
-                                let _ = resp_tx.send(r);
-                                pending_permission = None;
+                            match c {
+                                'y' | 'Y' => {
+                                    // Allow this one, advance to next
+                                    if let Some((_name, _display, resp_tx)) = perm_queue.first() {
+                                        let _ = resp_tx.send(permissions::PromptResult::Allow);
+                                    }
+                                    perm_queue.remove(0);
+                                }
+                                'a' | 'A' => {
+                                    // Always allow — approve current + all pending with same tool name
+                                    if let Some((ref tool_name, _, ref resp_tx)) = perm_queue.first() {
+                                        let _ = resp_tx.send(permissions::PromptResult::AlwaysAllow);
+                                        let tool = tool_name.clone();
+                                        perm_queue.remove(0);
+                                        // Auto-approve remaining with same tool
+                                        perm_queue.retain(|(name, _, resp_tx)| {
+                                            if name == &tool {
+                                                let _ = resp_tx.send(permissions::PromptResult::Allow);
+                                                false
+                                            } else {
+                                                true
+                                            }
+                                        });
+                                    }
+                                }
+                                'n' | 'N' => {
+                                    // Deny this one, advance to next
+                                    if let Some((_name, _display, resp_tx)) = perm_queue.first() {
+                                        let _ = resp_tx.send(permissions::PromptResult::Deny);
+                                    }
+                                    perm_queue.remove(0);
+                                }
+                                _ => {}
                             }
                         }
                         _ => {}
@@ -722,12 +753,8 @@ async fn run_app(
 // Rendering
 // ---------------------------------------------------------------------------
 
-fn ui(
-    frame: &mut ratatui::Frame,
-    app: &App,
-    pending_permission: &Option<(String, std::sync::mpsc::Sender<permissions::PromptResult>)>,
-) {
-    let perm_height = if pending_permission.is_some() { 4 } else { 1 };
+fn ui(frame: &mut ratatui::Frame, app: &App, perm_display: &Option<String>, perm_count: usize) {
+    let perm_height = if perm_display.is_some() { 4 } else { 1 };
     let chunks = Layout::vertical([
         Constraint::Min(1),              // output area
         Constraint::Length(perm_height), // input line or permission modal
@@ -782,11 +809,16 @@ fn ui(
     frame.render_widget(output, chunks[0]);
 
     // Input line / permission modal
-    if let Some((ref desc, _)) = pending_permission {
+    if let Some(ref desc) = perm_display {
         // Render permission modal in a multi-line box
+        let header = if perm_count > 1 {
+            format!("─ Allow tool execution? ({} pending) ─", perm_count)
+        } else {
+            "─ Allow tool execution? ─".to_string()
+        };
         let perm_lines = vec![
             Line::from(Span::styled(
-                "─ Allow tool execution? ─",
+                header,
                 Style::default()
                     .fg(Color::Yellow)
                     .add_modifier(Modifier::BOLD),
