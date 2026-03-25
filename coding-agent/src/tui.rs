@@ -252,7 +252,7 @@ async fn run_app(
     let welcome_model = app.model_id.clone();
     app.push_line(Line::from(vec![
         Span::styled(
-            "tau",
+            "τ",
             Style::default()
                 .fg(Color::Cyan)
                 .add_modifier(Modifier::BOLD),
@@ -333,6 +333,7 @@ fn ui(
     let chunks = Layout::vertical([
         Constraint::Min(1),    // output area
         Constraint::Length(1), // input line
+        Constraint::Length(1), // separator
         Constraint::Length(1), // status bar
     ])
     .split(frame.area());
@@ -403,11 +404,18 @@ fn ui(
         frame.set_cursor_position((cursor_x, cursor_y));
     }
 
+    // Separator
+    let sep = Line::from("─".repeat(chunks[2].width as usize));
+    frame.render_widget(
+        Paragraph::new(sep).style(Style::default().fg(Color::DarkGray)),
+        chunks[2],
+    );
+
     // Status bar
     let status = build_status_line(app);
     frame.render_widget(
-        Paragraph::new(status).style(Style::default().bg(Color::DarkGray).fg(Color::White)),
-        chunks[2],
+        Paragraph::new(status).style(Style::default().fg(Color::DarkGray)),
+        chunks[3],
     );
 }
 
