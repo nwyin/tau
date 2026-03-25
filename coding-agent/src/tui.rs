@@ -957,6 +957,23 @@ fn handle_terminal_event(
                         });
                     }
                 }
+                // Ctrl-W: delete word backward
+                (KeyCode::Char('w'), KeyModifiers::CONTROL) => {
+                    if app.cursor_pos > 0 && !app.is_busy {
+                        app.reset_tab();
+                        let mut pos = app.cursor_pos;
+                        // Skip trailing whitespace
+                        while pos > 0 && app.input.as_bytes()[pos - 1] == b' ' {
+                            pos -= 1;
+                        }
+                        // Delete back to previous whitespace or start
+                        while pos > 0 && app.input.as_bytes()[pos - 1] != b' ' {
+                            pos -= 1;
+                        }
+                        app.input.drain(pos..app.cursor_pos);
+                        app.cursor_pos = pos;
+                    }
+                }
                 // Backspace
                 (KeyCode::Backspace, _) => {
                     if app.cursor_pos > 0 && !app.is_busy {
