@@ -151,23 +151,15 @@ impl App {
 
     /// Handle Tab press: complete any `/` command.
     fn tab_complete(&mut self) {
-        if let Some((ref _prefix, ref candidates, ref mut idx)) = self.tab_state {
-            // Already completing — cycle to next candidate
+        // If already cycling, advance to next candidate
+        if let Some((ref prefix, ref candidates, ref mut idx)) = self.tab_state {
             if candidates.is_empty() {
                 return;
             }
             *idx = (*idx + 1) % candidates.len();
-            let candidate = &candidates[*idx];
-            // Add trailing space for commands that don't take args
-            let needs_arg = candidate.starts_with("/skill:")
-                || *candidate == "/model"
-                || *candidate == "/thinking";
-            self.input = if needs_arg {
-                format!("{} ", candidate)
-            } else {
-                candidate.clone()
-            };
+            self.input = format!("{} ", candidates[*idx]);
             self.cursor_pos = self.input.len();
+            let _ = prefix; // kept for potential future use
             return;
         }
 
@@ -176,43 +168,31 @@ impl App {
             return;
         }
 
-        // Don't complete if cursor is past a space (user is typing args)
-        let before_space = self
-            .input
-            .split_once(' ')
-            .map(|(cmd, _)| cmd)
-            .unwrap_or(&self.input);
-        if before_space != self.input {
+        // Don't complete if there's already a space (user is typing args)
+        if self.input.contains(' ') {
             return;
         }
 
-        let partial = &self.input;
+        let partial = self.input.clone();
         let candidates: Vec<String> = self
             .all_slash_commands()
             .into_iter()
-            .filter(|c| c.starts_with(partial))
+            .filter(|c| c.starts_with(&partial))
             .collect();
 
         if candidates.is_empty() {
             return;
         }
 
-        let needs_arg = |c: &str| c.starts_with("/skill:") || c == "/model" || c == "/thinking";
-
         if candidates.len() == 1 {
-            self.input = if needs_arg(&candidates[0]) {
-                format!("{} ", candidates[0])
-            } else {
-                candidates[0].clone()
-            };
+            // Single match — complete directly, no cycling state
+            self.input = format!("{} ", candidates[0]);
             self.cursor_pos = self.input.len();
         } else {
-            self.tab_state = Some((String::new(), candidates.clone(), 0));
-            self.input = if needs_arg(&candidates[0]) {
-                format!("{} ", candidates[0])
-            } else {
-                candidates[0].clone()
-            };
+            // Multiple matches — enter cycling mode, show first
+            let first = candidates[0].clone();
+            self.tab_state = Some((partial, candidates, 0));
+            self.input = format!("{} ", first);
             self.cursor_pos = self.input.len();
         }
     }
