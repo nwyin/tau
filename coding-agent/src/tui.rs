@@ -830,16 +830,15 @@ fn handle_terminal_event(
                 // Ctrl-C
                 (KeyCode::Char('c'), KeyModifiers::CONTROL) => {
                     if app.is_busy {
-                        let count = app.abort_count.fetch_add(1, Ordering::SeqCst);
-                        if count == 0 {
-                            agent.abort();
-                            app.push_line(Line::from(Span::styled(
-                                "^C (aborting...)",
-                                Style::default().fg(Color::Yellow),
-                            )));
-                        } else {
-                            app.should_quit = true;
-                        }
+                        agent.abort();
+                        app.is_busy = false;
+                        app.active_tools.clear();
+                        app.flush_streaming();
+                        app.push_line(Line::from(Span::styled(
+                            "^C (aborted)",
+                            Style::default().fg(Color::Yellow),
+                        )));
+                        app.push_separator();
                     } else {
                         let count = app.abort_count.fetch_add(1, Ordering::SeqCst);
                         if count >= 1 {
