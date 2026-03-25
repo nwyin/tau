@@ -235,6 +235,7 @@ impl App {
     /// - Some(Some(text)) = expand to this text, send to LLM
     /// - None = not a slash command, send input as-is to LLM
     fn handle_slash_command(&mut self, input: &str, agent: &Agent) -> Option<Option<String>> {
+        let input = input.trim();
         if !input.starts_with('/') {
             return None;
         }
@@ -243,6 +244,11 @@ impl App {
             .split_once(' ')
             .map(|(c, a)| (c, a.trim()))
             .unwrap_or((input, ""));
+
+        self.debug_log(format!(
+            "slash_command: input={:?} cmd={:?} args={:?}",
+            input, cmd, args
+        ));
 
         match cmd {
             "/help" => {
@@ -862,9 +868,9 @@ fn handle_terminal_event(
                 }
                 // Enter
                 (KeyCode::Enter, _) => {
-                    if !app.is_busy && !app.input.is_empty() {
+                    if !app.is_busy && !app.input.trim().is_empty() {
                         app.reset_tab();
-                        let input = app.input.clone();
+                        let input = app.input.trim().to_string();
                         app.input.clear();
                         app.cursor_pos = 0;
                         app.abort_count.store(0, Ordering::SeqCst);
