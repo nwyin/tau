@@ -727,11 +727,12 @@ fn ui(
     app: &App,
     pending_permission: &Option<(String, std::sync::mpsc::Sender<permissions::PromptResult>)>,
 ) {
+    let perm_height = if pending_permission.is_some() { 4 } else { 1 };
     let chunks = Layout::vertical([
-        Constraint::Min(1),    // output area
-        Constraint::Length(1), // input line
-        Constraint::Length(1), // separator
-        Constraint::Length(1), // status bar
+        Constraint::Min(1),              // output area
+        Constraint::Length(perm_height), // input line or permission modal
+        Constraint::Length(1),           // separator
+        Constraint::Length(1),           // status bar
     ])
     .split(frame.area());
 
@@ -782,30 +783,31 @@ fn ui(
 
     // Input line / permission modal
     if let Some((ref desc, _)) = pending_permission {
-        // Render permission modal: use the input line area
-        // Truncate description to fit
-        let max_desc = chunks[1].width as usize - 20;
-        let short_desc = if desc.len() > max_desc {
-            format!("{}…", &desc[..max_desc.saturating_sub(1)])
-        } else {
-            desc.clone()
-        };
-        let perm_line = Line::from(vec![
-            Span::styled(
-                " allow? ",
+        // Render permission modal in a multi-line box
+        let perm_lines = vec![
+            Line::from(Span::styled(
+                "─ Allow tool execution? ─",
                 Style::default()
-                    .fg(Color::Black)
-                    .bg(Color::Yellow)
+                    .fg(Color::Yellow)
                     .add_modifier(Modifier::BOLD),
-            ),
-            Span::raw(" "),
-            Span::styled(short_desc, Style::default().fg(Color::White)),
-            Span::styled(
-                "  [y]es [n]o [a]lways ",
-                Style::default().fg(Color::DarkGray),
-            ),
-        ]);
-        frame.render_widget(Paragraph::new(perm_line), chunks[1]);
+            )),
+            Line::from(Span::styled(
+                desc.clone(),
+                Style::default().fg(Color::White),
+            )),
+            Line::default(),
+            Line::from(vec![
+                Span::styled(
+                    "  [y]es  [n]o  [a]lways  ",
+                    Style::default().fg(Color::DarkGray),
+                ),
+                Span::styled("Ctrl-C abort", Style::default().fg(Color::DarkGray)),
+            ]),
+        ];
+        frame.render_widget(
+            Paragraph::new(perm_lines).wrap(Wrap { trim: false }),
+            chunks[1],
+        );
     } else {
         let prompt_text = if app.is_busy {
             format!("{}  ", app.model_id)
