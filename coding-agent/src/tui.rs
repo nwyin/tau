@@ -114,6 +114,7 @@ struct App {
 
     // Control
     skills: Vec<Skill>,
+    permission_service: Arc<PermissionService>,
     abort_count: Arc<AtomicU8>,
     should_quit: bool,
     debug: bool,
@@ -144,6 +145,7 @@ impl App {
             is_busy: false,
 
             skills: config.skills.clone(),
+            permission_service: config.permission_service.clone(),
             abort_count: Arc::new(AtomicU8::new(0)),
             should_quit: false,
             debug: false,
@@ -178,6 +180,7 @@ impl App {
             "/thinking".to_string(),
             "/skills".to_string(),
             "/compact".to_string(),
+            "/yolo".to_string(),
             "/debug".to_string(),
         ]);
         cmds
@@ -285,6 +288,7 @@ impl App {
                     ("/thinking <level>", "Set thinking: off|low|medium|high"),
                     ("/skills", "List available skills"),
                     ("/compact", "Show token/context stats"),
+                    ("/yolo", "Toggle auto-approve all tools"),
                     ("/debug", "Toggle debug logging"),
                     ("/skill:<name> [args]", "Run a skill"),
                 ];
@@ -438,6 +442,15 @@ impl App {
                         self.total_cost
                     ),
                     Style::default().fg(Color::DarkGray),
+                )));
+                Some(None)
+            }
+            "/yolo" => {
+                let new_state = !self.permission_service.is_yolo();
+                self.permission_service.set_yolo(new_state);
+                self.push_line(Line::from(Span::styled(
+                    format!("[yolo: {}]", if new_state { "on" } else { "off" }),
+                    Style::default().fg(Color::Magenta),
                 )));
                 Some(None)
             }
@@ -922,6 +935,14 @@ fn build_status_line(app: &App) -> Line<'static> {
         spans.push(Span::styled(
             format!("think:{} ", label),
             Style::default().fg(Color::Magenta),
+        ));
+    }
+
+    if app.permission_service.is_yolo() {
+        spans.push(Span::raw("| "));
+        spans.push(Span::styled(
+            "YOLO ",
+            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
         ));
     }
 

@@ -10,6 +10,7 @@
 
 use std::collections::HashMap;
 use std::io::{self, BufRead, Write};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use agent::types::{AgentTool, AgentToolResult, BoxFuture, ToolUpdateFn};
@@ -59,8 +60,8 @@ pub enum PromptResult {
 pub struct PermissionService {
     /// Configured policies (from config + defaults).
     policies: Mutex<HashMap<String, Policy>>,
-    /// Whether --yolo mode is active (bypass all checks).
-    yolo: bool,
+    /// Whether yolo mode is active (bypass all checks).
+    yolo: AtomicBool,
     /// Function to prompt the user for approval (interior-mutable so TUI can set it after Arc is shared).
     prompt_fn: Mutex<Option<PromptFn>>,
 }
@@ -84,9 +85,19 @@ impl PermissionService {
         }
         Self {
             policies: Mutex::new(policies),
-            yolo,
+            yolo: AtomicBool::new(yolo),
             prompt_fn: Mutex::new(None),
         }
+    }
+
+    /// Check if yolo mode is active.
+    pub fn is_yolo(&self) -> bool {
+        self.yolo.load(Ordering::Relaxed)
+    }
+
+    /// Toggle yolo mode. Returns the new state.
+    pub fn set_yolo(&self, enabled: bool) {
+        self.yolo.store(enabled, Ordering::Relaxed);
     }
 
     /// Set the prompt function for interactive approval.
@@ -107,7 +118,7 @@ impl PermissionService {
     /// Check whether a tool call should be allowed.
     /// Returns Ok(()) if allowed, Err(message) if denied.
     pub fn check(&self, tool_name: &str, description: &str) -> Result<(), String> {
-        if self.yolo {
+        if self.yolo.load(Ordering::Relaxed) {
             return Ok(());
         }
 
