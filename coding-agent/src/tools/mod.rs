@@ -8,6 +8,7 @@ pub mod hashline;
 pub mod pycfg;
 pub mod pycg;
 pub mod subagent;
+pub mod todo;
 pub mod web_fetch;
 pub mod web_search;
 
@@ -29,6 +30,7 @@ pub use pycg::{
     CgCalleesTool, CgCallersTool, CgNeighborsTool, CgPathTool, CgSummaryTool, CgSymbolsTool,
 };
 pub use subagent::SubagentTool;
+pub use todo::TodoTool;
 pub use web_fetch::WebFetchTool;
 pub use web_search::WebSearchTool;
 
@@ -53,6 +55,7 @@ pub fn tools_for_edit_mode(edit_mode: &str) -> Vec<Arc<dyn AgentTool>> {
         WebFetchTool::arc(),
         WebSearchTool::arc(),
         SubagentTool::arc(),
+        TodoTool::arc(),
     ]
 }
 
@@ -81,6 +84,7 @@ pub fn all_known_tools(edit_mode: &str) -> HashMap<String, Arc<dyn AgentTool>> {
     map.insert("web_fetch".to_string(), WebFetchTool::arc());
     map.insert("web_search".to_string(), WebSearchTool::arc());
     map.insert("subagent".to_string(), SubagentTool::arc());
+    map.insert("todo".to_string(), TodoTool::arc());
     map
 }
 

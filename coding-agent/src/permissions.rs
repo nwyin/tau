@@ -38,7 +38,7 @@ impl Policy {
 /// Default policies: read-only tools allow, everything else asks.
 fn default_policy(tool_name: &str) -> Policy {
     match tool_name {
-        "file_read" | "glob" | "grep" | "web_fetch" | "web_search" => Policy::Allow,
+        "file_read" | "glob" | "grep" | "web_fetch" | "web_search" | "todo" => Policy::Allow,
         _ => Policy::Ask,
     }
 }

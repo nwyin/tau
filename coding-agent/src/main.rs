@@ -287,6 +287,24 @@ async fn main() -> Result<()> {
                     .get("query")
                     .and_then(|v| v.as_str())
                     .map(|s| s.to_string()),
+                "todo" => args.get("todos").and_then(|v| v.as_array()).map(|todos| {
+                    let total = todos.len();
+                    let done = todos
+                        .iter()
+                        .filter(|t| t.get("status").and_then(|s| s.as_str()) == Some("completed"))
+                        .count();
+                    let active = todos.iter().find_map(|t| {
+                        if t.get("status").and_then(|s| s.as_str()) == Some("in_progress") {
+                            t.get("content").and_then(|c| c.as_str())
+                        } else {
+                            None
+                        }
+                    });
+                    match active {
+                        Some(a) => format!("[{}/{}] {}", done, total, a),
+                        None => format!("[{}/{}]", done, total),
+                    }
+                }),
                 "subagent" => args.get("task").and_then(|v| v.as_str()).map(|s| {
                     let line = s.lines().next().unwrap_or(s);
                     let model_suffix = args

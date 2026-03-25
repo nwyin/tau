@@ -64,6 +64,9 @@ pub fn build_system_prompt(tools: &[Arc<dyn AgentTool>], skills: &[Skill], cwd: 
     if has("subagent") {
         guidelines.push("Use subagent to delegate well-defined subtasks — especially exploratory research, file analysis, or work that would clutter your context. Give each sub-agent a clear, self-contained task description. Consider using a cheaper model (via the model parameter) for straightforward work.");
     }
+    if has("todo") {
+        guidelines.push("Use todo to track progress on tasks with 3+ steps. Send the full todo list each call — it replaces the previous list. Keep exactly one task \"in_progress\" at a time. Mark tasks \"completed\" immediately after finishing, then drop them on the next update. Do not print the todo list in your response text — the user sees it in the tool output.");
+    }
 
     // Always-on guidelines
     guidelines.push("Be concise in your responses.");
