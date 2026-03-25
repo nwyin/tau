@@ -150,9 +150,14 @@ impl App {
         self.tab_state = None;
     }
 
-    /// Get all completable slash commands (built-in + skills).
+    /// Get all completable slash commands (skills first, then built-ins).
     fn all_slash_commands(&self) -> Vec<String> {
-        let mut cmds = vec![
+        let mut cmds = Vec::new();
+        // Skills first so /skill:name completes before /skills
+        for skill in &self.skills {
+            cmds.push(format!("/skill:{}", skill.name));
+        }
+        cmds.extend([
             "/help".to_string(),
             "/clear".to_string(),
             "/model".to_string(),
@@ -160,10 +165,7 @@ impl App {
             "/skills".to_string(),
             "/compact".to_string(),
             "/debug".to_string(),
-        ];
-        for skill in &self.skills {
-            cmds.push(format!("/skill:{}", skill.name));
-        }
+        ]);
         cmds
     }
 
