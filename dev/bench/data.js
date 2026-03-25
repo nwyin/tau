@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1774443748859,
+  "lastUpdate": 1774444587765,
   "repoUrl": "https://github.com/nwyin/tau",
   "entries": {
     "tau benchmarks": [
@@ -3527,6 +3527,132 @@ window.BENCHMARK_DATA = {
             "name": "sse_parsing/events/1000",
             "value": 361790,
             "range": "± 1865",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "tommynguyen0512@gmail.com",
+            "name": "Tommy Bui Nguyen",
+            "username": "nwyin"
+          },
+          "committer": {
+            "email": "tommynguyen0512@gmail.com",
+            "name": "Tommy Bui Nguyen",
+            "username": "nwyin"
+          },
+          "distinct": true,
+          "id": "c6e50ed692051f5f7702a4dbeaf138cec6fb560a",
+          "message": "docs: update feature-comparison.md with all implemented features\n\nUpdates tau column for: todo tool (10 tools now), parallel tool calls,\nthinking level control (config/CLI/Ctrl-T), ratatui TUI framework,\nslash command autocomplete. Marks todo/plan tracking as done in summary.\nUpdates design philosophy to reflect native subagent tool.",
+          "timestamp": "2026-03-25T21:09:39+08:00",
+          "tree_id": "21fcddf476a385573fac6bf3ae2d4a09b8b1bef2",
+          "url": "https://github.com/nwyin/tau/commit/c6e50ed692051f5f7702a4dbeaf138cec6fb560a"
+        },
+        "date": 1774444587246,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "agent_construction/new_agent",
+            "value": 2133,
+            "range": "± 44",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/10",
+            "value": 3879,
+            "range": "± 12",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/50",
+            "value": 13374,
+            "range": "± 648",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/100",
+            "value": 23304,
+            "range": "± 148",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/500",
+            "value": 97699,
+            "range": "± 506",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/10",
+            "value": 3288,
+            "range": "± 26",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/50",
+            "value": 16847,
+            "range": "± 60",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/100",
+            "value": 33536,
+            "range": "± 124",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/10",
+            "value": 13507,
+            "range": "± 53",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/50",
+            "value": 76126,
+            "range": "± 1286",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/100",
+            "value": 155918,
+            "range": "± 392",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/10",
+            "value": 17508,
+            "range": "± 961",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/50",
+            "value": 94442,
+            "range": "± 345",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/100",
+            "value": 186667,
+            "range": "± 1135",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/10",
+            "value": 3023,
+            "range": "± 11",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/100",
+            "value": 39731,
+            "range": "± 1928",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/1000",
+            "value": 366298,
+            "range": "± 2055",
             "unit": "ns/iter"
           }
         ]
