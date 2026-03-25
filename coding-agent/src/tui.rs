@@ -81,6 +81,8 @@ struct App {
     // Input
     input: String,
     cursor_pos: usize,
+    /// Tab completion state: (prefix being completed, matching candidates, current index)
+    tab_state: Option<(String, Vec<String>, usize)>,
 
     // Status
     model_id: String,
@@ -109,6 +111,7 @@ impl App {
 
             input: String::new(),
             cursor_pos: 0,
+            tab_state: None,
 
             model_id: config.model_id.clone(),
             context_window: config.context_window,
@@ -122,6 +125,77 @@ impl App {
             skills: config.skills.clone(),
             abort_count: Arc::new(AtomicU8::new(0)),
             should_quit: false,
+        }
+    }
+
+    /// Reset tab completion state (called when input changes via non-Tab keys).
+    fn reset_tab(&mut self) {
+        self.tab_state = None;
+    }
+
+    /// Handle Tab press: complete `/skill:` prefix against known skill names.
+    fn tab_complete(&mut self) {
+        if let Some((ref prefix, ref candidates, ref mut idx)) = self.tab_state {
+            // Already completing — cycle to next candidate
+            if candidates.is_empty() {
+                return;
+            }
+            *idx = (*idx + 1) % candidates.len();
+            let completion = format!("{}{} ", prefix, candidates[*idx]);
+            self.input = completion;
+            self.cursor_pos = self.input.len();
+            return;
+        }
+
+        // Start new completion
+        if !self.input.starts_with("/skill:") {
+            // Also handle bare `/` — complete to `/skill:`
+            if self.input == "/" {
+                self.input = "/skill:".to_string();
+                self.cursor_pos = self.input.len();
+                // Now start skill name completion with empty partial
+                let candidates: Vec<String> = self.skills.iter().map(|s| s.name.clone()).collect();
+                if candidates.len() == 1 {
+                    self.input = format!("/skill:{} ", candidates[0]);
+                    self.cursor_pos = self.input.len();
+                } else if !candidates.is_empty() {
+                    self.tab_state = Some(("/skill:".to_string(), candidates.clone(), 0));
+                    self.input = format!("/skill:{} ", candidates[0]);
+                    self.cursor_pos = self.input.len();
+                }
+                return;
+            }
+            return;
+        }
+
+        // Extract partial after `/skill:`
+        let after_prefix = &self.input[7..];
+        // If there's already a space, user is typing args — don't complete
+        if after_prefix.contains(' ') {
+            return;
+        }
+
+        let partial = after_prefix;
+        let candidates: Vec<String> = self
+            .skills
+            .iter()
+            .filter(|s| s.name.starts_with(partial))
+            .map(|s| s.name.clone())
+            .collect();
+
+        if candidates.is_empty() {
+            return;
+        }
+
+        if candidates.len() == 1 {
+            // Single match — complete it directly, no cycling state
+            self.input = format!("/skill:{} ", candidates[0]);
+            self.cursor_pos = self.input.len();
+        } else {
+            // Multiple matches — enter cycling mode
+            self.tab_state = Some(("/skill:".to_string(), candidates.clone(), 0));
+            self.input = format!("/skill:{} ", candidates[0]);
+            self.cursor_pos = self.input.len();
         }
     }
 
@@ -534,6 +608,7 @@ fn handle_terminal_event(
                 // Enter
                 (KeyCode::Enter, _) => {
                     if !app.is_busy && !app.input.is_empty() {
+                        app.reset_tab();
                         let input = app.input.clone();
                         app.input.clear();
                         app.cursor_pos = 0;
@@ -587,6 +662,7 @@ fn handle_terminal_event(
                 // Backspace
                 (KeyCode::Backspace, _) => {
                     if app.cursor_pos > 0 && !app.is_busy {
+                        app.reset_tab();
                         app.input.remove(app.cursor_pos - 1);
                         app.cursor_pos -= 1;
                     }
@@ -594,6 +670,7 @@ fn handle_terminal_event(
                 // Delete
                 (KeyCode::Delete, _) => {
                     if app.cursor_pos < app.input.len() && !app.is_busy {
+                        app.reset_tab();
                         app.input.remove(app.cursor_pos);
                     }
                 }
@@ -617,6 +694,12 @@ fn handle_terminal_event(
                 (KeyCode::End, _) => {
                     app.cursor_pos = app.input.len();
                 }
+                // Tab: slash command completion
+                (KeyCode::Tab, _) => {
+                    if !app.is_busy {
+                        app.tab_complete();
+                    }
+                }
                 // PageUp
                 (KeyCode::PageUp, _) => {
                     app.auto_scroll = false;
@@ -634,6 +717,7 @@ fn handle_terminal_event(
                 // Regular character
                 (KeyCode::Char(c), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
                     if !app.is_busy {
+                        app.reset_tab();
                         app.input.insert(app.cursor_pos, c);
                         app.cursor_pos += 1;
                     }
