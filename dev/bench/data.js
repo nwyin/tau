@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1774339287270,
+  "lastUpdate": 1774425897873,
   "repoUrl": "https://github.com/nwyin/tau",
   "entries": {
     "tau benchmarks": [
@@ -3275,6 +3275,132 @@ window.BENCHMARK_DATA = {
             "name": "sse_parsing/events/1000",
             "value": 362894,
             "range": "± 3628",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "tommynguyen0512@gmail.com",
+            "name": "Tommy Bui Nguyen",
+            "username": "nwyin"
+          },
+          "committer": {
+            "email": "tommynguyen0512@gmail.com",
+            "name": "Tommy Bui Nguyen",
+            "username": "nwyin"
+          },
+          "distinct": true,
+          "id": "2dc71da2cab95c136c06cc65f84041916218d67f",
+          "message": "feat: execute tool calls concurrently instead of sequentially\n\nWhen the model emits multiple tool calls in one turn (e.g. 5 greps),\nthey now run in parallel via tokio::spawn + join_all. Events are\nemitted in order: all ToolExecutionStart first, then ToolExecutionEnd\nas results arrive. Steering is checked once after the batch completes\ninstead of between each tool.",
+          "timestamp": "2026-03-25T15:58:57+08:00",
+          "tree_id": "f0b06d0c7ec34a866c6f01a27e91e2c59c35d237",
+          "url": "https://github.com/nwyin/tau/commit/2dc71da2cab95c136c06cc65f84041916218d67f"
+        },
+        "date": 1774425897110,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "agent_construction/new_agent",
+            "value": 2164,
+            "range": "± 13",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/10",
+            "value": 3841,
+            "range": "± 101",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/50",
+            "value": 13543,
+            "range": "± 88",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/100",
+            "value": 22285,
+            "range": "± 92",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/500",
+            "value": 100247,
+            "range": "± 592",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/10",
+            "value": 3436,
+            "range": "± 39",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/50",
+            "value": 17193,
+            "range": "± 163",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/100",
+            "value": 34499,
+            "range": "± 428",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/10",
+            "value": 13259,
+            "range": "± 55",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/50",
+            "value": 74292,
+            "range": "± 222",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/100",
+            "value": 152051,
+            "range": "± 6030",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/10",
+            "value": 17286,
+            "range": "± 113",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/50",
+            "value": 92518,
+            "range": "± 564",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/100",
+            "value": 184141,
+            "range": "± 542",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/10",
+            "value": 2845,
+            "range": "± 30",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/100",
+            "value": 38825,
+            "range": "± 246",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/1000",
+            "value": 360988,
+            "range": "± 1057",
             "unit": "ns/iter"
           }
         ]
