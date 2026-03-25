@@ -98,6 +98,7 @@ struct App {
     skills: Vec<Skill>,
     abort_count: Arc<AtomicU8>,
     should_quit: bool,
+    debug: bool,
 }
 
 impl App {
@@ -125,6 +126,16 @@ impl App {
             skills: config.skills.clone(),
             abort_count: Arc::new(AtomicU8::new(0)),
             should_quit: false,
+            debug: false,
+        }
+    }
+
+    fn debug_log(&mut self, msg: impl Into<String>) {
+        if self.debug {
+            self.push_line(Line::from(Span::styled(
+                format!("[debug] {}", msg.into()),
+                Style::default().fg(Color::DarkGray),
+            )));
         }
     }
 
@@ -142,6 +153,7 @@ impl App {
             "/thinking".to_string(),
             "/skills".to_string(),
             "/compact".to_string(),
+            "/debug".to_string(),
         ];
         for skill in &self.skills {
             cmds.push(format!("/skill:{}", skill.name));
@@ -151,6 +163,16 @@ impl App {
 
     /// Handle Tab press: complete any `/` command.
     fn tab_complete(&mut self) {
+        self.debug_log(format!(
+            "tab_complete: input={:?} tab_state={}",
+            self.input,
+            if self.tab_state.is_some() {
+                "Some"
+            } else {
+                "None"
+            }
+        ));
+
         // If already cycling, advance to next candidate
         if let Some((ref prefix, ref candidates, ref mut idx)) = self.tab_state {
             if candidates.is_empty() {
@@ -159,17 +181,20 @@ impl App {
             *idx = (*idx + 1) % candidates.len();
             self.input = format!("{} ", candidates[*idx]);
             self.cursor_pos = self.input.len();
-            let _ = prefix; // kept for potential future use
+            let _ = prefix;
+            // Can't call debug_log here (borrow conflict), will log after
             return;
         }
 
         // Need a `/` prefix to trigger completion
         if !self.input.starts_with('/') {
+            self.debug_log("tab_complete: no / prefix, skipping");
             return;
         }
 
         // Don't complete if there's already a space (user is typing args)
         if self.input.contains(' ') {
+            self.debug_log("tab_complete: has space, skipping");
             return;
         }
 
@@ -180,20 +205,28 @@ impl App {
             .filter(|c| c.starts_with(&partial))
             .collect();
 
+        self.debug_log(format!(
+            "tab_complete: partial={:?} candidates={:?}",
+            partial, candidates
+        ));
+
         if candidates.is_empty() {
             return;
         }
 
         if candidates.len() == 1 {
-            // Single match — complete directly, no cycling state
             self.input = format!("{} ", candidates[0]);
             self.cursor_pos = self.input.len();
+            self.debug_log(format!("tab_complete: single match -> {:?}", self.input));
         } else {
-            // Multiple matches — enter cycling mode, show first
             let first = candidates[0].clone();
             self.tab_state = Some((partial, candidates, 0));
             self.input = format!("{} ", first);
             self.cursor_pos = self.input.len();
+            self.debug_log(format!(
+                "tab_complete: cycling mode, first -> {:?}",
+                self.input
+            ));
         }
     }
 
@@ -224,6 +257,7 @@ impl App {
                     ("/thinking <level>", "Set thinking: off|low|medium|high"),
                     ("/skills", "List available skills"),
                     ("/compact", "Show token/context stats"),
+                    ("/debug", "Toggle debug logging"),
                     ("/skill:<name> [args]", "Run a skill"),
                 ];
                 for (name, desc) in commands {
@@ -376,6 +410,14 @@ impl App {
                         self.total_cost
                     ),
                     Style::default().fg(Color::DarkGray),
+                )));
+                Some(None)
+            }
+            "/debug" => {
+                self.debug = !self.debug;
+                self.push_line(Line::from(Span::styled(
+                    format!("[debug: {}]", if self.debug { "on" } else { "off" }),
+                    Style::default().fg(Color::Magenta),
                 )));
                 Some(None)
             }
@@ -777,6 +819,7 @@ fn handle_terminal_event(
         Event::Key(KeyEvent {
             code, modifiers, ..
         }) => {
+            app.debug_log(format!("key: {:?} modifiers: {:?}", code, modifiers));
             match (code, modifiers) {
                 // Ctrl-C
                 (KeyCode::Char('c'), KeyModifiers::CONTROL) => {
