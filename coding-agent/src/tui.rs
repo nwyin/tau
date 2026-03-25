@@ -347,22 +347,27 @@ fn ui(
         display_lines.push(Line::from(Span::styled(app.streaming_text.clone(), style)));
     }
 
-    // Calculate scroll: we want to show the bottom of the output by default
+    // Bottom-align: pad with empty lines so content grows upward from the input line
+    let total = display_lines.len();
+    if total < output_height {
+        let padding = output_height - total;
+        let mut padded = vec![Line::default(); padding];
+        padded.append(&mut display_lines);
+        display_lines = padded;
+    }
+
+    // Calculate scroll
     let scroll = if app.auto_scroll {
-        let total = display_lines.len();
-        if total > output_height {
-            (total - output_height) as u16
+        if display_lines.len() > output_height {
+            (display_lines.len() - output_height) as u16
         } else {
             0
         }
+    } else if display_lines.len() > output_height {
+        let max_scroll = (display_lines.len() - output_height) as u16;
+        max_scroll.saturating_sub(app.scroll_offset)
     } else {
-        let total = display_lines.len();
-        if total > output_height {
-            let max_scroll = (total - output_height) as u16;
-            max_scroll.saturating_sub(app.scroll_offset)
-        } else {
-            0
-        }
+        0
     };
 
     let output = Paragraph::new(display_lines)
