@@ -37,6 +37,7 @@ pub struct TuiRunConfig {
     pub session_file: Option<Arc<SessionFile>>,
     pub skills: Vec<Skill>,
     pub permission_service: Arc<PermissionService>,
+    pub startup_messages: Vec<String>,
 }
 
 /// Run the interactive TUI. Enters alternate screen, runs the event loop,
@@ -264,6 +265,12 @@ async fn run_app(
                 .add_modifier(Modifier::BOLD),
         ),
     ]));
+    for msg in &config.startup_messages {
+        app.push_line(Line::from(Span::styled(
+            msg.clone(),
+            Style::default().fg(Color::DarkGray),
+        )));
+    }
     app.push_separator();
 
     loop {

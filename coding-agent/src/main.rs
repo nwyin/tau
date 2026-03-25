@@ -223,7 +223,11 @@ async fn main() -> Result<()> {
     let session_file_arc: Option<Arc<SessionFile>> = session_file_opt.map(Arc::new);
 
     if let Some(ref prompt_text_arg) = prompt_arg {
-        // Non-interactive mode: set up print-based event subscriber
+        // Non-interactive mode: print startup messages to stderr
+        for msg in &built.startup_messages {
+            eprintln!("{}", msg);
+        }
+        // Set up print-based event subscriber
         let session_for_save = session_file_arc.clone();
         let _event_handler = agent.subscribe(move |event| match event {
             AgentEvent::MessageUpdate {
@@ -357,6 +361,7 @@ async fn main() -> Result<()> {
                 session_file: session_file_arc,
                 skills,
                 permission_service: built.permission_service,
+                startup_messages: built.startup_messages,
             },
         )
         .await?;

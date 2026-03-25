@@ -34,6 +34,8 @@ pub struct BuiltAgent {
     pub system_prompt_text: String,
     pub skills: Vec<Skill>,
     pub permission_service: Arc<PermissionService>,
+    /// Startup messages (warnings, info) to display to the user.
+    pub startup_messages: Vec<String>,
 }
 
 /// Build an Agent with all provider/key/model resolution handled.
@@ -140,6 +142,9 @@ pub async fn build_agent(build_config: AgentBuildConfig) -> Result<BuiltAgent> {
         tools::tools_for_edit_mode(&config.edit_mode)
     };
 
+    // Collect startup messages instead of printing directly
+    let mut startup_messages = Vec::new();
+
     // Warn about missing optional API keys for included tools
     let has_web_search = tool_list.iter().any(|t| t.name() == "web_search");
     if has_web_search
@@ -148,8 +153,9 @@ pub async fn build_agent(build_config: AgentBuildConfig) -> Result<BuiltAgent> {
             .filter(|k| !k.is_empty())
             .is_none()
     {
-        eprintln!(
+        startup_messages.push(
             "[warn] web_search tool enabled but EXA_API_KEY not set — get one at https://exa.ai"
+                .to_string(),
         );
     }
 
@@ -172,10 +178,14 @@ pub async fn build_agent(build_config: AgentBuildConfig) -> Result<BuiltAgent> {
     let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
     let loaded_skills = skills::load_skills(&cwd, no_skills, &extra_paths);
     for diag in &loaded_skills.diagnostics {
-        eprintln!("Warning: skill {}: {}", diag.path.display(), diag.message);
+        startup_messages.push(format!(
+            "Warning: skill {}: {}",
+            diag.path.display(),
+            diag.message
+        ));
     }
     if !loaded_skills.skills.is_empty() {
-        eprintln!(
+        startup_messages.push(format!(
             "[skills] loaded: {}",
             loaded_skills
                 .skills
@@ -183,7 +193,7 @@ pub async fn build_agent(build_config: AgentBuildConfig) -> Result<BuiltAgent> {
                 .map(|s| s.name.as_str())
                 .collect::<Vec<_>>()
                 .join(", ")
-        );
+        ));
     }
 
     // Build system prompt
@@ -257,5 +267,6 @@ pub async fn build_agent(build_config: AgentBuildConfig) -> Result<BuiltAgent> {
         system_prompt_text,
         skills: loaded_skills.skills,
         permission_service,
+        startup_messages,
     })
 }
