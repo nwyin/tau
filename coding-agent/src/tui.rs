@@ -9,7 +9,7 @@ use std::io;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
 
-use agent::types::{AgentEvent, AgentMessage};
+use agent::types::{AgentEvent, AgentMessage, ThinkingLevel};
 use agent::Agent;
 use ai::types::{AssistantMessageEvent, Message};
 use anyhow::Result;
@@ -88,6 +88,7 @@ struct App {
     tokens_out: u64,
     total_cost: f64,
     active_tools: Vec<String>,
+    thinking_level: ThinkingLevel,
     is_busy: bool,
 
     // Control
@@ -114,12 +115,26 @@ impl App {
             tokens_out: 0,
             total_cost: 0.0,
             active_tools: vec![],
+            thinking_level: ThinkingLevel::Off,
             is_busy: false,
 
             skills: config.skills.clone(),
             abort_count: Arc::new(AtomicU8::new(0)),
             should_quit: false,
         }
+    }
+
+    /// Cycle thinking level: off → low → medium → high → off
+    fn cycle_thinking(&mut self) -> ThinkingLevel {
+        self.thinking_level = match self.thinking_level {
+            ThinkingLevel::Off => ThinkingLevel::Low,
+            ThinkingLevel::Minimal => ThinkingLevel::Low,
+            ThinkingLevel::Low => ThinkingLevel::Medium,
+            ThinkingLevel::Medium => ThinkingLevel::High,
+            ThinkingLevel::High => ThinkingLevel::Off,
+            ThinkingLevel::XHigh => ThinkingLevel::Off,
+        };
+        self.thinking_level.clone()
     }
 
     fn push_line(&mut self, line: Line<'static>) {
@@ -194,6 +209,9 @@ async fn run_app(
 ) -> Result<()> {
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<AgentEvent>();
     let mut app = App::new(&config);
+
+    // Initialize thinking level from agent state
+    app.thinking_level = agent.with_state(|s| s.thinking_level.clone());
 
     // Set up TUI-aware permission prompt
     let (perm_req_tx, perm_req_rx) = std::sync::mpsc::channel::<(
@@ -405,6 +423,16 @@ fn build_status_line(app: &App) -> Line<'static> {
         Span::raw(format!("${:.3} ", app.total_cost)),
     ];
 
+    // Thinking level (only show if not off)
+    if app.thinking_level != ThinkingLevel::Off {
+        spans.push(Span::raw("| "));
+        let label = format!("{:?}", app.thinking_level).to_lowercase();
+        spans.push(Span::styled(
+            format!("think:{} ", label),
+            Style::default().fg(Color::Magenta),
+        ));
+    }
+
     if !app.active_tools.is_empty() {
         spans.push(Span::raw("| "));
         let tool_text = if app.active_tools.len() == 1 {
@@ -472,6 +500,16 @@ fn handle_terminal_event(
                 // Ctrl-D
                 (KeyCode::Char('d'), KeyModifiers::CONTROL) => {
                     app.should_quit = true;
+                }
+                // Ctrl-T: cycle thinking level
+                (KeyCode::Char('t'), KeyModifiers::CONTROL) => {
+                    let new_level = app.cycle_thinking();
+                    agent.set_thinking_level(new_level.clone());
+                    let label = format!("{:?}", new_level).to_lowercase();
+                    app.push_line(Line::from(Span::styled(
+                        format!("[thinking: {}]", label),
+                        Style::default().fg(Color::Magenta),
+                    )));
                 }
                 // Enter
                 (KeyCode::Enter, _) => {

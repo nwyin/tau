@@ -19,6 +19,7 @@ pub struct AgentBuildConfig {
     pub tools: Option<Vec<String>>,
     pub max_turns: Option<u32>,
     pub yolo: bool,
+    pub thinking: Option<String>,
     pub permission_prompt_fn: Option<permissions::PromptFn>,
     pub no_skills: bool,
     pub skill_paths: Vec<String>,
@@ -194,6 +195,14 @@ pub async fn build_agent(build_config: AgentBuildConfig) -> Result<BuiltAgent> {
         )
     });
 
+    // Resolve thinking level: CLI > config > default (off)
+    let thinking_level_str = build_config
+        .thinking
+        .or_else(|| config.thinking.clone())
+        .unwrap_or_else(|| "off".to_string());
+    let thinking_level: agent::types::ThinkingLevel =
+        serde_json::from_value(serde_json::Value::String(thinking_level_str)).unwrap_or_default();
+
     let model_provider = model.provider.clone();
     let model_for_compact = model.clone();
     let agent = Agent::new(AgentOptions {
@@ -201,7 +210,7 @@ pub async fn build_agent(build_config: AgentBuildConfig) -> Result<BuiltAgent> {
             model: Some(model),
             system_prompt: Some(system_prompt_text.clone()),
             tools: Some(tool_list),
-            thinking_level: None,
+            thinking_level: Some(thinking_level),
         }),
         convert_to_llm: None,
         transform_context: Some(Arc::new(move |messages, _cancel| {

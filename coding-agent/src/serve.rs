@@ -36,6 +36,7 @@ pub async fn run_serve(
         tools,
         max_turns: None,
         yolo: true, // serve mode: no interactive prompts
+        thinking: None,
         permission_prompt_fn: None,
         no_skills: false,
         skill_paths: vec![],

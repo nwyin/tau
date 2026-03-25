@@ -126,6 +126,7 @@ async fn main() -> Result<()> {
         tools: cli.tools,
         max_turns: None,
         yolo: cli.yolo,
+        thinking: cli.thinking,
         permission_prompt_fn,
         no_skills: cli.no_skills,
         skill_paths: cli.skill_paths,

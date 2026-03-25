@@ -32,7 +32,8 @@ pub struct TauConfig {
     pub edit_mode: String, // "replace" | "hashline"
     pub max_turns: Option<u32>,
     pub tools: Option<Vec<String>>,
-    pub skills: Option<bool>, // default: true
+    pub skills: Option<bool>,     // default: true
+    pub thinking: Option<String>, // "off"|"minimal"|"low"|"medium"|"high"|"xhigh"
     pub permissions: Option<HashMap<String, String>>,
 }
 
@@ -44,6 +45,7 @@ impl Default for TauConfig {
             max_turns: None,
             tools: None,
             skills: None,
+            thinking: None,
             permissions: None,
         }
     }

@@ -47,6 +47,10 @@ pub struct Cli {
     #[arg(long)]
     pub yolo: bool,
 
+    /// Thinking/reasoning level: off, minimal, low, medium, high, xhigh
+    #[arg(long, value_name = "LEVEL")]
+    pub thinking: Option<String>,
+
     /// Disable automatic skill discovery
     #[arg(long)]
     pub no_skills: bool,
