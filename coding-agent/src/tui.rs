@@ -611,7 +611,12 @@ async fn run_app(
         terminal.draw(|f| ui(f, &app, &pending_permission))?;
 
         // Check for permission requests (non-blocking)
-        if pending_permission.is_none() {
+        // After abort, auto-deny any lingering permission requests
+        if !app.is_busy {
+            while let Ok((_desc, _text, resp_tx)) = perm_req_rx.try_recv() {
+                let _ = resp_tx.send(permissions::PromptResult::Deny);
+            }
+        } else if pending_permission.is_none() {
             if let Ok((tool_desc, _desc_text, resp_tx)) = perm_req_rx.try_recv() {
                 app.push_line(Line::from(vec![
                     Span::styled("[permission] ", Style::default().fg(Color::Magenta)),
@@ -660,7 +665,15 @@ async fn run_app(
                 }
             }
             Some(agent_event) = rx.recv() => {
-                handle_agent_event(&mut app, &agent_event);
+                // After abort, drain events silently until AgentEnd
+                if !app.is_busy {
+                    // Still process AgentEnd to clean up, ignore everything else
+                    if matches!(agent_event, AgentEvent::AgentEnd { .. }) {
+                        // Already handled by the abort
+                    }
+                } else {
+                    handle_agent_event(&mut app, &agent_event);
+                }
             }
         }
 
