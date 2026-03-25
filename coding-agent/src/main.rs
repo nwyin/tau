@@ -1,4 +1,4 @@
-use std::io::{self, BufRead, Write};
+use std::io::{self, Write};
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -14,14 +14,6 @@ use coding_agent::cli::{Cli, Command};
 use coding_agent::session::{SessionFile, SessionManager};
 use coding_agent::tools::tools_for_edit_mode;
 use coding_agent::trace::{sha256_prefix, TraceConfig, TraceSubscriber};
-
-fn term_width() -> usize {
-    // Try COLUMNS env, fall back to 120
-    std::env::var("COLUMNS")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(120)
-}
 
 fn print_models(filter_provider: Option<&str>) {
     ai::register_builtin_providers();
@@ -227,143 +219,107 @@ async fn main() -> Result<()> {
         agent.replace_messages(initial_messages);
     }
 
-    // Subscribe to events
     let session_file_arc: Option<Arc<SessionFile>> = session_file_opt.map(Arc::new);
-    let session_for_save = session_file_arc.clone();
-
-    let _event_handler = agent.subscribe(move |event| match event {
-        AgentEvent::MessageUpdate {
-            assistant_event, ..
-        } => match assistant_event.as_ref() {
-            AssistantMessageEvent::TextDelta { delta, .. } => {
-                print!("{}", delta);
-                let _ = io::stdout().flush();
-            }
-            AssistantMessageEvent::ThinkingDelta { delta, .. } => {
-                eprint!("[thinking] {}", delta);
-                let _ = io::stderr().flush();
-            }
-            _ => {}
-        },
-        AgentEvent::MessageEnd { message } => {
-            if let Some(ref sf) = session_for_save {
-                if let Err(e) = sf.append(message) {
-                    eprintln!("Warning: failed to save message to session: {}", e);
-                }
-            }
-        }
-        AgentEvent::ToolExecutionStart {
-            tool_name, args, ..
-        } => {
-            let detail = match tool_name.as_str() {
-                "file_read" | "file_write" | "file_edit" => args
-                    .get("path")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string()),
-                "glob" => args
-                    .get("pattern")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string()),
-                "grep" => args
-                    .get("pattern")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string()),
-                "bash" => args.get("command").and_then(|v| v.as_str()).map(|s| {
-                    let line = s.lines().next().unwrap_or(s);
-                    let cols = term_width().saturating_sub(8 + tool_name.len());
-                    if line.len() > cols {
-                        format!("{}…", &line[..cols.saturating_sub(1)])
-                    } else if s.lines().count() > 1 {
-                        format!("{}…", line)
-                    } else {
-                        line.to_string()
-                    }
-                }),
-                "web_fetch" => args
-                    .get("url")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string()),
-                "web_search" => args
-                    .get("query")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string()),
-                "todo" => args.get("todos").and_then(|v| v.as_array()).map(|todos| {
-                    let total = todos.len();
-                    let done = todos
-                        .iter()
-                        .filter(|t| t.get("status").and_then(|s| s.as_str()) == Some("completed"))
-                        .count();
-                    let active = todos.iter().find_map(|t| {
-                        if t.get("status").and_then(|s| s.as_str()) == Some("in_progress") {
-                            t.get("content").and_then(|c| c.as_str())
-                        } else {
-                            None
-                        }
-                    });
-                    match active {
-                        Some(a) => format!("[{}/{}] {}", done, total, a),
-                        None => format!("[{}/{}]", done, total),
-                    }
-                }),
-                "subagent" => args.get("task").and_then(|v| v.as_str()).map(|s| {
-                    let line = s.lines().next().unwrap_or(s);
-                    let model_suffix = args
-                        .get("model")
-                        .and_then(|v| v.as_str())
-                        .map(|m| format!(" [{}]", m))
-                        .unwrap_or_default();
-                    let cols = term_width().saturating_sub(12 + tool_name.len());
-                    let truncated = if line.len() > cols {
-                        format!("{}…", &line[..cols.saturating_sub(1)])
-                    } else {
-                        line.to_string()
-                    };
-                    format!("{}{}", truncated, model_suffix)
-                }),
-                _ => None,
-            };
-            match detail {
-                Some(d) => eprintln!("[tool: {}] {}", tool_name, d),
-                None => eprintln!("[tool: {}]", tool_name),
-            }
-        }
-        AgentEvent::ToolExecutionEnd {
-            tool_name,
-            is_error,
-            ..
-        } => {
-            if *is_error {
-                eprintln!("[tool error: {}]", tool_name);
-            }
-        }
-        AgentEvent::AgentEnd { .. } => {
-            println!();
-        }
-        _ => {}
-    });
-
-    // Set up Ctrl-C handler
-    let agent = Arc::new(agent);
-    let agent_clone = Arc::clone(&agent);
-    let abort_count = Arc::new(std::sync::atomic::AtomicU8::new(0));
-    let abort_count_clone = Arc::clone(&abort_count);
-
-    tokio::spawn(async move {
-        loop {
-            tokio::signal::ctrl_c().await.ok();
-            let count = abort_count_clone.fetch_add(1, Ordering::SeqCst);
-            if count == 0 {
-                eprintln!("\n^C (press again to exit)");
-                agent_clone.abort();
-            } else {
-                std::process::exit(0);
-            }
-        }
-    });
 
     if let Some(ref prompt_text_arg) = prompt_arg {
+        // Non-interactive mode: set up print-based event subscriber
+        let session_for_save = session_file_arc.clone();
+        let _event_handler = agent.subscribe(move |event| match event {
+            AgentEvent::MessageUpdate {
+                assistant_event, ..
+            } => match assistant_event.as_ref() {
+                AssistantMessageEvent::TextDelta { delta, .. } => {
+                    print!("{}", delta);
+                    let _ = io::stdout().flush();
+                }
+                AssistantMessageEvent::ThinkingDelta { delta, .. } => {
+                    eprint!("[thinking] {}", delta);
+                    let _ = io::stderr().flush();
+                }
+                _ => {}
+            },
+            AgentEvent::MessageEnd { message } => {
+                if let Some(ref sf) = session_for_save {
+                    if let Err(e) = sf.append(message) {
+                        eprintln!("Warning: failed to save message to session: {}", e);
+                    }
+                }
+            }
+            AgentEvent::ToolExecutionStart {
+                tool_name, args, ..
+            } => {
+                let detail = match tool_name.as_str() {
+                    "file_read" | "file_write" | "file_edit" => args
+                        .get("path")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
+                    "glob" | "grep" => args
+                        .get("pattern")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
+                    "bash" => args.get("command").and_then(|v| v.as_str()).map(|s| {
+                        let line = s.lines().next().unwrap_or(s);
+                        if line.len() > 80 {
+                            format!("{}…", &line[..79])
+                        } else if s.lines().count() > 1 {
+                            format!("{}…", line)
+                        } else {
+                            line.to_string()
+                        }
+                    }),
+                    "web_fetch" => args
+                        .get("url")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
+                    "web_search" => args
+                        .get("query")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
+                    _ => None,
+                };
+                match detail {
+                    Some(d) => eprintln!("[tool: {}] {}", tool_name, d),
+                    None => eprintln!("[tool: {}]", tool_name),
+                }
+            }
+            AgentEvent::ToolExecutionEnd {
+                tool_name,
+                is_error,
+                ..
+            } => {
+                if *is_error {
+                    eprintln!("[tool error: {}]", tool_name);
+                }
+            }
+            AgentEvent::AgentEnd { .. } => {
+                println!();
+            }
+            _ => {}
+        });
+
+        // Ctrl-C handler for non-interactive mode
+        let agent = Arc::new(agent);
+        let agent_clone = Arc::clone(&agent);
+        let abort_count = Arc::new(std::sync::atomic::AtomicU8::new(0));
+        let abort_count_clone = Arc::clone(&abort_count);
+
+        tokio::spawn(async move {
+            loop {
+                tokio::signal::ctrl_c().await.ok();
+                let count = abort_count_clone.fetch_add(1, Ordering::SeqCst);
+                if count == 0 {
+                    eprintln!("\n^C (press again to exit)");
+                    agent_clone.abort();
+                } else {
+                    std::process::exit(0);
+                }
+            }
+        });
+
+        // Run the prompt
+        let prompt_text_arg = prompt_text_arg.clone();
         // Non-interactive mode: resolve prompt, run once, exit
-        let prompt_text = coding_agent::resolve_prompt_text(prompt_text_arg)?;
+        let prompt_text = coding_agent::resolve_prompt_text(&prompt_text_arg)?;
 
         let result = agent.prompt(prompt_text).await;
 
@@ -388,60 +344,26 @@ async fn main() -> Result<()> {
 
         std::process::exit(exit_code);
     } else {
-        // REPL loop
-        let stdin = io::stdin();
-        loop {
-            print!("> ");
-            io::stdout().flush()?;
+        // TUI mode
+        let context_window = agent.with_state(|s| s.model.context_window);
+        let agent = Arc::new(agent);
 
-            let mut line = String::new();
-            match stdin.lock().read_line(&mut line) {
-                Ok(0) => break, // EOF
-                Ok(_) => {}
-                Err(e) => {
-                    eprintln!("Error reading input: {}", e);
-                    break;
-                }
-            }
+        coding_agent::tui::run(
+            Arc::clone(&agent),
+            coding_agent::tui::TuiRunConfig {
+                model_id,
+                context_window,
+                session_file: session_file_arc,
+                skills,
+                permission_service: built.permission_service,
+            },
+        )
+        .await?;
 
-            let input = line.trim().to_string();
-            if input.is_empty() {
-                continue;
-            }
-
-            abort_count.store(0, Ordering::SeqCst);
-
-            let input = match coding_agent::skills::expand_skill_command(&input, &skills) {
-                Some(expanded) => {
-                    let name = &input[7..input.find(' ').unwrap_or(input.len())];
-                    eprintln!("[skill: {}]", name);
-                    expanded
-                }
-                None => {
-                    if input.starts_with("/skill:") {
-                        let name = &input[7..input.find(' ').unwrap_or(input.len())];
-                        eprintln!(
-                            "Unknown skill '{}'. Available: {}",
-                            name,
-                            if skills.is_empty() {
-                                "(none)".to_string()
-                            } else {
-                                skills
-                                    .iter()
-                                    .map(|s| s.name.as_str())
-                                    .collect::<Vec<_>>()
-                                    .join(", ")
-                            }
-                        );
-                        continue;
-                    }
-                    input
-                }
-            };
-
-            if let Err(e) = agent.prompt(input).await {
-                eprintln!("Error: {}", e);
-            }
+        // Emit stats after TUI exits
+        emit_stats(stats.as_ref(), print_stats, stats_json_path.as_deref());
+        if let Some(ref t) = _trace {
+            t.finalize();
         }
     }
 

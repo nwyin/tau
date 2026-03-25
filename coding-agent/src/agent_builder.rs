@@ -154,7 +154,7 @@ pub async fn build_agent(build_config: AgentBuildConfig) -> Result<BuiltAgent> {
 
     // Build permission service and wrap tools
     let config_perms = config.permissions.clone().unwrap_or_default();
-    let mut perm_svc = PermissionService::new(&config_perms, build_config.yolo);
+    let perm_svc = PermissionService::new(&config_perms, build_config.yolo);
     if let Some(prompt_fn) = build_config.permission_prompt_fn {
         perm_svc.set_prompt_fn(prompt_fn);
     }

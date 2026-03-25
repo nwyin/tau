@@ -9,6 +9,7 @@ pub mod skills;
 pub mod system_prompt;
 pub mod tools;
 pub mod trace;
+pub mod tui;
 
 pub use tools::all_tools;
 

@@ -61,8 +61,8 @@ pub struct PermissionService {
     policies: Mutex<HashMap<String, Policy>>,
     /// Whether --yolo mode is active (bypass all checks).
     yolo: bool,
-    /// Function to prompt the user for approval.
-    prompt_fn: Option<PromptFn>,
+    /// Function to prompt the user for approval (interior-mutable so TUI can set it after Arc is shared).
+    prompt_fn: Mutex<Option<PromptFn>>,
 }
 
 impl PermissionService {
@@ -85,13 +85,14 @@ impl PermissionService {
         Self {
             policies: Mutex::new(policies),
             yolo,
-            prompt_fn: None,
+            prompt_fn: Mutex::new(None),
         }
     }
 
     /// Set the prompt function for interactive approval.
-    pub fn set_prompt_fn(&mut self, f: PromptFn) {
-        self.prompt_fn = Some(f);
+    /// Takes `&self` (not `&mut self`) so it can be called after the service is behind an Arc.
+    pub fn set_prompt_fn(&self, f: PromptFn) {
+        *self.prompt_fn.lock().unwrap() = Some(f);
     }
 
     /// Get the effective policy for a tool.
@@ -117,7 +118,8 @@ impl PermissionService {
                 tool_name
             )),
             Policy::Ask => {
-                if let Some(ref prompt_fn) = self.prompt_fn {
+                let prompt_fn = self.prompt_fn.lock().unwrap().clone();
+                if let Some(ref prompt_fn) = prompt_fn {
                     match prompt_fn(tool_name, description) {
                         PromptResult::Allow => Ok(()),
                         PromptResult::AlwaysAllow => {
@@ -359,7 +361,6 @@ mod tests {
     #[test]
     fn test_ask_with_prompt_fn_allow() {
         let svc = PermissionService::new(&empty_config(), false);
-        let mut svc = svc;
         svc.set_prompt_fn(Arc::new(|_name, _desc| PromptResult::Allow));
 
         assert!(svc.check("bash", "echo hello").is_ok());
@@ -369,7 +370,7 @@ mod tests {
 
     #[test]
     fn test_ask_with_prompt_fn_always() {
-        let mut svc = PermissionService::new(&empty_config(), false);
+        let svc = PermissionService::new(&empty_config(), false);
         svc.set_prompt_fn(Arc::new(|_name, _desc| PromptResult::AlwaysAllow));
 
         assert!(svc.check("bash", "echo hello").is_ok());
@@ -379,7 +380,7 @@ mod tests {
 
     #[test]
     fn test_ask_with_prompt_fn_deny() {
-        let mut svc = PermissionService::new(&empty_config(), false);
+        let svc = PermissionService::new(&empty_config(), false);
         svc.set_prompt_fn(Arc::new(|_name, _desc| PromptResult::Deny));
 
         let result = svc.check("bash", "echo hello");
