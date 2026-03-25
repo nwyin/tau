@@ -625,18 +625,35 @@ async fn run_app(
         tokio::select! {
             Some(Ok(term_event)) = reader.next() => {
                 if let Some((ref _tool, ref resp_tx)) = pending_permission {
-                    // In permission mode: only accept y/n/a
-                    if let Event::Key(KeyEvent { code: KeyCode::Char(c), .. }) = term_event {
-                        let result = match c {
-                            'y' | 'Y' => Some(permissions::PromptResult::Allow),
-                            'a' | 'A' => Some(permissions::PromptResult::AlwaysAllow),
-                            'n' | 'N' => Some(permissions::PromptResult::Deny),
-                            _ => None,
-                        };
-                        if let Some(r) = result {
-                            let _ = resp_tx.send(r);
+                    // In permission mode: accept y/n/a, or Ctrl-C to deny and abort
+                    match term_event {
+                        Event::Key(KeyEvent { code: KeyCode::Char('c'), modifiers: KeyModifiers::CONTROL, .. }) => {
+                            // Ctrl-C: deny the permission and abort
+                            let _ = resp_tx.send(permissions::PromptResult::Deny);
                             pending_permission = None;
+                            agent.abort();
+                            app.is_busy = false;
+                            app.active_tools.clear();
+                            app.flush_streaming();
+                            app.push_line(Line::from(Span::styled(
+                                "^C (aborted)",
+                                Style::default().fg(Color::Yellow),
+                            )));
+                            app.push_separator();
                         }
+                        Event::Key(KeyEvent { code: KeyCode::Char(c), modifiers: KeyModifiers::NONE | KeyModifiers::SHIFT, .. }) => {
+                            let result = match c {
+                                'y' | 'Y' => Some(permissions::PromptResult::Allow),
+                                'a' | 'A' => Some(permissions::PromptResult::AlwaysAllow),
+                                'n' | 'N' => Some(permissions::PromptResult::Deny),
+                                _ => None,
+                            };
+                            if let Some(r) = result {
+                                let _ = resp_tx.send(r);
+                                pending_permission = None;
+                            }
+                        }
+                        _ => {}
                     }
                 } else {
                     handle_terminal_event(&mut app, term_event, &agent, &tx);
