@@ -650,13 +650,26 @@ async fn run_app(
                 let _ = resp_tx.send(permissions::PromptResult::Deny);
             }
         } else if pending_permission.is_none() {
-            if let Ok((tool_desc, _desc_text, resp_tx)) = perm_req_rx.try_recv() {
+            if let Ok((tool_name, desc_text, resp_tx)) = perm_req_rx.try_recv() {
+                let display = if desc_text.is_empty() {
+                    tool_name.clone()
+                } else {
+                    format!("{}: {}", tool_name, desc_text)
+                };
                 app.push_line(Line::from(vec![
-                    Span::styled("[permission] ", Style::default().fg(Color::Magenta)),
-                    Span::raw(tool_desc.clone()),
-                    Span::styled(" — y/n/a: ", Style::default().fg(Color::Magenta)),
+                    Span::styled(
+                        "allow? ",
+                        Style::default()
+                            .fg(Color::Magenta)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(display.clone(), Style::default().fg(Color::White)),
+                    Span::styled(
+                        "  [y]es [n]o [a]lways",
+                        Style::default().fg(Color::DarkGray),
+                    ),
                 ]));
-                pending_permission = Some((tool_desc, resp_tx));
+                pending_permission = Some((display, resp_tx));
             }
         }
 
