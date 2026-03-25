@@ -133,69 +133,301 @@ impl App {
         self.tab_state = None;
     }
 
-    /// Handle Tab press: complete `/skill:` prefix against known skill names.
+    /// Get all completable slash commands (built-in + skills).
+    fn all_slash_commands(&self) -> Vec<String> {
+        let mut cmds = vec![
+            "/help".to_string(),
+            "/clear".to_string(),
+            "/model".to_string(),
+            "/thinking".to_string(),
+            "/skills".to_string(),
+            "/compact".to_string(),
+        ];
+        for skill in &self.skills {
+            cmds.push(format!("/skill:{}", skill.name));
+        }
+        cmds
+    }
+
+    /// Handle Tab press: complete any `/` command.
     fn tab_complete(&mut self) {
-        if let Some((ref prefix, ref candidates, ref mut idx)) = self.tab_state {
+        if let Some((ref _prefix, ref candidates, ref mut idx)) = self.tab_state {
             // Already completing — cycle to next candidate
             if candidates.is_empty() {
                 return;
             }
             *idx = (*idx + 1) % candidates.len();
-            let completion = format!("{}{} ", prefix, candidates[*idx]);
-            self.input = completion;
+            let candidate = &candidates[*idx];
+            // Add trailing space for commands that don't take args
+            let needs_arg = candidate.starts_with("/skill:")
+                || *candidate == "/model"
+                || *candidate == "/thinking";
+            self.input = if needs_arg {
+                format!("{} ", candidate)
+            } else {
+                candidate.clone()
+            };
             self.cursor_pos = self.input.len();
             return;
         }
 
-        // Start new completion
-        if !self.input.starts_with("/skill:") {
-            // Also handle bare `/` — complete to `/skill:`
-            if self.input == "/" {
-                self.input = "/skill:".to_string();
-                self.cursor_pos = self.input.len();
-                // Now start skill name completion with empty partial
-                let candidates: Vec<String> = self.skills.iter().map(|s| s.name.clone()).collect();
-                if candidates.len() == 1 {
-                    self.input = format!("/skill:{} ", candidates[0]);
-                    self.cursor_pos = self.input.len();
-                } else if !candidates.is_empty() {
-                    self.tab_state = Some(("/skill:".to_string(), candidates.clone(), 0));
-                    self.input = format!("/skill:{} ", candidates[0]);
-                    self.cursor_pos = self.input.len();
-                }
-                return;
-            }
+        // Need a `/` prefix to trigger completion
+        if !self.input.starts_with('/') {
             return;
         }
 
-        // Extract partial after `/skill:`
-        let after_prefix = &self.input[7..];
-        // If there's already a space, user is typing args — don't complete
-        if after_prefix.contains(' ') {
+        // Don't complete if cursor is past a space (user is typing args)
+        let before_space = self
+            .input
+            .split_once(' ')
+            .map(|(cmd, _)| cmd)
+            .unwrap_or(&self.input);
+        if before_space != self.input {
             return;
         }
 
-        let partial = after_prefix;
+        let partial = &self.input;
         let candidates: Vec<String> = self
-            .skills
-            .iter()
-            .filter(|s| s.name.starts_with(partial))
-            .map(|s| s.name.clone())
+            .all_slash_commands()
+            .into_iter()
+            .filter(|c| c.starts_with(partial))
             .collect();
 
         if candidates.is_empty() {
             return;
         }
 
+        let needs_arg = |c: &str| c.starts_with("/skill:") || c == "/model" || c == "/thinking";
+
         if candidates.len() == 1 {
-            // Single match — complete it directly, no cycling state
-            self.input = format!("/skill:{} ", candidates[0]);
+            self.input = if needs_arg(&candidates[0]) {
+                format!("{} ", candidates[0])
+            } else {
+                candidates[0].clone()
+            };
             self.cursor_pos = self.input.len();
         } else {
-            // Multiple matches — enter cycling mode
-            self.tab_state = Some(("/skill:".to_string(), candidates.clone(), 0));
-            self.input = format!("/skill:{} ", candidates[0]);
+            self.tab_state = Some((String::new(), candidates.clone(), 0));
+            self.input = if needs_arg(&candidates[0]) {
+                format!("{} ", candidates[0])
+            } else {
+                candidates[0].clone()
+            };
             self.cursor_pos = self.input.len();
+        }
+    }
+
+    /// Try to handle a slash command. Returns:
+    /// - Some(None) = handled locally, don't send to LLM
+    /// - Some(Some(text)) = expand to this text, send to LLM
+    /// - None = not a slash command, send input as-is to LLM
+    fn handle_slash_command(&mut self, input: &str, agent: &Agent) -> Option<Option<String>> {
+        if !input.starts_with('/') {
+            return None;
+        }
+
+        let (cmd, args) = input
+            .split_once(' ')
+            .map(|(c, a)| (c, a.trim()))
+            .unwrap_or((input, ""));
+
+        match cmd {
+            "/help" => {
+                self.push_line(Line::from(Span::styled(
+                    "Commands:",
+                    Style::default().add_modifier(Modifier::BOLD),
+                )));
+                let commands = [
+                    ("/help", "Show this help"),
+                    ("/clear", "Clear output"),
+                    ("/model <id>", "Switch model"),
+                    ("/thinking <level>", "Set thinking: off|low|medium|high"),
+                    ("/skills", "List available skills"),
+                    ("/compact", "Show token/context stats"),
+                    ("/skill:<name> [args]", "Run a skill"),
+                ];
+                for (name, desc) in commands {
+                    self.push_line(Line::from(vec![
+                        Span::styled(format!("  {:<24}", name), Style::default().fg(Color::Cyan)),
+                        Span::styled(desc.to_string(), Style::default().fg(Color::DarkGray)),
+                    ]));
+                }
+                // Also show Ctrl keybindings
+                self.push_line(Line::default());
+                self.push_line(Line::from(Span::styled(
+                    "Keybindings:",
+                    Style::default().add_modifier(Modifier::BOLD),
+                )));
+                let keys = [
+                    ("Ctrl-T", "Cycle thinking level"),
+                    ("Ctrl-C", "Abort / exit"),
+                    ("Ctrl-D", "Exit"),
+                    ("Tab", "Autocomplete slash commands"),
+                    ("PgUp/PgDn", "Scroll output"),
+                ];
+                for (key, desc) in keys {
+                    self.push_line(Line::from(vec![
+                        Span::styled(format!("  {:<24}", key), Style::default().fg(Color::Cyan)),
+                        Span::styled(desc.to_string(), Style::default().fg(Color::DarkGray)),
+                    ]));
+                }
+                Some(None)
+            }
+            "/clear" => {
+                self.output_lines.clear();
+                self.scroll_offset = 0;
+                self.auto_scroll = true;
+                Some(None)
+            }
+            "/model" => {
+                if args.is_empty() {
+                    self.push_line(Line::from(Span::styled(
+                        format!("Current model: {}", self.model_id),
+                        Style::default().fg(Color::DarkGray),
+                    )));
+                    self.push_line(Line::from(Span::styled(
+                        "Usage: /model <model-id>".to_string(),
+                        Style::default().fg(Color::DarkGray),
+                    )));
+                } else {
+                    ai::register_builtin_providers();
+                    match ai::models::find_model(args) {
+                        Some(model) => {
+                            let new_id = model.id.clone();
+                            let ctx = model.context_window;
+                            agent.set_model((*model).clone());
+                            self.model_id = new_id.clone();
+                            self.context_window = ctx;
+                            self.push_line(Line::from(Span::styled(
+                                format!("[model: {}]", new_id),
+                                Style::default().fg(Color::Magenta),
+                            )));
+                        }
+                        None => {
+                            self.push_line(Line::from(Span::styled(
+                                format!("Unknown model '{}'", args),
+                                Style::default().fg(Color::Red),
+                            )));
+                        }
+                    }
+                }
+                Some(None)
+            }
+            "/thinking" => {
+                if args.is_empty() {
+                    let label = format!("{:?}", self.thinking_level).to_lowercase();
+                    self.push_line(Line::from(Span::styled(
+                        format!("Current thinking level: {}", label),
+                        Style::default().fg(Color::DarkGray),
+                    )));
+                    self.push_line(Line::from(Span::styled(
+                        "Usage: /thinking <off|low|medium|high>".to_string(),
+                        Style::default().fg(Color::DarkGray),
+                    )));
+                } else {
+                    let level: Result<ThinkingLevel, _> =
+                        serde_json::from_value(serde_json::Value::String(args.to_string()));
+                    match level {
+                        Ok(l) => {
+                            agent.set_thinking_level(l.clone());
+                            self.thinking_level = l;
+                            let label = format!("{:?}", self.thinking_level).to_lowercase();
+                            self.push_line(Line::from(Span::styled(
+                                format!("[thinking: {}]", label),
+                                Style::default().fg(Color::Magenta),
+                            )));
+                        }
+                        Err(_) => {
+                            self.push_line(Line::from(Span::styled(
+                                format!("Invalid thinking level '{}'. Use: off, low, medium, high, xhigh", args),
+                                Style::default().fg(Color::Red),
+                            )));
+                        }
+                    }
+                }
+                Some(None)
+            }
+            "/skills" => {
+                if self.skills.is_empty() {
+                    self.push_line(Line::from(Span::styled(
+                        "No skills loaded.",
+                        Style::default().fg(Color::DarkGray),
+                    )));
+                } else {
+                    let skill_lines: Vec<Line<'static>> = self
+                        .skills
+                        .iter()
+                        .map(|s| {
+                            Line::from(vec![
+                                Span::styled(
+                                    format!("  /skill:{:<16}", s.name),
+                                    Style::default().fg(Color::Cyan),
+                                ),
+                                Span::styled(
+                                    s.description.clone(),
+                                    Style::default().fg(Color::DarkGray),
+                                ),
+                            ])
+                        })
+                        .collect();
+                    self.push_line(Line::from(Span::styled(
+                        "Available skills:",
+                        Style::default().add_modifier(Modifier::BOLD),
+                    )));
+                    for line in skill_lines {
+                        self.push_line(line);
+                    }
+                }
+                Some(None)
+            }
+            "/compact" => {
+                let ctx_pct = if self.context_window > 0 {
+                    (self.tokens_in + self.tokens_out) as f64 / self.context_window as f64 * 100.0
+                } else {
+                    0.0
+                };
+                self.push_line(Line::from(Span::styled(
+                    format!(
+                        "Tokens: {} in, {} out | Context: {:.1}% of {} | Cost: ${:.4}",
+                        self.tokens_in,
+                        self.tokens_out,
+                        ctx_pct,
+                        self.context_window,
+                        self.total_cost
+                    ),
+                    Style::default().fg(Color::DarkGray),
+                )));
+                Some(None)
+            }
+            _ if cmd.starts_with("/skill:") => {
+                let skill_name = &cmd[7..];
+                match skills::expand_skill_command(input, &self.skills) {
+                    Some(expanded) => {
+                        self.push_line(Line::from(Span::styled(
+                            format!("[skill: {}]", skill_name),
+                            Style::default().fg(Color::Blue),
+                        )));
+                        Some(Some(expanded))
+                    }
+                    None => {
+                        self.push_line(Line::from(Span::styled(
+                            format!("Unknown skill '{}'", skill_name),
+                            Style::default().fg(Color::Red),
+                        )));
+                        Some(None)
+                    }
+                }
+            }
+            _ => {
+                self.push_line(Line::from(Span::styled(
+                    format!(
+                        "Unknown command '{}'. Type /help for available commands.",
+                        cmd
+                    ),
+                    Style::default().fg(Color::Red),
+                )));
+                Some(None)
+            }
         }
     }
 
@@ -614,7 +846,38 @@ fn handle_terminal_event(
                         app.cursor_pos = 0;
                         app.abort_count.store(0, Ordering::SeqCst);
 
-                        // Echo user input
+                        // Try slash command dispatch first
+                        if let Some(result) = app.handle_slash_command(&input, agent) {
+                            match result {
+                                None => return, // Handled locally
+                                Some(expanded) => {
+                                    // Skill expansion — echo and send to LLM
+                                    app.push_line(Line::from(Span::styled(
+                                        format!("{}> {}", app.model_id, input),
+                                        Style::default()
+                                            .fg(Color::Cyan)
+                                            .add_modifier(Modifier::BOLD),
+                                    )));
+                                    app.is_busy = true;
+                                    let agent = Arc::clone(agent);
+                                    let tx = tx.clone();
+                                    tokio::spawn(async move {
+                                        let result = agent.prompt(expanded).await;
+                                        if let Err(e) = result {
+                                            let _ = tx.send(AgentEvent::AgentEnd {
+                                                messages: vec![AgentMessage::user(format!(
+                                                    "Error: {}",
+                                                    e
+                                                ))],
+                                            });
+                                        }
+                                    });
+                                    return;
+                                }
+                            }
+                        }
+
+                        // Regular prompt — echo and send to LLM
                         app.push_line(Line::from(Span::styled(
                             format!("{}> {}", app.model_id, input),
                             Style::default()
@@ -622,34 +885,11 @@ fn handle_terminal_event(
                                 .add_modifier(Modifier::BOLD),
                         )));
 
-                        // Expand skills
-                        let prompt = match skills::expand_skill_command(&input, &app.skills) {
-                            Some(expanded) => {
-                                let name = &input[7..input.find(' ').unwrap_or(input.len())];
-                                app.push_line(Line::from(Span::styled(
-                                    format!("[skill: {}]", name),
-                                    Style::default().fg(Color::Blue),
-                                )));
-                                expanded
-                            }
-                            None => {
-                                if input.starts_with("/skill:") {
-                                    let name = &input[7..input.find(' ').unwrap_or(input.len())];
-                                    app.push_line(Line::from(Span::styled(
-                                        format!("Unknown skill '{}'", name),
-                                        Style::default().fg(Color::Red),
-                                    )));
-                                    return;
-                                }
-                                input
-                            }
-                        };
-
                         app.is_busy = true;
                         let agent = Arc::clone(agent);
                         let tx = tx.clone();
                         tokio::spawn(async move {
-                            let result = agent.prompt(prompt).await;
+                            let result = agent.prompt(input).await;
                             if let Err(e) = result {
                                 // Send a synthetic error event
                                 let _ = tx.send(AgentEvent::AgentEnd {
