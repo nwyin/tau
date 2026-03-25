@@ -656,19 +656,6 @@ async fn run_app(
                 } else {
                     format!("{}: {}", tool_name, desc_text)
                 };
-                app.push_line(Line::from(vec![
-                    Span::styled(
-                        "allow? ",
-                        Style::default()
-                            .fg(Color::Magenta)
-                            .add_modifier(Modifier::BOLD),
-                    ),
-                    Span::styled(display.clone(), Style::default().fg(Color::White)),
-                    Span::styled(
-                        "  [y]es [n]o [a]lways",
-                        Style::default().fg(Color::DarkGray),
-                    ),
-                ]));
                 pending_permission = Some((display, resp_tx));
             }
         }
@@ -793,25 +780,50 @@ fn ui(
         .scroll((scroll, 0));
     frame.render_widget(output, chunks[0]);
 
-    // Input line
-    let prompt_text = if pending_permission.is_some() {
-        "[y/n/a]> ".to_string()
-    } else if app.is_busy {
-        format!("{}  ", app.model_id)
+    // Input line / permission modal
+    if let Some((ref desc, _)) = pending_permission {
+        // Render permission modal: use the input line area
+        // Truncate description to fit
+        let max_desc = chunks[1].width as usize - 20;
+        let short_desc = if desc.len() > max_desc {
+            format!("{}…", &desc[..max_desc.saturating_sub(1)])
+        } else {
+            desc.clone()
+        };
+        let perm_line = Line::from(vec![
+            Span::styled(
+                " allow? ",
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(" "),
+            Span::styled(short_desc, Style::default().fg(Color::White)),
+            Span::styled(
+                "  [y]es [n]o [a]lways ",
+                Style::default().fg(Color::DarkGray),
+            ),
+        ]);
+        frame.render_widget(Paragraph::new(perm_line), chunks[1]);
     } else {
-        format!("{}> ", app.model_id)
-    };
-    let input_line = Line::from(vec![
-        Span::styled(&prompt_text, Style::default().fg(Color::Cyan)),
-        Span::raw(&app.input),
-    ]);
-    frame.render_widget(Paragraph::new(input_line), chunks[1]);
+        let prompt_text = if app.is_busy {
+            format!("{}  ", app.model_id)
+        } else {
+            format!("{}> ", app.model_id)
+        };
+        let input_line = Line::from(vec![
+            Span::styled(&prompt_text, Style::default().fg(Color::Cyan)),
+            Span::raw(&app.input),
+        ]);
+        frame.render_widget(Paragraph::new(input_line), chunks[1]);
 
-    // Set cursor
-    if !app.is_busy && pending_permission.is_none() {
-        let cursor_x = chunks[1].x + prompt_text.len() as u16 + app.cursor_pos as u16;
-        let cursor_y = chunks[1].y;
-        frame.set_cursor_position((cursor_x, cursor_y));
+        // Set cursor only when not busy and no permission prompt
+        if !app.is_busy {
+            let cursor_x = chunks[1].x + prompt_text.len() as u16 + app.cursor_pos as u16;
+            let cursor_y = chunks[1].y;
+            frame.set_cursor_position((cursor_x, cursor_y));
+        }
     }
 
     // Separator
