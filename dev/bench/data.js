@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1774425897873,
+  "lastUpdate": 1774443748859,
   "repoUrl": "https://github.com/nwyin/tau",
   "entries": {
     "tau benchmarks": [
@@ -3401,6 +3401,132 @@ window.BENCHMARK_DATA = {
             "name": "sse_parsing/events/1000",
             "value": 360988,
             "range": "± 1057",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "tommynguyen0512@gmail.com",
+            "name": "Tommy Bui Nguyen",
+            "username": "nwyin"
+          },
+          "committer": {
+            "email": "tommynguyen0512@gmail.com",
+            "name": "Tommy Bui Nguyen",
+            "username": "nwyin"
+          },
+          "distinct": true,
+          "id": "8624917b7cd01cd3498bd46821be027cacf95145",
+          "message": "fix: Ctrl-C immediately stops busy state and clears active tools\n\nPreviously Ctrl-C called agent.abort() but the TUI stayed in busy\nstate while spawned tool tasks completed. Now Ctrl-C immediately:\n- Sets is_busy = false so the input line is responsive\n- Clears active_tools from the status bar\n- Flushes any partial streaming text\n- Shows \"^C (aborted)\" separator",
+          "timestamp": "2026-03-25T20:49:56+08:00",
+          "tree_id": "d598809fbb8b66c1073e5366900c1cd2e72db81d",
+          "url": "https://github.com/nwyin/tau/commit/8624917b7cd01cd3498bd46821be027cacf95145"
+        },
+        "date": 1774443748052,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "agent_construction/new_agent",
+            "value": 2154,
+            "range": "± 9",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/10",
+            "value": 3737,
+            "range": "± 34",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/50",
+            "value": 12923,
+            "range": "± 87",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/100",
+            "value": 21323,
+            "range": "± 46",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/500",
+            "value": 94598,
+            "range": "± 635",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/10",
+            "value": 3412,
+            "range": "± 28",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/50",
+            "value": 17584,
+            "range": "± 163",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/100",
+            "value": 34417,
+            "range": "± 100",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/10",
+            "value": 12780,
+            "range": "± 85",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/50",
+            "value": 72817,
+            "range": "± 396",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/100",
+            "value": 144616,
+            "range": "± 669",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/10",
+            "value": 16725,
+            "range": "± 72",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/50",
+            "value": 91667,
+            "range": "± 906",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/100",
+            "value": 182017,
+            "range": "± 904",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/10",
+            "value": 2860,
+            "range": "± 7",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/100",
+            "value": 38793,
+            "range": "± 157",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/1000",
+            "value": 361790,
+            "range": "± 1865",
             "unit": "ns/iter"
           }
         ]
