@@ -2,7 +2,7 @@
 
 Feature-level comparison across 9 harnesses: **tau**, **kimi-cli**, **pi-mono**, **oh-my-pi**, **pi_agent_rust**, **codex**, **crush**, **opencode**, and **slate**.
 
-Data collected 2026-03-19 by reading each harness's source code. tau column updated 2026-03-24.
+Data collected 2026-03-19 by reading each harness's source code. tau column updated 2026-03-25.
 
 ---
 
@@ -32,9 +32,9 @@ Data collected 2026-03-19 by reading each harness's source code. tau column upda
 | view image | -- | yes | -- | -- | -- | yes | -- | -- | yes (file read asImage) |
 | ssh | -- | -- | -- | yes | -- | -- | -- | -- | -- |
 | calculator | -- | -- | -- | yes | -- | -- | -- | -- | -- |
-| todo/plan tracking | -- | yes | -- | yes | -- | yes (update_plan) | yes | yes | yes (YAML-based todo) |
+| todo/plan tracking | yes (full-replace protocol) | yes | -- | yes | -- | yes (update_plan) | yes | yes | yes (YAML-based todo) |
 | sub-agent spawn | yes | yes | ext example | yes (8 types) | -- | yes (spawn/wait/send) | -- | yes | yes (orchestrate DSL) |
-| batch parallel tools | -- | -- | -- | -- | -- | -- | -- | yes (25 concurrent) | -- |
+| batch parallel tools | yes (tokio::spawn + join_all) | -- | -- | -- | -- | -- | -- | yes (25 concurrent) | -- |
 | download | -- | -- | -- | -- | -- | -- | yes | -- | -- |
 | sourcegraph | -- | -- | -- | -- | -- | -- | yes | -- | -- |
 | code search | -- | -- | -- | -- | -- | -- | -- | yes (Exa) | -- |
@@ -45,7 +45,7 @@ Data collected 2026-03-19 by reading each harness's source code. tau column upda
 | MCP tools (dynamic) | -- | yes | -- | yes | stub | yes | yes | yes | yes (connect/use) |
 | custom tools (extensions) | -- | yes | yes | yes | yes | via MCP/plugins | -- | yes | -- |
 
-**Tool count (built-in)**: tau 9 | kimi-cli 17 (default agent) | pi-mono 7 | oh-my-pi ~25 | pi_agent_rust 8 | codex ~16 | crush ~16 | opencode ~15 | slate 18 (incl. 7 control-flow)
+**Tool count (built-in)**: tau 10 | kimi-cli 17 (default agent) | pi-mono 7 | oh-my-pi ~25 | pi_agent_rust 8 | codex ~16 | crush ~16 | opencode ~15 | slate 18 (incl. 7 control-flow)
 
 ### Tool name mapping
 
@@ -108,7 +108,7 @@ The most interesting divergence across harnesses. Same model, different edit for
 | TTSR (pattern-triggered rules) | -- | -- | -- | yes | -- | -- | -- | -- | -- |
 | Autonomous memory (cross-session) | -- | -- | -- | yes | -- | yes | -- | -- | -- |
 | Branch summarization | -- | -- | yes | -- | yes | -- | -- | -- | yes (episode-based compact traces) |
-| Thinking level control | -- | yes | yes | yes | yes | yes (reasoning effort) | yes | -- | yes (reasoningBudget) |
+| Thinking level control | yes (config/CLI/Ctrl-T toggle) | yes | yes | yes | yes | yes (reasoning effort) | yes | -- | yes (reasoningBudget) |
 
 ---
 
@@ -122,7 +122,7 @@ The most interesting divergence across harnesses. Same model, different edit for
 | Isolation (worktree) | -- | -- | -- | yes | -- | -- | -- | yes | yes (git worktree boundary) |
 | Isolation (fuse overlay) | -- | -- | -- | yes | -- | -- | -- | -- | -- |
 | Swarm orchestration | -- | -- | -- | yes (YAML pipelines) | -- | -- | -- | -- | yes (JS DSL code generation) |
-| Parallel tool calls | -- | -- | -- | -- | yes (8 concurrent) | yes (read/write lock) | yes | yes (batch, 25) | -- |
+| Parallel tool calls | yes (tokio::spawn, unlimited) | -- | -- | -- | yes (8 concurrent) | yes (read/write lock) | yes | yes (batch, 25) | -- |
 | Plan→build agent switch | -- | yes | -- | -- | -- | yes (/plan) | -- | yes | yes (experimental PLAN_MODE) |
 | Inter-agent messaging | -- | -- | -- | -- | -- | yes (send_input) | -- | -- | yes (document store + trace references) |
 
@@ -151,11 +151,11 @@ Rationale:
   message routing, and partial failure recovery — all inside what should
   be a single-agent loop.
 
-The one thing worth adding harness-native: **parallel tool execution**
-(run N tool calls concurrently within a single turn). This covers the
-80% case (3 greps in parallel, 5 file reads at once) without any
-orchestration complexity. The 20% case (multiple agents on different
-subtasks, communicating results) belongs in the orchestrator.
+**Parallel tool execution** is now implemented harness-native (tokio::spawn
++ join_all). This covers the 80% case (3 greps in parallel, 5 file reads
+at once) without any orchestration complexity. The 20% case (multiple
+agents on different subtasks, communicating results) belongs in the
+orchestrator.
 
 ---
 
@@ -240,7 +240,7 @@ subtasks, communicating results) belongs in the orchestrator.
 
 | Feature | tau | kimi-cli | pi-mono | oh-my-pi | pi_agent_rust | codex | crush | opencode | slate |
 |---------|-----|----------|---------|----------|---------------|-------|-------|----------|-------|
-| TUI framework | basic REPL | prompt-toolkit shell | custom (diff renderer) | pi-tui | charmed (bubbletea port) | ratatui (Rust) | bubbletea | SolidJS (@opentui) | React/Ink |
+| TUI framework | ratatui (Rust) | prompt-toolkit shell | custom (diff renderer) | pi-tui | charmed (bubbletea port) | ratatui (Rust) | bubbletea | SolidJS (@opentui) | React/Ink |
 | Themes | -- | -- | yes (JSON) | yes (65+) | yes (3 built-in) | yes (.tmTheme) | -- | yes (33) | -- |
 | Markdown rendering | -- | -- | yes | yes | yes | yes | yes | -- | -- |
 | Syntax highlighting | -- | -- | yes (cli-highlight) | yes (syntect/Rust) | yes (glamour) | yes (pulldown-cmark) | yes | -- | -- |
@@ -248,7 +248,7 @@ subtasks, communicating results) belongs in the orchestrator.
 | Diff view | -- | yes (approval diff preview) | unified | unified | unified | yes (syntax-highlighted) | unified + split | -- | yes (unified diff in edit results) |
 | Clipboard paste (text+image) | -- | yes | yes | yes | yes | yes (/copy) | -- | -- | -- |
 | External editor | -- | yes | yes | -- | yes | yes ($VISUAL) | -- | -- | -- |
-| Autocomplete | -- | yes | yes | yes | yes | yes (nucleo fuzzy) | yes | -- | -- |
+| Autocomplete | yes (slash commands, Tab cycle) | yes | yes | yes | yes | yes (nucleo fuzzy) | yes | -- | -- |
 | Configurable keybindings | -- | -- | yes | yes | yes | -- | -- | yes | -- |
 | Speech-to-text / voice | -- | -- | -- | yes (Whisper) | -- | yes (realtime, gpt-4o-mini-transcribe) | -- | -- | -- |
 | Desktop notifications | -- | -- | -- | -- | -- | yes (session hook) | yes | -- | -- |
@@ -492,7 +492,7 @@ Based on the table above, here are the features that appear across 4+ harnesses 
 ### High-value (present in 3-4 harnesses, high daily-driver impact)
 
 6. **~~Web fetch/search~~** — ✅ Implemented (web_search via Exa API, web_fetch via HTTP with HTML stripping; both in default tool set with graceful degradation when EXA_API_KEY missing).
-7. **Todo/plan tracking** — kimi-cli, oh-my-pi, codex, crush, opencode, and slate (YAML-based). Keeps the agent organized on multi-step tasks.
+7. **~~Todo/plan tracking~~** — ✅ Implemented (full-replace protocol: model sends complete todo list each call, statuses pending/in_progress/completed, rendered in tool output and status bar).
 8. **LSP diagnostics on edit** — oh-my-pi, crush, opencode. Immediate feedback on syntax/type errors after edits.
 9. **Session picker / resume UX** — 6 harnesses now have a real picker, search flow, or browser session manager. tau has `--resume` but no browser.
 10. **Session undo/revert** — codex (ghost snapshot), oh-my-pi (checkpoint), opencode (git snapshot). Safety net for when the agent breaks things.
@@ -520,7 +520,7 @@ Based on the table above, here are the features that appear across 4+ harnesses 
 
 1. **Minimize the model's decision surface.** Fewer tools = fewer wrong choices = more predictable behavior. The model should spend tokens on the *task*, not on deciding *which tool to use*.
 2. **Bash is the escape hatch.** Anything not worth a dedicated tool goes through bash. The threshold for adding a tool: it must be measurably better than the bash equivalent across benchmarks.
-3. **Delegation lives outside the agent.** Sub-agents, planning, and coordination are handled by the hive orchestrator, not by giving the model tools to manage its own complexity.
+3. **Lightweight delegation, heavy orchestration outside.** A simple `subagent` tool handles the common case (parallel research, isolated subtasks). Full multi-agent coordination (process pools, message routing, partial failure) lives in the Hive orchestrator.
 4. **Edit strategy as a variable, not a constant.** Both exact-match and hashline editing as switchable modes. The bet is that having both in one harness enables direct A/B comparison — and that better edit reliability matters more than more tool variety.
 5. **Benchmarking decides.** The toolset should grow based on measured impact, not feature parity with other harnesses.
 
