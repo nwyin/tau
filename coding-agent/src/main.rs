@@ -349,7 +349,22 @@ async fn main() -> Result<()> {
 
         std::process::exit(exit_code);
     } else {
-        // TUI mode
+        // TUI mode — auto-create session if none provided
+        let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+        let session_file_arc = if session_file_arc.is_some() {
+            session_file_arc
+        } else if !cli.no_session {
+            match session_mgr.create(&cwd) {
+                Ok(sf) => Some(Arc::new(sf)),
+                Err(e) => {
+                    eprintln!("Warning: failed to create session: {}", e);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
         let context_window = agent.with_state(|s| s.model.context_window);
         let agent = Arc::new(agent);
 
@@ -359,6 +374,7 @@ async fn main() -> Result<()> {
                 model_id,
                 context_window,
                 session_file: session_file_arc,
+                session_manager: session_mgr,
                 skills,
                 permission_service: built.permission_service,
                 startup_messages: built.startup_messages,

@@ -135,6 +135,96 @@ impl SessionManager {
         Ok(messages)
     }
 
+    /// List sessions for a specific working directory, most recent first.
+    /// Returns (id, timestamp, message_count) tuples.
+    pub fn list_for_cwd(&self, cwd: &Path) -> Result<Vec<(String, String, usize)>> {
+        if !self.session_dir.exists() {
+            return Ok(vec![]);
+        }
+
+        let cwd_str = cwd.to_string_lossy().to_string();
+        let mut sessions = vec![];
+
+        for entry in fs::read_dir(&self.session_dir).context("Failed to read session directory")? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
+                continue;
+            }
+
+            // Read the header line to check cwd
+            let file = match File::open(&path) {
+                Ok(f) => f,
+                Err(_) => continue,
+            };
+            let mut reader = BufReader::new(file);
+            let mut header_line = String::new();
+            if reader.read_line(&mut header_line).is_err() {
+                continue;
+            }
+
+            let header: Value = match serde_json::from_str(header_line.trim()) {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
+
+            let session_cwd = header.get("cwd").and_then(Value::as_str).unwrap_or("");
+            if session_cwd != cwd_str {
+                continue;
+            }
+
+            let id = header
+                .get("id")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            let timestamp = header
+                .get("timestamp")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
+
+            // Count message lines
+            let msg_count = reader
+                .lines()
+                .filter(|l| {
+                    l.as_ref()
+                        .ok()
+                        .and_then(|line| serde_json::from_str::<Value>(line).ok())
+                        .and_then(|v| {
+                            v.get("type")
+                                .and_then(Value::as_str)
+                                .map(|t| t == "message")
+                        })
+                        .unwrap_or(false)
+                })
+                .count();
+
+            let mtime = entry
+                .metadata()
+                .ok()
+                .and_then(|m| m.modified().ok())
+                .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+
+            sessions.push((mtime, id, timestamp, msg_count));
+        }
+
+        sessions.sort_by(|a, b| b.0.cmp(&a.0));
+        Ok(sessions
+            .into_iter()
+            .map(|(_, id, ts, count)| (id, ts, count))
+            .collect())
+    }
+
+    /// Find the most recently modified session for a cwd, returning its ID.
+    pub fn latest_for_cwd(&self, cwd: &Path) -> Result<Option<String>> {
+        Ok(self
+            .list_for_cwd(cwd)?
+            .into_iter()
+            .next()
+            .map(|(id, _, _)| id))
+    }
+
     /// Find the most recently modified session file, returning its ID.
     pub fn latest(&self) -> Result<Option<String>> {
         if !self.session_dir.exists() {

@@ -25,7 +25,7 @@ use ratatui::widgets::{Paragraph, Wrap};
 use ratatui::Terminal;
 
 use crate::permissions::{self, PermissionService};
-use crate::session::SessionFile;
+use crate::session::{SessionFile, SessionManager};
 use crate::skills::{self, Skill};
 
 // ---------------------------------------------------------------------------
@@ -37,6 +37,7 @@ pub struct TuiRunConfig {
     pub model_id: String,
     pub context_window: u64,
     pub session_file: Option<Arc<SessionFile>>,
+    pub session_manager: SessionManager,
     pub skills: Vec<Skill>,
     pub permission_service: Arc<PermissionService>,
     pub startup_messages: Vec<String>,
@@ -115,6 +116,7 @@ struct App {
     // Control
     skills: Vec<Skill>,
     permission_service: Arc<PermissionService>,
+    session_manager: SessionManager,
     abort_count: Arc<AtomicU8>,
     should_quit: bool,
     debug: bool,
@@ -146,6 +148,7 @@ impl App {
 
             skills: config.skills.clone(),
             permission_service: config.permission_service.clone(),
+            session_manager: SessionManager::new(config.session_manager.session_dir.clone()),
             abort_count: Arc::new(AtomicU8::new(0)),
             should_quit: false,
             debug: false,
@@ -180,6 +183,8 @@ impl App {
             "/thinking".to_string(),
             "/skills".to_string(),
             "/compact".to_string(),
+            "/sessions".to_string(),
+            "/resume".to_string(),
             "/yolo".to_string(),
             "/debug".to_string(),
         ]);
@@ -288,6 +293,8 @@ impl App {
                     ("/thinking <level>", "Set thinking: off|low|medium|high"),
                     ("/skills", "List available skills"),
                     ("/compact", "Show token/context stats"),
+                    ("/sessions", "List sessions for this directory"),
+                    ("/resume [id]", "Resume a session (latest if no id)"),
                     ("/yolo", "Toggle auto-approve all tools"),
                     ("/debug", "Toggle debug logging"),
                     ("/skill:<name> [args]", "Run a skill"),
@@ -443,6 +450,102 @@ impl App {
                     ),
                     Style::default().fg(Color::DarkGray),
                 )));
+                Some(None)
+            }
+            "/sessions" => {
+                let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+                match self.session_manager.list_for_cwd(&cwd) {
+                    Ok(sessions) if sessions.is_empty() => {
+                        self.push_line(Line::from(Span::styled(
+                            "No sessions for this directory.",
+                            Style::default().fg(Color::DarkGray),
+                        )));
+                    }
+                    Ok(sessions) => {
+                        self.push_line(Line::from(Span::styled(
+                            "Sessions:",
+                            Style::default().add_modifier(Modifier::BOLD),
+                        )));
+                        for (id, ts, count) in sessions.iter().take(10) {
+                            // Parse and format timestamp nicely
+                            let date = ts.split('T').next().unwrap_or(ts);
+                            let time = ts
+                                .split('T')
+                                .nth(1)
+                                .and_then(|t| t.split('.').next())
+                                .unwrap_or("");
+                            self.push_line(Line::from(vec![
+                                Span::styled(
+                                    format!("  {} ", id),
+                                    Style::default().fg(Color::Cyan),
+                                ),
+                                Span::styled(
+                                    format!("{} {} ", date, time),
+                                    Style::default().fg(Color::DarkGray),
+                                ),
+                                Span::styled(
+                                    format!("({} msgs)", count),
+                                    Style::default().fg(Color::DarkGray),
+                                ),
+                            ]));
+                        }
+                        self.push_line(Line::from(Span::styled(
+                            "Use /resume <id> to resume a session.",
+                            Style::default().fg(Color::DarkGray),
+                        )));
+                    }
+                    Err(e) => {
+                        self.push_line(Line::from(Span::styled(
+                            format!("Error listing sessions: {}", e),
+                            Style::default().fg(Color::Red),
+                        )));
+                    }
+                }
+                Some(None)
+            }
+            "/resume" => {
+                let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+                let session_id = if args.is_empty() {
+                    // Resume latest
+                    match self.session_manager.latest_for_cwd(&cwd) {
+                        Ok(Some(id)) => id,
+                        Ok(None) => {
+                            self.push_line(Line::from(Span::styled(
+                                "No sessions found for this directory.",
+                                Style::default().fg(Color::Red),
+                            )));
+                            return Some(None);
+                        }
+                        Err(e) => {
+                            self.push_line(Line::from(Span::styled(
+                                format!("Error: {}", e),
+                                Style::default().fg(Color::Red),
+                            )));
+                            return Some(None);
+                        }
+                    }
+                } else {
+                    args.to_string()
+                };
+
+                match self.session_manager.load(&session_id) {
+                    Ok(messages) => {
+                        let count = messages.len();
+                        agent.replace_messages(messages);
+                        // Update session file to the resumed session
+                        // (caller handles this via the returned session id)
+                        self.push_line(Line::from(Span::styled(
+                            format!("[resumed session {} ({} messages)]", session_id, count),
+                            Style::default().fg(Color::Magenta),
+                        )));
+                    }
+                    Err(e) => {
+                        self.push_line(Line::from(Span::styled(
+                            format!("Error loading session '{}': {}", session_id, e),
+                            Style::default().fg(Color::Red),
+                        )));
+                    }
+                }
                 Some(None)
             }
             "/yolo" => {
