@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1774444815253,
+  "lastUpdate": 1774450961379,
   "repoUrl": "https://github.com/nwyin/tau",
   "entries": {
     "tau benchmarks": [
@@ -3779,6 +3779,132 @@ window.BENCHMARK_DATA = {
             "name": "sse_parsing/events/1000",
             "value": 363943,
             "range": "± 1964",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "tommynguyen0512@gmail.com",
+            "name": "Tommy Bui Nguyen",
+            "username": "nwyin"
+          },
+          "committer": {
+            "email": "tommynguyen0512@gmail.com",
+            "name": "Tommy Bui Nguyen",
+            "username": "nwyin"
+          },
+          "distinct": true,
+          "id": "e95979933a29db21f253ebb2f8a49525767f4e5d",
+          "message": "feat: batch permission requests with count indicator\n\nPermission requests from parallel tool calls now queue up instead of\nblocking one at a time. The modal shows \"(N pending)\" when multiple\nrequests are waiting. Pressing 'a' (always) auto-approves all queued\nrequests for the same tool type. Ctrl-C denies all and aborts.",
+          "timestamp": "2026-03-25T22:24:06+08:00",
+          "tree_id": "a1e7c5808cb6c9c4ae47eb7f93e6eed013e37939",
+          "url": "https://github.com/nwyin/tau/commit/e95979933a29db21f253ebb2f8a49525767f4e5d"
+        },
+        "date": 1774450961044,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "agent_construction/new_agent",
+            "value": 2177,
+            "range": "± 28",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/10",
+            "value": 3861,
+            "range": "± 118",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/50",
+            "value": 13193,
+            "range": "± 323",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/100",
+            "value": 21283,
+            "range": "± 349",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/500",
+            "value": 95323,
+            "range": "± 952",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/10",
+            "value": 3394,
+            "range": "± 15",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/50",
+            "value": 17266,
+            "range": "± 100",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/100",
+            "value": 34363,
+            "range": "± 273",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/10",
+            "value": 12750,
+            "range": "± 166",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/50",
+            "value": 72939,
+            "range": "± 636",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/100",
+            "value": 145237,
+            "range": "± 3545",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/10",
+            "value": 16945,
+            "range": "± 83",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/50",
+            "value": 91254,
+            "range": "± 312",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/100",
+            "value": 182271,
+            "range": "± 4760",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/10",
+            "value": 2952,
+            "range": "± 56",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/100",
+            "value": 39449,
+            "range": "± 479",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/1000",
+            "value": 366301,
+            "range": "± 6546",
             "unit": "ns/iter"
           }
         ]
