@@ -64,7 +64,7 @@ fn system_prompt_read_before_edit_guideline_when_both_present() {
     );
 }
 
-// INV-4: When only bash is present (no grep/find tools), the "use bash for file exploration"
+// INV-4: When only bash is present (no grep/glob/find tools), the "use bash for file exploration"
 // guideline appears.
 #[test]
 fn system_prompt_bash_exploration_guideline_when_only_bash() {
@@ -86,8 +86,11 @@ fn system_prompt_default_tool_set_is_sensible() {
     let prompt = build_system_prompt(&tools, &[], "/workspace");
 
     assert!(prompt.contains("expert coding assistant"));
-    assert!(prompt.contains("Available tools:"));
-    assert!(prompt.contains("Guidelines:"));
+    assert!(prompt.contains("# Available tools"));
+    assert!(prompt.contains("# Using your tools"));
+    assert!(prompt.contains("# Doing tasks"));
+    assert!(prompt.contains("# Executing actions with care"));
+    assert!(prompt.contains("# Tone and output"));
     assert!(prompt.contains("Current working directory: /workspace"));
 }
 
@@ -203,6 +206,34 @@ fn system_prompt_no_bash_exploration_when_grep_present() {
             .to_lowercase()
             .contains("use bash for file exploration"),
         "should NOT contain bash-for-exploration guideline when grep is present, got:\n{}",
+        prompt
+    );
+}
+
+// INV-6: When glob is present, "use bash for file exploration" guideline is absent.
+#[test]
+fn system_prompt_no_bash_exploration_when_glob_present() {
+    let tools: Vec<Arc<dyn agent::types::AgentTool>> = vec![BashTool::arc(), GlobTool::arc()];
+    let prompt = build_system_prompt(&tools, &[], "/tmp");
+    assert!(
+        !prompt
+            .to_lowercase()
+            .contains("use bash for file exploration"),
+        "should NOT contain bash-for-exploration guideline when glob is present, got:\n{}",
+        prompt
+    );
+}
+
+// The "prefer dedicated tools over bash" section appears when bash + other tools coexist.
+#[test]
+fn system_prompt_prefer_dedicated_tools_over_bash() {
+    let tools = all_tools();
+    let prompt = build_system_prompt(&tools, &[], "/tmp");
+    assert!(
+        prompt
+            .to_lowercase()
+            .contains("do not use bash when a dedicated tool"),
+        "prompt should instruct preferring dedicated tools over bash, got:\n{}",
         prompt
     );
 }
