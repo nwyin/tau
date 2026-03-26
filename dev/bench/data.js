@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1774450961379,
+  "lastUpdate": 1774499583812,
   "repoUrl": "https://github.com/nwyin/tau",
   "entries": {
     "tau benchmarks": [
@@ -3905,6 +3905,132 @@ window.BENCHMARK_DATA = {
             "name": "sse_parsing/events/1000",
             "value": 366301,
             "range": "± 6546",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "tommynguyen0512@gmail.com",
+            "name": "Tommy Bui Nguyen",
+            "username": "nwyin"
+          },
+          "committer": {
+            "email": "tommynguyen0512@gmail.com",
+            "name": "Tommy Bui Nguyen",
+            "username": "nwyin"
+          },
+          "distinct": true,
+          "id": "625bbedaf5659b4e87da72681079228f441f50bf",
+          "message": "refactor: extract static prompt sections into markdown files\n\nMove the 5 static system prompt sections (identity, system, doing_tasks,\nexecuting_with_care, tone_and_output) from inline Rust strings to\ncoding-agent/prompts/*.md files loaded via include_str!. Dynamic\nsections (tool listing, tool guidelines, skills, environment) stay as\nRust logic.",
+          "timestamp": "2026-03-26T12:27:02+08:00",
+          "tree_id": "c86d6915dccb6efe6af85091952663c9f6c184b2",
+          "url": "https://github.com/nwyin/tau/commit/625bbedaf5659b4e87da72681079228f441f50bf"
+        },
+        "date": 1774499583310,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "agent_construction/new_agent",
+            "value": 2153,
+            "range": "± 15",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/10",
+            "value": 3756,
+            "range": "± 169",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/50",
+            "value": 12990,
+            "range": "± 44",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/100",
+            "value": 21274,
+            "range": "± 121",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/500",
+            "value": 95563,
+            "range": "± 677",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/10",
+            "value": 3403,
+            "range": "± 32",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/50",
+            "value": 17165,
+            "range": "± 284",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/100",
+            "value": 34403,
+            "range": "± 101",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/10",
+            "value": 12691,
+            "range": "± 583",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/50",
+            "value": 72979,
+            "range": "± 202",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/100",
+            "value": 145634,
+            "range": "± 339",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/10",
+            "value": 16960,
+            "range": "± 109",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/50",
+            "value": 91437,
+            "range": "± 336",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/100",
+            "value": 181397,
+            "range": "± 957",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/10",
+            "value": 2867,
+            "range": "± 60",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/100",
+            "value": 38803,
+            "range": "± 268",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/1000",
+            "value": 357461,
+            "range": "± 1659",
             "unit": "ns/iter"
           }
         ]
