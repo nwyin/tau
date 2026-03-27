@@ -297,6 +297,17 @@ async fn main() -> Result<()> {
                             s.to_string()
                         }
                     }),
+                    "document" => {
+                        let op = args
+                            .get("operation")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("?");
+                        let name = args.get("name").and_then(|v| v.as_str());
+                        match name {
+                            Some(n) => Some(format!("{} '{}'", op, n)),
+                            None => Some(op.to_string()),
+                        }
+                    }
                     _ => None,
                 };
                 match detail {

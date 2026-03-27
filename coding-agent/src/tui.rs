@@ -1485,6 +1485,17 @@ fn extract_tool_detail(tool_name: &str, args: &serde_json::Value) -> Option<Stri
                 s.to_string()
             }
         }),
+        "document" => {
+            let op = args
+                .get("operation")
+                .and_then(|v| v.as_str())
+                .unwrap_or("?");
+            let name = args.get("name").and_then(|v| v.as_str());
+            match name {
+                Some(n) => Some(format!("{} '{}'", op, n)),
+                None => Some(op.to_string()),
+            }
+        }
         _ => None,
     }
 }
