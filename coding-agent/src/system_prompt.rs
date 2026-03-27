@@ -10,6 +10,7 @@ const SYSTEM: &str = include_str!("../prompts/system.md");
 const DOING_TASKS: &str = include_str!("../prompts/doing_tasks.md");
 const EXECUTING_WITH_CARE: &str = include_str!("../prompts/executing_with_care.md");
 const TONE_AND_OUTPUT: &str = include_str!("../prompts/tone_and_output.md");
+const ORCHESTRATION: &str = include_str!("../prompts/orchestration.md");
 
 /// Truncate a description to the first sentence (up to the first '.').
 fn first_sentence(desc: &str) -> &str {
@@ -114,13 +115,8 @@ pub fn build_system_prompt(tools: &[Arc<dyn AgentTool>], skills: &[Skill], cwd: 
     }
     if has("thread") {
         guidelines.push(
-            "Use thread to dispatch bounded worker tasks. Threads run in-process with \
-             their own context. Multiple thread calls in one turn execute in parallel. \
-             Reusing an alias appends to the thread's conversation (giving it memory). \
-             Pass prior thread episodes via the `episodes` parameter to share context \
-             between threads. Use query for quick single-shot LLM calls that don't need \
-             tools. Prefer thread over subagent for tasks that benefit from episode-based \
-             coordination."
+            "Use thread and query for orchestration. See the dedicated orchestration section \
+             below for patterns and guidance. Prefer thread over subagent."
                 .to_string(),
         );
     }
@@ -149,10 +145,15 @@ pub fn build_system_prompt(tools: &[Arc<dyn AgentTool>], skills: &[Skill], cwd: 
         parts.push(section);
     }
 
-    // ── 7. Tone and output (static) ──
+    // ── 7. Orchestration (conditional on thread tool) ──
+    if has("thread") {
+        parts.push(ORCHESTRATION.to_string());
+    }
+
+    // ── 8. Tone and output (static) ──
     parts.push(TONE_AND_OUTPUT.to_string());
 
-    // ── 8. Skills (dynamic — progressive disclosure) ──
+    // ── 9. Skills (dynamic — progressive disclosure) ──
     if !skills.is_empty() && has("file_read") {
         let mut section = "# Available skills\n\
              Skills are invoked with `/skill:<name> [args]`. Do NOT load skills automatically; \
@@ -169,7 +170,7 @@ pub fn build_system_prompt(tools: &[Arc<dyn AgentTool>], skills: &[Skill], cwd: 
         parts.push(section);
     }
 
-    // ── 9. Environment (dynamic) ──
+    // ── 10. Environment (dynamic) ──
     parts.push(format!("# Environment\nCurrent working directory: {}", cwd));
 
     parts.join("\n\n")
