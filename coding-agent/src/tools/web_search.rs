@@ -18,7 +18,7 @@ impl AgentTool for WebSearchTool {
     }
 
     fn description(&self) -> &str {
-        "Search the web using the Exa API. Returns search results with titles, URLs, and text content. Requires EXA_API_KEY environment variable."
+        "Search the web using the Exa API. Returns search results with titles, URLs, and text content. Requires EXA_API_KEY environment variable. Make a single search call per user request — do not fire multiple searches with query variations."
     }
 
     fn parameters(&self) -> &Value {

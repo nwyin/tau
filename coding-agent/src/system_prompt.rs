@@ -143,7 +143,8 @@ pub fn build_system_prompt(tools: &[Arc<dyn AgentTool>], skills: &[Skill], cwd: 
     // ── 8. Skills (dynamic — progressive disclosure) ──
     if !skills.is_empty() && has("file_read") {
         let mut section = "# Available skills\n\
-             Use file_read to load the full skill when the task matches its description:"
+             Skills are invoked with `/skill:<name> [args]`. Do NOT load skills automatically; \
+             only use them when the user explicitly invokes a slash command:"
             .to_string();
         for skill in skills {
             section.push_str(&format!(
