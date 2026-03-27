@@ -153,12 +153,17 @@ impl AgentTool for ThreadTool {
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| anyhow::anyhow!("missing 'task' parameter"))?
                 .to_string();
+            // Names of tools that are always injected — filter from allowlist lookup
+            // to avoid "unknown tool" warnings.
+            const AUTO_INJECTED: &[&str] = &["document", "complete", "abort", "escalate"];
+
             let tool_names: Vec<String> = params
                 .get("tools")
                 .and_then(|v| v.as_array())
                 .map(|arr| {
                     arr.iter()
                         .filter_map(|v| v.as_str().map(String::from))
+                        .filter(|name| !AUTO_INJECTED.contains(&name.as_str()))
                         .collect()
                 })
                 .unwrap_or_else(|| DEFAULT_THREAD_TOOLS.iter().map(|s| s.to_string()).collect());
