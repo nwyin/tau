@@ -280,6 +280,23 @@ async fn main() -> Result<()> {
                         .get("query")
                         .and_then(|v| v.as_str())
                         .map(|s| s.to_string()),
+                    "thread" => {
+                        let alias = args.get("alias").and_then(|v| v.as_str()).unwrap_or("?");
+                        let task = args.get("task").and_then(|v| v.as_str()).unwrap_or("");
+                        let preview = if task.len() > 50 {
+                            format!("{}...", &task[..47])
+                        } else {
+                            task.to_string()
+                        };
+                        Some(format!("{} — {}", alias, preview))
+                    }
+                    "query" => args.get("prompt").and_then(|v| v.as_str()).map(|s| {
+                        if s.len() > 60 {
+                            format!("{}...", &s[..57])
+                        } else {
+                            s.to_string()
+                        }
+                    }),
                     _ => None,
                 };
                 match detail {
@@ -295,6 +312,28 @@ async fn main() -> Result<()> {
                 if *is_error {
                     eprintln!("[tool error: {}]", tool_name);
                 }
+            }
+            AgentEvent::ThreadStart { alias, task, .. } => {
+                let preview = if task.len() > 60 {
+                    format!("{}...", &task[..57])
+                } else {
+                    task.clone()
+                };
+                eprintln!("[thread: {}] {}", alias, preview);
+            }
+            AgentEvent::ThreadEnd {
+                alias,
+                outcome,
+                duration_ms,
+                ..
+            } => {
+                let secs = *duration_ms as f64 / 1000.0;
+                eprintln!(
+                    "[thread: {}] {} ({:.1}s)",
+                    alias,
+                    outcome.status_str(),
+                    secs
+                );
             }
             AgentEvent::AgentEnd { .. } => {
                 println!();

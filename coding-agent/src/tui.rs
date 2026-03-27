@@ -1378,6 +1378,49 @@ fn handle_agent_event(app: &mut App, event: &AgentEvent) {
             app.tokens_out += am.usage.output;
             app.total_cost += am.usage.cost.total;
         }
+        AgentEvent::ThreadStart { alias, task, .. } => {
+            let task_preview = if task.len() > 60 {
+                format!("{}...", &task[..57])
+            } else {
+                task.clone()
+            };
+            app.push_line(Line::from(vec![
+                Span::styled("[thread: ", Style::default().fg(Color::Blue)),
+                Span::styled(
+                    alias.to_string(),
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled("] ", Style::default().fg(Color::Blue)),
+                Span::styled(task_preview, Style::default().fg(Color::DarkGray)),
+            ]));
+        }
+        AgentEvent::ThreadEnd {
+            alias,
+            outcome,
+            duration_ms,
+            ..
+        } => {
+            let secs = *duration_ms as f64 / 1000.0;
+            let status = outcome.status_str();
+            let (color, symbol) = match outcome {
+                agent::thread::ThreadOutcome::Completed { .. } => (Color::Green, "✓"),
+                agent::thread::ThreadOutcome::Aborted { .. } => (Color::Red, "✗"),
+                agent::thread::ThreadOutcome::Escalated { .. } => (Color::Yellow, "!"),
+                agent::thread::ThreadOutcome::TimedOut => (Color::Red, "⏱"),
+            };
+            app.push_line(Line::from(vec![
+                Span::styled(
+                    format!("[thread: {}] ", alias),
+                    Style::default().fg(Color::Blue),
+                ),
+                Span::styled(
+                    format!("{} {} ({:.1}s)", symbol, status, secs),
+                    Style::default().fg(color),
+                ),
+            ]));
+        }
         AgentEvent::AgentEnd { .. } => {
             app.flush_streaming();
             app.render_assistant_markdown();
@@ -1424,6 +1467,23 @@ fn extract_tool_detail(tool_name: &str, args: &serde_json::Value) -> Option<Stri
                 .filter(|t| t.get("status").and_then(|s| s.as_str()) == Some("completed"))
                 .count();
             format!("[{}/{}]", done, total)
+        }),
+        "thread" => {
+            let alias = args.get("alias").and_then(|v| v.as_str()).unwrap_or("?");
+            let task = args.get("task").and_then(|v| v.as_str()).unwrap_or("");
+            let task_preview = if task.len() > 50 {
+                format!("{}...", &task[..47])
+            } else {
+                task.to_string()
+            };
+            Some(format!("{} — {}", alias, task_preview))
+        }
+        "query" => args.get("prompt").and_then(|v| v.as_str()).map(|s| {
+            if s.len() > 60 {
+                format!("{}...", &s[..57])
+            } else {
+                s.to_string()
+            }
         }),
         _ => None,
     }

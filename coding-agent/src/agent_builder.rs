@@ -177,12 +177,13 @@ pub async fn build_agent(build_config: AgentBuildConfig) -> Result<BuiltAgent> {
     };
 
     // Add orchestration tools (thread + query)
-    tool_list.extend(tools::orchestration_tools(
+    let (orch_tools, event_forwarder_cell) = tools::orchestration_tools(
         orchestrator.clone(),
         Some(get_api_key.clone()),
         model.clone(),
         &config.edit_mode,
-    ));
+    );
+    tool_list.extend(orch_tools);
 
     // Warn about missing optional API keys for included tools
     let has_web_search = tool_list.iter().any(|t| t.name() == "web_search");
@@ -276,6 +277,10 @@ pub async fn build_agent(build_config: AgentBuildConfig) -> Result<BuiltAgent> {
         max_retry_delay_ms: None,
         max_turns,
     });
+
+    // Populate the event forwarder so thread tools can forward inner events
+    // to the parent agent's subscribers.
+    *event_forwarder_cell.lock().unwrap() = Some(agent.event_forwarder());
 
     Ok(BuiltAgent {
         agent,

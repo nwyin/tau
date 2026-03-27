@@ -289,6 +289,42 @@ fn handle_event(s: &mut TraceInner, event: &AgentEvent, trace_dir: &Path) {
             );
         }
 
+        AgentEvent::ThreadStart {
+            thread_id,
+            alias,
+            task,
+        } => {
+            write_trace_event(
+                s,
+                &json!({
+                    "ts": now.to_rfc3339(),
+                    "event": "thread_start",
+                    "thread_id": thread_id,
+                    "alias": alias,
+                    "task": task,
+                }),
+            );
+        }
+
+        AgentEvent::ThreadEnd {
+            thread_id,
+            alias,
+            outcome,
+            duration_ms,
+        } => {
+            write_trace_event(
+                s,
+                &json!({
+                    "ts": now.to_rfc3339(),
+                    "event": "thread_end",
+                    "thread_id": thread_id,
+                    "alias": alias,
+                    "outcome": outcome.status_str(),
+                    "duration_ms": duration_ms,
+                }),
+            );
+        }
+
         _ => {}
     }
 }

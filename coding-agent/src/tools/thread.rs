@@ -4,13 +4,13 @@
 //! an OrchestratorState. Named threads support reuse (appending to existing
 //! conversation history). Episodes are the primary sync mechanism.
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use agent::completion_tools::{self, AbortTool, CompleteTool, EscalateTool};
 use agent::episode::generate_episode;
 use agent::orchestrator::OrchestratorState;
 use agent::thread::ThreadOutcome;
-use agent::types::{AgentTool, AgentToolResult, BoxFuture, GetApiKeyFn, ToolUpdateFn};
+use agent::types::{AgentEvent, AgentTool, AgentToolResult, BoxFuture, GetApiKeyFn, ToolUpdateFn};
 use agent::{Agent, AgentOptions, AgentStateInit};
 use ai::types::{Model, UserBlock};
 use serde_json::{json, Value};
@@ -23,11 +23,20 @@ const THREAD_IDENTITY: &str = include_str!("../../prompts/thread_identity.md");
 /// Default tools for threads when none specified.
 const DEFAULT_THREAD_TOOLS: &[&str] = &["file_read", "grep", "glob"];
 
+/// Shared cell for event forwarding. Populated after agent creation.
+pub type EventForwarderCell = Arc<Mutex<Option<Arc<dyn Fn(AgentEvent) + Send + Sync>>>>;
+
+/// Create an empty event forwarder cell.
+pub fn event_forwarder_cell() -> EventForwarderCell {
+    Arc::new(Mutex::new(None))
+}
+
 pub struct ThreadTool {
     orchestrator: Arc<OrchestratorState>,
     get_api_key: Option<GetApiKeyFn>,
     default_model: Model,
     edit_mode: String,
+    event_forwarder: EventForwarderCell,
 }
 
 impl ThreadTool {
@@ -36,12 +45,14 @@ impl ThreadTool {
         get_api_key: Option<GetApiKeyFn>,
         default_model: Model,
         edit_mode: String,
+        event_forwarder: EventForwarderCell,
     ) -> Self {
         Self {
             orchestrator,
             get_api_key,
             default_model,
             edit_mode,
+            event_forwarder,
         }
     }
 
@@ -50,12 +61,14 @@ impl ThreadTool {
         get_api_key: Option<GetApiKeyFn>,
         default_model: Model,
         edit_mode: String,
+        event_forwarder: EventForwarderCell,
     ) -> Arc<dyn AgentTool> {
         Arc::new(Self::new(
             orchestrator,
             get_api_key,
             default_model,
             edit_mode,
+            event_forwarder,
         ))
     }
 }
@@ -126,6 +139,7 @@ impl AgentTool for ThreadTool {
         let get_api_key = self.get_api_key.clone();
         let default_model = self.default_model.clone();
         let edit_mode = self.edit_mode.clone();
+        let event_forwarder = self.event_forwarder.clone();
 
         Box::pin(async move {
             // Parse parameters
@@ -243,6 +257,38 @@ impl AgentTool for ThreadTool {
                 agent.replace_messages(lookup.messages);
             }
 
+            // Subscribe to inner agent events and forward to parent
+            let forward_fn = event_forwarder.lock().unwrap().clone();
+            if let Some(ref fwd) = forward_fn {
+                let fwd = fwd.clone();
+                let tid = thread_id.clone();
+                let a = alias.clone();
+                let _unsub = agent.subscribe(move |event| {
+                    // Forward inner tool execution events with thread context
+                    match event {
+                        AgentEvent::ToolExecutionStart { .. }
+                        | AgentEvent::ToolExecutionEnd { .. } => {
+                            // Wrap as a thread-scoped event by re-emitting directly
+                            fwd(event.clone());
+                        }
+                        _ => {
+                            // Skip agent lifecycle events from inner agent to avoid
+                            // confusion with the outer agent's lifecycle
+                            let _ = (&tid, &a);
+                        }
+                    }
+                });
+            }
+
+            // Emit ThreadStart
+            if let Some(ref fwd) = forward_fn {
+                fwd(AgentEvent::ThreadStart {
+                    thread_id: thread_id.clone(),
+                    alias: alias.clone(),
+                    task: task.clone(),
+                });
+            }
+
             // Run the thread with timeout
             let start = std::time::Instant::now();
             let run_result = tokio::time::timeout(
@@ -266,6 +312,16 @@ impl AgentTool for ThreadTool {
                     Err(_) => ThreadOutcome::TimedOut, // loop ended without completion tool
                 }
             };
+
+            // Emit ThreadEnd
+            if let Some(ref fwd) = forward_fn {
+                fwd(AgentEvent::ThreadEnd {
+                    thread_id: thread_id.clone(),
+                    alias: alias.clone(),
+                    outcome: outcome.clone(),
+                    duration_ms,
+                });
+            }
 
             // Extract messages and generate episode
             let final_messages = agent.with_state(|s| s.messages.clone());

@@ -81,21 +81,27 @@ pub fn all_known_tools(edit_mode: &str) -> HashMap<String, Arc<dyn AgentTool>> {
 ///
 /// These are separate from the static tool constructors because they need
 /// an OrchestratorState, model, and API key resolver.
+///
+/// Returns the tools plus an `EventForwarderCell` that should be populated
+/// after agent creation to enable inner-thread event forwarding.
 pub fn orchestration_tools(
     orchestrator: Arc<agent::orchestrator::OrchestratorState>,
     get_api_key: Option<agent::types::GetApiKeyFn>,
     model: ai::types::Model,
     edit_mode: &str,
-) -> Vec<Arc<dyn AgentTool>> {
-    vec![
+) -> (Vec<Arc<dyn AgentTool>>, thread::EventForwarderCell) {
+    let cell = thread::event_forwarder_cell();
+    let tools = vec![
         ThreadTool::arc(
             orchestrator.clone(),
             get_api_key.clone(),
             model.clone(),
             edit_mode.to_string(),
+            cell.clone(),
         ),
         QueryTool::arc(orchestrator, get_api_key, model),
-    ]
+    ];
+    (tools, cell)
 }
 
 /// Resolve an allowlist of tool names against the registry.
