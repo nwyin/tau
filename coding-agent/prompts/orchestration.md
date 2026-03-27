@@ -59,6 +59,25 @@ Threads get a restricted tool set (default: `file_read`, `grep`, `glob`). Overri
 - Implementation: `["file_read", "file_edit", "file_write", "bash"]`
 - Full access: `["bash", "file_read", "file_edit", "file_write", "glob", "grep", "web_fetch", "web_search"]`
 
+## Shared documents
+
+Use the `document` tool to share data between threads via virtual documents. Documents persist within the session but are not written to disk.
+
+**Pre-populate, then fan out:** Write a document, then spawn threads that read it.
+```
+document(operation="write", name="spec", content="Requirements: ...")
+thread("impl-a", "Implement feature A per document 'spec'", tools=["file_read","file_edit"])
+thread("impl-b", "Implement feature B per document 'spec'", tools=["file_read","file_edit"])
+```
+
+**Accumulate findings:** Have threads append to a shared document.
+```
+thread("scanner-a", "Find auth issues, append each to document 'findings'")
+thread("scanner-b", "Find perf issues, append each to document 'findings'")
+// After both complete:
+document(operation="read", name="findings")
+```
+
 ## Thread completion
 
-Each thread must call `complete`, `abort`, or `escalate` when done. The thread's result becomes its episode — a compressed trace of what it did and concluded.
+Each thread must call `complete`, `abort`, or `escalate` when done. The thread's result becomes its episode — a compressed trace of what it did and concluded. Pass `evidence` (a list of tool_call_ids) to `complete` to mark which tool results support your conclusion.

@@ -135,6 +135,24 @@ impl OrchestratorState {
             .insert(name.to_string(), content);
     }
 
+    /// Append to a virtual document (creates it if it doesn't exist).
+    pub fn append_document(&self, name: &str, content: &str) {
+        self.documents
+            .lock()
+            .unwrap()
+            .entry(name.to_string())
+            .or_default()
+            .push_str(content);
+    }
+
+    /// List all virtual document names.
+    pub fn list_documents(&self) -> Vec<String> {
+        let docs = self.documents.lock().unwrap();
+        let mut names: Vec<String> = docs.keys().cloned().collect();
+        names.sort();
+        names
+    }
+
     /// Format prior episodes as a system prompt section for injection.
     pub fn format_prior_episodes(&self, aliases: &[String]) -> Option<String> {
         let episodes = self.get_episodes(aliases);
@@ -270,6 +288,36 @@ mod tests {
         assert!(orch
             .format_prior_episodes(&["nonexistent".to_string()])
             .is_none());
+    }
+
+    #[test]
+    fn test_append_document() {
+        let orch = OrchestratorState::new();
+
+        // Append to nonexistent creates it
+        orch.append_document("log", "line 1\n");
+        assert_eq!(orch.read_document("log"), Some("line 1\n".to_string()));
+
+        // Append to existing extends it
+        orch.append_document("log", "line 2\n");
+        assert_eq!(
+            orch.read_document("log"),
+            Some("line 1\nline 2\n".to_string())
+        );
+    }
+
+    #[test]
+    fn test_list_documents() {
+        let orch = OrchestratorState::new();
+
+        // Empty
+        assert!(orch.list_documents().is_empty());
+
+        // Populated, sorted
+        orch.write_document("zebra", "z".to_string());
+        orch.write_document("alpha", "a".to_string());
+        orch.write_document("mid", "m".to_string());
+        assert_eq!(orch.list_documents(), vec!["alpha", "mid", "zebra"]);
     }
 
     #[test]

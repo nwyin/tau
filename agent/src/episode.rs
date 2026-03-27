@@ -110,6 +110,11 @@ fn format_full_trace(
     }
 
     out.push_str(&format!("RESULT: {}\n", outcome.result_text()));
+    if let ThreadOutcome::Completed { evidence, .. } = outcome {
+        if !evidence.is_empty() {
+            out.push_str(&format!("EVIDENCE: [{}]\n", evidence.join(", ")));
+        }
+    }
     out
 }
 
@@ -164,6 +169,11 @@ fn format_compact_trace(
     }
 
     out.push_str(&format!("RESULT: {}\n", outcome.result_text()));
+    if let ThreadOutcome::Completed { evidence, .. } = outcome {
+        if !evidence.is_empty() {
+            out.push_str(&format!("EVIDENCE: [{}]\n", evidence.join(", ")));
+        }
+    }
     out
 }
 
@@ -400,6 +410,58 @@ mod tests {
         assert_eq!(ep.duration_ms, 500);
         assert!(ep.full_trace.contains("[aborted]"));
         assert!(ep.compact_trace.contains("RESULT: No tools available"));
+    }
+
+    #[test]
+    fn test_full_trace_with_evidence() {
+        let messages = vec![
+            make_user("Find TODOs"),
+            make_assistant(
+                "Found them.",
+                vec![make_tool_call("tc1", "grep", &[("pattern", "TODO")])],
+            ),
+            make_tool_result("tc1", "grep", "file.rs:10: // TODO: fix", false),
+        ];
+
+        let outcome = ThreadOutcome::Completed {
+            result: "Found 1 TODO".to_string(),
+            evidence: vec!["tc1".to_string()],
+        };
+        let trace = format_full_trace("finder", "Find TODOs", &messages, &outcome, 1500, 1);
+        assert!(trace.contains("RESULT: Found 1 TODO"));
+        assert!(trace.contains("EVIDENCE: [tc1]"));
+    }
+
+    #[test]
+    fn test_compact_trace_with_evidence() {
+        let messages = vec![
+            make_user("Find endpoints"),
+            make_assistant(
+                "",
+                vec![
+                    make_tool_call("tc1", "grep", &[("pattern", "route")]),
+                    make_tool_call("tc2", "file_read", &[("path", "src/app.py")]),
+                ],
+            ),
+            make_tool_result("tc1", "grep", "3 matches", false),
+            make_tool_result("tc2", "file_read", "app code", false),
+        ];
+
+        // With evidence
+        let outcome = ThreadOutcome::Completed {
+            result: "Found routes".to_string(),
+            evidence: vec!["tc1".to_string(), "tc2".to_string()],
+        };
+        let trace = format_compact_trace("scanner", "Find endpoints", &messages, &outcome);
+        assert!(trace.contains("EVIDENCE: [tc1, tc2]"));
+
+        // Without evidence — no EVIDENCE line
+        let outcome_no_ev = ThreadOutcome::Completed {
+            result: "Found routes".to_string(),
+            evidence: vec![],
+        };
+        let trace2 = format_compact_trace("scanner", "Find endpoints", &messages, &outcome_no_ev);
+        assert!(!trace2.contains("EVIDENCE"));
     }
 
     #[test]

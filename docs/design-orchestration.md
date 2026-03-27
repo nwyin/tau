@@ -581,4 +581,103 @@ If we were to start building:
 - **How do we evaluate this?** What does "good orchestration" look like? Need
   concrete tasks that benefit from multi-agent coordination to test against.
 
-  ~/.claude/plans/optimized-yawning-acorn.md
+---
+
+## 9. Gap Analysis: tau vs. Slate (as of `feat/threads-episodes`)
+
+Based on a thorough re-review of the Slate decompilation artifacts
+(`../slate-decompile/REPORT.md`, `artifacts/`), here's what tau has, what's
+missing, and what to prioritize.
+
+### What's Solid
+
+These are implemented on the `feat/threads-episodes` branch and working:
+
+- **Thread spawning/reuse** — Named threads with conversation history persistence
+  via `OrchestratorState.get_or_create_thread()`. Reusing an alias appends to
+  existing messages.
+- **Completion tools** — `complete`, `abort`, `escalate` with oneshot channel
+  signaling. Thread loop exits naturally when model responds text-only after
+  calling a completion tool.
+- **Episode generation** — Two-level traces (full + compact) from message history.
+  Full trace for tool result, compact trace for downstream injection.
+- **Episode routing** — `episodes` parameter on ThreadTool injects prior threads'
+  compact traces as `# Prior episodes` in system prompt.
+- **Parallel execution** — Free from existing tool concurrency (`tokio::spawn` +
+  `join_all`). Multiple thread calls in one turn run in parallel.
+- **Event forwarding** — Inner thread `ToolExecutionStart`/`ToolExecutionEnd`
+  events forwarded to parent agent's subscribers via `EventForwarderCell`.
+  `ThreadStart`/`ThreadEnd` lifecycle events emitted.
+- **OrchestratorState** — Thread-safe shared state with virtual document backend
+  (`allocate_document`, `read_document`, `write_document`).
+- **QueryTool** — Single-shot LLM calls without tools, recorded as lightweight
+  episodes.
+
+### Gaps
+
+#### Tier 1: Actionable now (no DSL required)
+
+| # | Gap | Slate | tau | Impact |
+|---|-----|-------|-----|--------|
+| 1 | **Document tool** | `system.allocate()` + threads get `document` tool to read/write shared virtual docs | `OrchestratorState` has the backend methods but **no tool exposes them** to threads | High — inter-thread data sharing beyond episodes |
+| 2 | **Evidence on completion** | `complete({result, evidence: [tool_call_ids]})` — evidence IDs annotated in traces | `ThreadOutcome::Completed` has `evidence: Vec<String>` but **completion tool schemas don't accept it** | Medium — provenance tracking |
+| 3 | **Model slots** | 6 slots: main, search, subagent, reasoning, vision, image_gen | Single model + per-thread `model` string override | Medium — cost/capability routing |
+| 4 | **`system.log()`** | Records progress/decision notes in episode sequence | Nothing — threads can only complete/abort/escalate | Medium — richer orchestration traces |
+| 5 | **Capability aliases** | `["read", "write", "grep", "terminal"]` maps to tool lists | Raw tool names required: `["file_read", "file_edit", "glob"]` | Low — ergonomic sugar |
+| 6 | **`submit` tool** | Alternative completion signal (semantically "here's a draft") | Only complete/abort/escalate | Low |
+| 7 | **`view_tool_call`** | Orchestrator can inspect inner thread's tool call context | No equivalent — only see full_trace in tool result | Low-Med |
+| 8 | **Orchestration summary** | Auto-generates `OrchestrationSummary` at end of multi-thread ops | No summary — just individual episode traces | Low-Med |
+| 9 | **Rolling compression** | Dedicated compression models + rolling summary state | `compact_messages()` exists but no rolling summary | Medium — matters for long orchestrations |
+
+#### Tier 2: DSL-dependent (deferred)
+
+| # | Gap | Notes |
+|---|-----|-------|
+| 10 | **Orchestrator DSL** | Slate's `orchestrate` tool has the LLM generate JS code executed via `Function()`. Gives `async/await`, `Promise.all()`, try/catch, variables, loops, conditionals over `system.thread()`/`system.query()`. This is the core "thread weaving" — without it, tau's orchestration is "LLM calls thread tools" which works but can't express control flow between steps. See §2–4 for tau's DSL options. |
+| 11 | **Behavior modes** | Slate has `actor`/`query`/`async`/`compression` modes that change the system prompt dynamically per-call. tau has a single prompt mode. Partially compensated by system prompt structure. |
+| 12 | **Server-side prompt construction** | Slate constructs system prompts server-side for rapid iteration. Not relevant for tau's architecture (all client-side, which is fine). |
+
+### Model Slots Design
+
+Slate has 6 model slots. We'll support 4 — backlogging vision and image_gen:
+
+| Slot | Purpose | Default | Notes |
+|------|---------|---------|-------|
+| `main` | Primary orchestrator / interactive | Config `model` | What the user talks to |
+| `search` | Fast/cheap lookups, classification | `claude-haiku-4-5` | Used by QueryTool, cheap thread tasks |
+| `subagent` | Thread execution | Same as `main` | Can be cheaper for bulk work |
+| `reasoning` | Deep thinking, complex analysis | (none — opt-in) | For tasks that benefit from extended thinking |
+
+Config:
+
+```toml
+[models]
+main = "claude-sonnet-4-6"
+search = "claude-haiku-4-5"
+subagent = "claude-sonnet-4-6"
+reasoning = "claude-opus-4-6"
+```
+
+Thread/query tools would accept slot names in addition to raw model IDs:
+`model: "search"` resolves to the configured search model.
+
+**Backlogged:** `vision` (image understanding) and `image_gen` (image generation)
+slots. These require additional provider integration work and aren't needed for
+the orchestration use case.
+
+### Recommended Phasing
+
+**Phase 6** (next): Document tool + evidence in completion tools.
+The document store backend exists — just needs a tool to expose it. Evidence
+fields exist in `ThreadOutcome` — just need schema updates in completion tools
+and trace annotation. These unlock real inter-thread coordination.
+
+**Phase 7**: Model slots + capability aliases.
+Add `[models]` config section, resolve slot names in thread/query tool `model`
+params. Add capability alias mapping (`"read"` → `["file_read", "grep", "glob"]`,
+`"write"` → `["file_edit", "file_write"]`, etc.).
+
+**Phase 8**: DSL/REPL — the actual thread weaving layer.
+See §2–4 for architecture options. This is where the expressiveness gap is
+largest, but also the most complex to build. The foundation from phases 1–7
+is prerequisite infrastructure.

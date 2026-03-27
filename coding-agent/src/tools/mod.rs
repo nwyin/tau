@@ -1,4 +1,5 @@
 pub mod bash;
+pub mod document;
 pub mod file_edit;
 pub mod file_read;
 pub mod file_write;
@@ -20,6 +21,7 @@ use agent::types::AgentTool;
 use crate::config::EditMode;
 
 pub use bash::BashTool;
+pub use document::DocumentTool;
 pub use file_edit::FileEditTool;
 pub use file_read::FileReadTool;
 pub use file_write::FileWriteTool;
@@ -99,7 +101,8 @@ pub fn orchestration_tools(
             edit_mode.to_string(),
             cell.clone(),
         ),
-        QueryTool::arc(orchestrator, get_api_key, model),
+        QueryTool::arc(orchestrator.clone(), get_api_key, model),
+        DocumentTool::arc(orchestrator),
     ];
     (tools, cell)
 }

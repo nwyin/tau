@@ -107,7 +107,7 @@ impl AgentTool for ThreadTool {
                     "tools": {
                         "type": "array",
                         "items": { "type": "string" },
-                        "description": "Tool names this thread can use. Defaults to [\"file_read\", \"grep\", \"glob\"]. Available: bash, file_read, file_edit, file_write, glob, grep, web_fetch, web_search."
+                        "description": "Tool names this thread can use. Defaults to [\"file_read\", \"grep\", \"glob\"]. Available: bash, file_read, file_edit, file_write, glob, grep, web_fetch, web_search. Note: document, complete, abort, and escalate are always available regardless of this list."
                     },
                     "model": {
                         "type": "string",
@@ -218,6 +218,7 @@ impl AgentTool for ThreadTool {
             thread_tools.push(CompleteTool::arc(outcome_signal.clone()));
             thread_tools.push(AbortTool::arc(outcome_signal.clone()));
             thread_tools.push(EscalateTool::arc(outcome_signal));
+            thread_tools.push(tools::DocumentTool::arc(orchestrator.clone()));
 
             // Build compaction callback
             let model_for_compact = model.clone();
