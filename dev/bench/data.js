@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1774627822517,
+  "lastUpdate": 1774628299530,
   "repoUrl": "https://github.com/nwyin/tau",
   "entries": {
     "tau benchmarks": [
@@ -4283,6 +4283,132 @@ window.BENCHMARK_DATA = {
             "name": "sse_parsing/events/1000",
             "value": 362034,
             "range": "± 7877",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "tommynguyen0512@gmail.com",
+            "name": "Tommy Bui Nguyen",
+            "username": "nwyin"
+          },
+          "committer": {
+            "email": "tommynguyen0512@gmail.com",
+            "name": "Tommy Bui Nguyen",
+            "username": "nwyin"
+          },
+          "distinct": true,
+          "id": "c2474d11bde44af1e4ead709cee9460feebae349",
+          "message": "remove pycg/pycfg tools: not useful for LLMs per benchmarking\n\nRemove cg_* (call graph) and cfg_* (control flow graph) tools along\nwith their tests. Benchmarking showed these structural analysis tools\ndon't improve LLM performance on coding tasks.",
+          "timestamp": "2026-03-28T00:10:34+08:00",
+          "tree_id": "b20250f3895fd3a57f9fa5a95b8cfbb10d373738",
+          "url": "https://github.com/nwyin/tau/commit/c2474d11bde44af1e4ead709cee9460feebae349"
+        },
+        "date": 1774628299084,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "agent_construction/new_agent",
+            "value": 2153,
+            "range": "± 17",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/10",
+            "value": 3873,
+            "range": "± 153",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/50",
+            "value": 13005,
+            "range": "± 46",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/100",
+            "value": 23016,
+            "range": "± 97",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/500",
+            "value": 95260,
+            "range": "± 1282",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/10",
+            "value": 3734,
+            "range": "± 50",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/50",
+            "value": 18874,
+            "range": "± 66",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/100",
+            "value": 37008,
+            "range": "± 107",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/10",
+            "value": 13208,
+            "range": "± 259",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/50",
+            "value": 74599,
+            "range": "± 948",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/100",
+            "value": 153823,
+            "range": "± 472",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/10",
+            "value": 17476,
+            "range": "± 178",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/50",
+            "value": 94786,
+            "range": "± 447",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/100",
+            "value": 188054,
+            "range": "± 382",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/10",
+            "value": 2919,
+            "range": "± 28",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/100",
+            "value": 38768,
+            "range": "± 135",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/1000",
+            "value": 362798,
+            "range": "± 30908",
             "unit": "ns/iter"
           }
         ]
