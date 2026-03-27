@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1774499583812,
+  "lastUpdate": 1774627611445,
   "repoUrl": "https://github.com/nwyin/tau",
   "entries": {
     "tau benchmarks": [
@@ -4031,6 +4031,132 @@ window.BENCHMARK_DATA = {
             "name": "sse_parsing/events/1000",
             "value": 357461,
             "range": "± 1659",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "tommynguyen0512@gmail.com",
+            "name": "Tommy Bui Nguyen",
+            "username": "nwyin"
+          },
+          "committer": {
+            "email": "tommynguyen0512@gmail.com",
+            "name": "Tommy Bui Nguyen",
+            "username": "nwyin"
+          },
+          "distinct": true,
+          "id": "7303082124f19a210464215cc0ec1ac4ba415a9c",
+          "message": "fix: make TUI text selectable and route startup messages through TUI\n\nDisable mouse capture so terminal-native text selection works (PageUp/PageDown\nstill available for scrolling). Route auth and tools eprintln! calls through\nstartup_messages so they display inside ratatui instead of corrupting stderr.",
+          "timestamp": "2026-03-27T23:57:11+08:00",
+          "tree_id": "d4ddc9e4cd015d455ff84e8abcfc9258872de62b",
+          "url": "https://github.com/nwyin/tau/commit/7303082124f19a210464215cc0ec1ac4ba415a9c"
+        },
+        "date": 1774627610577,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "agent_construction/new_agent",
+            "value": 2125,
+            "range": "± 15",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/10",
+            "value": 3803,
+            "range": "± 24",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/50",
+            "value": 12299,
+            "range": "± 351",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/100",
+            "value": 23455,
+            "range": "± 749",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/500",
+            "value": 95611,
+            "range": "± 2487",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/10",
+            "value": 3704,
+            "range": "± 31",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/50",
+            "value": 18531,
+            "range": "± 39",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/100",
+            "value": 36839,
+            "range": "± 144",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/10",
+            "value": 12965,
+            "range": "± 50",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/50",
+            "value": 73774,
+            "range": "± 739",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/100",
+            "value": 150034,
+            "range": "± 2125",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/10",
+            "value": 17312,
+            "range": "± 55",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/50",
+            "value": 93626,
+            "range": "± 417",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/100",
+            "value": 183941,
+            "range": "± 558",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/10",
+            "value": 2933,
+            "range": "± 72",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/100",
+            "value": 38971,
+            "range": "± 439",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/1000",
+            "value": 362641,
+            "range": "± 6661",
             "unit": "ns/iter"
           }
         ]
