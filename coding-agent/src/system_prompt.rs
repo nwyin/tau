@@ -112,6 +112,18 @@ pub fn build_system_prompt(tools: &[Arc<dyn AgentTool>], skills: &[Skill], cwd: 
                 .to_string(),
         );
     }
+    if has("thread") {
+        guidelines.push(
+            "Use thread to dispatch bounded worker tasks. Threads run in-process with \
+             their own context. Multiple thread calls in one turn execute in parallel. \
+             Reusing an alias appends to the thread's conversation (giving it memory). \
+             Pass prior thread episodes via the `episodes` parameter to share context \
+             between threads. Use query for quick single-shot LLM calls that don't need \
+             tools. Prefer thread over subagent for tasks that benefit from episode-based \
+             coordination."
+                .to_string(),
+        );
+    }
     if has("todo") {
         guidelines.push(
             "Use todo to track progress on tasks with 3+ steps. Send the full todo list \

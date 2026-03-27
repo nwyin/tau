@@ -7,6 +7,8 @@ use agent::{Agent, AgentOptions, AgentStateInit};
 use ai::types::Model;
 use anyhow::{anyhow, Result};
 
+use agent::orchestrator::OrchestratorState;
+
 use crate::config::{load_config, TauConfig};
 use crate::permissions::{self, PermissionService};
 use crate::skills::{self, Skill};
@@ -34,6 +36,7 @@ pub struct BuiltAgent {
     pub system_prompt_text: String,
     pub skills: Vec<Skill>,
     pub permission_service: Arc<PermissionService>,
+    pub orchestrator: Arc<OrchestratorState>,
     /// Startup messages (warnings, info) to display to the user.
     pub startup_messages: Vec<String>,
 }
@@ -135,8 +138,35 @@ pub async fn build_agent(build_config: AgentBuildConfig) -> Result<BuiltAgent> {
         }
     };
 
+    // Build get_api_key closure (shared between agent and orchestration tools)
+    let get_api_key: agent::types::GetApiKeyFn = {
+        let codex = codex_auth.clone();
+        let key = explicit_api_key.clone();
+        Arc::new(move |_provider: String| {
+            let codex = codex.clone();
+            let key = key.clone();
+            Box::pin(async move {
+                if let Some(k) = key {
+                    return Some(k);
+                }
+                if let Some(ref auth) = codex {
+                    match auth.access_token().await {
+                        Ok(token) => return Some(token),
+                        Err(e) => {
+                            eprintln!("Warning: Codex OAuth error: {}", e);
+                        }
+                    }
+                }
+                None
+            })
+        })
+    };
+
+    // Create orchestrator state
+    let orchestrator = OrchestratorState::new();
+
     // Build tools
-    let tool_list: Vec<Arc<dyn AgentTool>> = if let Some(ref tool_names) = build_config.tools {
+    let mut tool_list: Vec<Arc<dyn AgentTool>> = if let Some(ref tool_names) = build_config.tools {
         startup_messages.push(format!("[tools] enabled: {}", tool_names.join(", ")));
         tools::tools_from_allowlist(tool_names, &config.edit_mode)
     } else if let Some(ref tool_names) = config.tools {
@@ -145,6 +175,14 @@ pub async fn build_agent(build_config: AgentBuildConfig) -> Result<BuiltAgent> {
     } else {
         tools::tools_for_edit_mode(&config.edit_mode)
     };
+
+    // Add orchestration tools (thread + query)
+    tool_list.extend(tools::orchestration_tools(
+        orchestrator.clone(),
+        Some(get_api_key.clone()),
+        model.clone(),
+        &config.edit_mode,
+    ));
 
     // Warn about missing optional API keys for included tools
     let has_web_search = tool_list.iter().any(|t| t.name() == "web_search");
@@ -232,28 +270,7 @@ pub async fn build_agent(build_config: AgentBuildConfig) -> Result<BuiltAgent> {
         steering_mode: None,
         follow_up_mode: None,
         session_id: None,
-        get_api_key: Some({
-            let codex = codex_auth.clone();
-            let key = explicit_api_key.clone();
-            Arc::new(move |_provider: String| {
-                let codex = codex.clone();
-                let key = key.clone();
-                Box::pin(async move {
-                    if let Some(k) = key {
-                        return Some(k);
-                    }
-                    if let Some(ref auth) = codex {
-                        match auth.access_token().await {
-                            Ok(token) => return Some(token),
-                            Err(e) => {
-                                eprintln!("Warning: Codex OAuth error: {}", e);
-                            }
-                        }
-                    }
-                    None
-                })
-            })
-        }),
+        get_api_key: Some(get_api_key),
         thinking_budgets: None,
         transport: None,
         max_retry_delay_ms: None,
@@ -268,6 +285,7 @@ pub async fn build_agent(build_config: AgentBuildConfig) -> Result<BuiltAgent> {
         system_prompt_text,
         skills: loaded_skills.skills,
         permission_service,
+        orchestrator,
         startup_messages,
     })
 }
