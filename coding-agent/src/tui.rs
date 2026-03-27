@@ -13,9 +13,7 @@ use agent::types::{AgentEvent, AgentMessage, ThinkingLevel};
 use agent::Agent;
 use ai::types::{AssistantMessageEvent, Message};
 use anyhow::Result;
-use crossterm::event::{
-    Event, EventStream, KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind,
-};
+use crossterm::event::{Event, EventStream, KeyCode, KeyEvent, KeyModifiers};
 use crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen};
 use futures::StreamExt;
 use ratatui::layout::{Constraint, Layout};
@@ -48,11 +46,7 @@ pub struct TuiRunConfig {
 pub async fn run(agent: Arc<Agent>, config: TuiRunConfig) -> Result<()> {
     // Setup terminal
     crossterm::terminal::enable_raw_mode()?;
-    crossterm::execute!(
-        io::stderr(),
-        EnterAlternateScreen,
-        crossterm::event::EnableMouseCapture
-    )?;
+    crossterm::execute!(io::stderr(), EnterAlternateScreen)?;
     let backend = ratatui::backend::CrosstermBackend::new(io::stderr());
     let mut terminal = Terminal::new(backend)?;
 
@@ -60,11 +54,7 @@ pub async fn run(agent: Arc<Agent>, config: TuiRunConfig) -> Result<()> {
     let original_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         let _ = crossterm::terminal::disable_raw_mode();
-        let _ = crossterm::execute!(
-            io::stderr(),
-            crossterm::event::DisableMouseCapture,
-            LeaveAlternateScreen
-        );
+        let _ = crossterm::execute!(io::stderr(), LeaveAlternateScreen);
         original_hook(info);
     }));
 
@@ -72,11 +62,7 @@ pub async fn run(agent: Arc<Agent>, config: TuiRunConfig) -> Result<()> {
 
     // Teardown
     crossterm::terminal::disable_raw_mode()?;
-    crossterm::execute!(
-        io::stderr(),
-        crossterm::event::DisableMouseCapture,
-        LeaveAlternateScreen
-    )?;
+    crossterm::execute!(io::stderr(), LeaveAlternateScreen)?;
 
     result
 }
@@ -1270,24 +1256,6 @@ fn handle_terminal_event(
                     }
                 }
                 _ => {}
-            }
-        }
-        Event::Mouse(MouseEvent {
-            kind: MouseEventKind::ScrollUp,
-            ..
-        }) => {
-            app.auto_scroll = false;
-            app.scroll_offset = app.scroll_offset.saturating_add(3);
-        }
-        Event::Mouse(MouseEvent {
-            kind: MouseEventKind::ScrollDown,
-            ..
-        }) => {
-            if app.scroll_offset <= 3 {
-                app.scroll_offset = 0;
-                app.auto_scroll = true;
-            } else {
-                app.scroll_offset = app.scroll_offset.saturating_sub(3);
             }
         }
         Event::Resize(_, _) => {

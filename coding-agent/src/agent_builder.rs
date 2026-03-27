@@ -64,19 +64,23 @@ pub async fn build_agent(build_config: AgentBuildConfig) -> Result<BuiltAgent> {
         .ok_or_else(|| anyhow!("Model '{}' not found in registry", model_id))?;
     let mut model: Model = (*model).clone();
 
+    // Collect startup messages instead of printing directly
+    let mut startup_messages = Vec::new();
+
     // Resolve API key / auth based on model provider.
-    let codex_auth: Option<Arc<ai::codex_auth::CodexAuth>> =
-        if model.provider == "anthropic" || std::env::var("OPENAI_API_KEY").is_ok() {
-            None
-        } else {
-            match ai::codex_auth::CodexAuth::load() {
-                Ok(auth) => {
-                    eprintln!("[auth] Using Codex OAuth (~/.codex/auth.json)");
-                    Some(Arc::new(auth))
-                }
-                Err(_) => None,
+    let codex_auth: Option<Arc<ai::codex_auth::CodexAuth>> = if model.provider == "anthropic"
+        || std::env::var("OPENAI_API_KEY").is_ok()
+    {
+        None
+    } else {
+        match ai::codex_auth::CodexAuth::load() {
+            Ok(auth) => {
+                startup_messages.push("[auth] Using Codex OAuth (~/.codex/auth.json)".to_string());
+                Some(Arc::new(auth))
             }
-        };
+            Err(_) => None,
+        }
+    };
 
     // When using Codex OAuth, redirect requests to the ChatGPT backend.
     if let Some(ref auth) = codex_auth {
@@ -133,17 +137,14 @@ pub async fn build_agent(build_config: AgentBuildConfig) -> Result<BuiltAgent> {
 
     // Build tools
     let tool_list: Vec<Arc<dyn AgentTool>> = if let Some(ref tool_names) = build_config.tools {
-        eprintln!("[tools] enabled: {}", tool_names.join(", "));
+        startup_messages.push(format!("[tools] enabled: {}", tool_names.join(", ")));
         tools::tools_from_allowlist(tool_names, &config.edit_mode)
     } else if let Some(ref tool_names) = config.tools {
-        eprintln!("[tools] enabled: {}", tool_names.join(", "));
+        startup_messages.push(format!("[tools] enabled: {}", tool_names.join(", ")));
         tools::tools_from_allowlist(tool_names, &config.edit_mode)
     } else {
         tools::tools_for_edit_mode(&config.edit_mode)
     };
-
-    // Collect startup messages instead of printing directly
-    let mut startup_messages = Vec::new();
 
     // Warn about missing optional API keys for included tools
     let has_web_search = tool_list.iter().any(|t| t.name() == "web_search");
