@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1774627611445,
+  "lastUpdate": 1774627822517,
   "repoUrl": "https://github.com/nwyin/tau",
   "entries": {
     "tau benchmarks": [
@@ -4157,6 +4157,132 @@ window.BENCHMARK_DATA = {
             "name": "sse_parsing/events/1000",
             "value": 362641,
             "range": "± 6661",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "tommynguyen0512@gmail.com",
+            "name": "Tommy Bui Nguyen",
+            "username": "nwyin"
+          },
+          "committer": {
+            "email": "tommynguyen0512@gmail.com",
+            "name": "Tommy Bui Nguyen",
+            "username": "nwyin"
+          },
+          "distinct": true,
+          "id": "e37c0851e5c8c80a65b2e2ff5953f7c542ad5217",
+          "message": "fix: prevent duplicate web searches and auto-loading skills\n\nAdd guidance to web_search tool description to make a single call per\nrequest instead of firing query variations. Change skill system prompt\nto only activate on explicit /skill: commands, not auto-load mid-chat.",
+          "timestamp": "2026-03-28T00:02:09+08:00",
+          "tree_id": "3509cdadd5e2de6f2e2b6fbe0b2090d11f728a97",
+          "url": "https://github.com/nwyin/tau/commit/e37c0851e5c8c80a65b2e2ff5953f7c542ad5217"
+        },
+        "date": 1774627821717,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "agent_construction/new_agent",
+            "value": 2130,
+            "range": "± 22",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/10",
+            "value": 3732,
+            "range": "± 25",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/50",
+            "value": 13288,
+            "range": "± 65",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/100",
+            "value": 21296,
+            "range": "± 130",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/500",
+            "value": 96764,
+            "range": "± 1063",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/10",
+            "value": 3673,
+            "range": "± 17",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/50",
+            "value": 18882,
+            "range": "± 56",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/100",
+            "value": 36748,
+            "range": "± 4898",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/10",
+            "value": 12967,
+            "range": "± 40",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/50",
+            "value": 75771,
+            "range": "± 12445",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/100",
+            "value": 151476,
+            "range": "± 423",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/10",
+            "value": 17466,
+            "range": "± 558",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/50",
+            "value": 93016,
+            "range": "± 581",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/100",
+            "value": 184777,
+            "range": "± 943",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/10",
+            "value": 2855,
+            "range": "± 15",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/100",
+            "value": 38493,
+            "range": "± 245",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/1000",
+            "value": 362034,
+            "range": "± 7877",
             "unit": "ns/iter"
           }
         ]
