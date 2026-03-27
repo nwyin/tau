@@ -3,6 +3,7 @@ pub mod completion_tools;
 pub mod context;
 pub mod episode;
 pub mod loop_;
+pub mod orchestrator;
 pub mod stats;
 pub mod thread;
 pub mod types;
