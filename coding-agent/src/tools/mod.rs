@@ -5,7 +5,9 @@ pub mod file_write;
 pub mod glob;
 pub mod grep;
 pub mod hashline;
+pub mod query;
 pub mod subagent;
+pub mod thread;
 pub mod todo;
 pub mod web_fetch;
 pub mod web_search;
@@ -23,7 +25,9 @@ pub use file_read::FileReadTool;
 pub use file_write::FileWriteTool;
 pub use glob::GlobTool;
 pub use grep::GrepTool;
+pub use query::QueryTool;
 pub use subagent::SubagentTool;
+pub use thread::ThreadTool;
 pub use todo::TodoTool;
 pub use web_fetch::WebFetchTool;
 pub use web_search::WebSearchTool;
@@ -71,6 +75,27 @@ pub fn all_known_tools(edit_mode: &str) -> HashMap<String, Arc<dyn AgentTool>> {
     map.insert("subagent".to_string(), SubagentTool::arc());
     map.insert("todo".to_string(), TodoTool::arc());
     map
+}
+
+/// Create orchestration tools (thread + query) that require runtime state.
+///
+/// These are separate from the static tool constructors because they need
+/// an OrchestratorState, model, and API key resolver.
+pub fn orchestration_tools(
+    orchestrator: Arc<agent::orchestrator::OrchestratorState>,
+    get_api_key: Option<agent::types::GetApiKeyFn>,
+    model: ai::types::Model,
+    edit_mode: &str,
+) -> Vec<Arc<dyn AgentTool>> {
+    vec![
+        ThreadTool::arc(
+            orchestrator.clone(),
+            get_api_key.clone(),
+            model.clone(),
+            edit_mode.to_string(),
+        ),
+        QueryTool::arc(orchestrator, get_api_key, model),
+    ]
 }
 
 /// Resolve an allowlist of tool names against the registry.

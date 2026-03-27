@@ -794,5 +794,7 @@ fn event_type(e: &AgentEvent) -> &'static str {
         AgentEvent::ToolExecutionStart { .. } => "tool_execution_start",
         AgentEvent::ToolExecutionUpdate { .. } => "tool_execution_update",
         AgentEvent::ToolExecutionEnd { .. } => "tool_execution_end",
+        AgentEvent::ThreadStart { .. } => "thread_start",
+        AgentEvent::ThreadEnd { .. } => "thread_end",
     }
 }
