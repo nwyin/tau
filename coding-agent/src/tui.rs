@@ -122,8 +122,8 @@ struct App {
     abort_count: Arc<AtomicU8>,
     should_quit: bool,
     debug: bool,
-    /// Nesting depth of active threads (for indenting sub-tool calls).
-    thread_depth: usize,
+    /// Number of active threads (for indenting sub-tool calls).
+    active_thread_count: usize,
 }
 
 impl App {
@@ -156,7 +156,7 @@ impl App {
             abort_count: Arc::new(AtomicU8::new(0)),
             should_quit: false,
             debug: false,
-            thread_depth: 0,
+            active_thread_count: 0,
         }
     }
 
@@ -1359,7 +1359,11 @@ fn handle_agent_event(app: &mut App, event: &AgentEvent) {
             app.active_tools.push(tool_name.clone());
 
             let detail = extract_tool_detail(tool_name, args);
-            let indent = "  ".repeat(app.thread_depth);
+            let indent = if app.active_thread_count > 0 {
+                "  "
+            } else {
+                ""
+            };
             let mut spans = vec![
                 Span::raw(indent),
                 Span::styled("[tool: ", Style::default().fg(Color::Blue)),
@@ -1405,7 +1409,11 @@ fn handle_agent_event(app: &mut App, event: &AgentEvent) {
             } else {
                 task.clone()
             };
-            let indent = "  ".repeat(app.thread_depth);
+            let indent = if app.active_thread_count > 0 {
+                "  "
+            } else {
+                ""
+            };
             app.push_line(Line::from(vec![
                 Span::raw(indent),
                 Span::styled("[thread: ", Style::default().fg(Color::Blue)),
@@ -1419,7 +1427,7 @@ fn handle_agent_event(app: &mut App, event: &AgentEvent) {
                 Span::styled("] ", Style::default().fg(Color::Blue)),
                 Span::styled(task_preview, Style::default().fg(Color::DarkGray)),
             ]));
-            app.thread_depth += 1;
+            app.active_thread_count += 1;
         }
         AgentEvent::ThreadEnd {
             alias,
@@ -1435,8 +1443,12 @@ fn handle_agent_event(app: &mut App, event: &AgentEvent) {
                 agent::thread::ThreadOutcome::Escalated { .. } => (Color::Yellow, "!"),
                 agent::thread::ThreadOutcome::TimedOut => (Color::Red, "⏱"),
             };
-            app.thread_depth = app.thread_depth.saturating_sub(1);
-            let indent = "  ".repeat(app.thread_depth);
+            app.active_thread_count = app.active_thread_count.saturating_sub(1);
+            let indent = if app.active_thread_count > 0 {
+                "  "
+            } else {
+                ""
+            };
             app.push_line(Line::from(vec![
                 Span::raw(indent),
                 Span::styled(
