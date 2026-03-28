@@ -51,7 +51,6 @@ pub async fn run(agent: Arc<Agent>, config: TuiRunConfig) -> Result<()> {
     crossterm::execute!(
         io::stderr(),
         EnterAlternateScreen,
-        crossterm::event::EnableMouseCapture,
         crossterm::event::EnableBracketedPaste
     )?;
     let backend = ratatui::backend::CrosstermBackend::new(io::stderr());
@@ -64,7 +63,6 @@ pub async fn run(agent: Arc<Agent>, config: TuiRunConfig) -> Result<()> {
         let _ = crossterm::execute!(
             io::stderr(),
             crossterm::event::DisableBracketedPaste,
-            crossterm::event::DisableMouseCapture,
             LeaveAlternateScreen
         );
         original_hook(info);
@@ -77,7 +75,6 @@ pub async fn run(agent: Arc<Agent>, config: TuiRunConfig) -> Result<()> {
     crossterm::execute!(
         io::stderr(),
         crossterm::event::DisableBracketedPaste,
-        crossterm::event::DisableMouseCapture,
         LeaveAlternateScreen
     )?;
 
