@@ -54,10 +54,30 @@ query("Based on the project structure, should we add the feature to the existing
 
 ## Thread tool capabilities
 
-Threads get a restricted tool set (default: `file_read`, `grep`, `glob`). Override with the `tools` parameter:
-- Read-only exploration: `["file_read", "grep", "glob"]`
-- Implementation: `["file_read", "file_edit", "file_write", "bash"]`
-- Full access: `["bash", "file_read", "file_edit", "file_write", "glob", "grep", "web_fetch", "web_search"]`
+Threads accept capability aliases or raw tool names in the `tools` parameter:
+- `read` → file_read, grep, glob (default)
+- `write` → file_read, file_edit, file_write
+- `terminal` → bash
+- `web` → web_fetch, web_search
+- `full` → all tools
+
+Mix freely: `tools=["read", "bash"]` gives file_read + grep + glob + bash.
+Raw tool names still work: `tools=["file_read", "grep"]`.
+
+## Model slots
+
+Threads and queries accept model slot names in the `model` parameter:
+- `search` — fast/cheap model for lookups and classification (query default)
+- `subagent` — thread execution model (thread default)
+- `reasoning` — for deep analysis tasks
+- Or pass a raw model ID like `"claude-haiku-4-5"`
+
+Configure slots in `~/.tau/config.toml`:
+```toml
+[models]
+search = "claude-haiku-4-5"
+reasoning = "claude-opus-4-6"
+```
 
 ## Shared documents
 

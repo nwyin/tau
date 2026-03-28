@@ -182,6 +182,7 @@ pub async fn build_agent(build_config: AgentBuildConfig) -> Result<BuiltAgent> {
         Some(get_api_key.clone()),
         model.clone(),
         &config.edit_mode,
+        config.models.clone(),
     );
     tool_list.extend(orch_tools);
 

@@ -91,6 +91,7 @@ pub fn orchestration_tools(
     get_api_key: Option<agent::types::GetApiKeyFn>,
     model: ai::types::Model,
     edit_mode: &str,
+    model_slots: crate::config::ModelSlots,
 ) -> (Vec<Arc<dyn AgentTool>>, thread::EventForwarderCell) {
     let cell = thread::event_forwarder_cell();
     let tools = vec![
@@ -100,8 +101,9 @@ pub fn orchestration_tools(
             model.clone(),
             edit_mode.to_string(),
             cell.clone(),
+            model_slots.clone(),
         ),
-        QueryTool::arc(orchestrator.clone(), get_api_key, model),
+        QueryTool::arc(orchestrator.clone(), get_api_key, model, model_slots),
         DocumentTool::arc(orchestrator),
     ];
     (tools, cell)

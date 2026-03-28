@@ -16,6 +16,7 @@ use ai::types::{Model, UserBlock};
 use serde_json::{json, Value};
 use tokio_util::sync::CancellationToken;
 
+use crate::config::ModelSlots;
 use crate::tools;
 
 const THREAD_IDENTITY: &str = include_str!("../../prompts/thread_identity.md");
@@ -37,6 +38,7 @@ pub struct ThreadTool {
     default_model: Model,
     edit_mode: String,
     event_forwarder: EventForwarderCell,
+    model_slots: ModelSlots,
 }
 
 impl ThreadTool {
@@ -46,6 +48,7 @@ impl ThreadTool {
         default_model: Model,
         edit_mode: String,
         event_forwarder: EventForwarderCell,
+        model_slots: ModelSlots,
     ) -> Self {
         Self {
             orchestrator,
@@ -53,6 +56,7 @@ impl ThreadTool {
             default_model,
             edit_mode,
             event_forwarder,
+            model_slots,
         }
     }
 
@@ -62,6 +66,7 @@ impl ThreadTool {
         default_model: Model,
         edit_mode: String,
         event_forwarder: EventForwarderCell,
+        model_slots: ModelSlots,
     ) -> Arc<dyn AgentTool> {
         Arc::new(Self::new(
             orchestrator,
@@ -69,6 +74,7 @@ impl ThreadTool {
             default_model,
             edit_mode,
             event_forwarder,
+            model_slots,
         ))
     }
 }
@@ -107,11 +113,11 @@ impl AgentTool for ThreadTool {
                     "tools": {
                         "type": "array",
                         "items": { "type": "string" },
-                        "description": "Tool names this thread can use. Defaults to [\"file_read\", \"grep\", \"glob\"]. Available: bash, file_read, file_edit, file_write, glob, grep, web_fetch, web_search. Note: document, complete, abort, and escalate are always available regardless of this list."
+                        "description": "Capabilities or tool names. Capabilities: read (file_read+grep+glob), write (file_read+file_edit+file_write), terminal (bash), web (web_fetch+web_search), full (all). Raw tool names also accepted. Defaults to read. document/complete/abort/escalate are always available."
                     },
                     "model": {
                         "type": "string",
-                        "description": "Model override (e.g. 'claude-haiku-4-5' for cheap exploration)."
+                        "description": "Model slot name (search, subagent, reasoning) or raw model ID. Defaults to subagent slot."
                     },
                     "episodes": {
                         "type": "array",
@@ -140,6 +146,7 @@ impl AgentTool for ThreadTool {
         let default_model = self.default_model.clone();
         let edit_mode = self.edit_mode.clone();
         let event_forwarder = self.event_forwarder.clone();
+        let model_slots = self.model_slots.clone();
 
         Box::pin(async move {
             // Parse parameters
@@ -157,7 +164,7 @@ impl AgentTool for ThreadTool {
             // to avoid "unknown tool" warnings.
             const AUTO_INJECTED: &[&str] = &["document", "complete", "abort", "escalate"];
 
-            let tool_names: Vec<String> = params
+            let raw_tool_names: Vec<String> = params
                 .get("tools")
                 .and_then(|v| v.as_array())
                 .map(|arr| {
@@ -167,6 +174,7 @@ impl AgentTool for ThreadTool {
                         .collect()
                 })
                 .unwrap_or_else(|| DEFAULT_THREAD_TOOLS.iter().map(|s| s.to_string()).collect());
+            let tool_names = expand_capabilities(&raw_tool_names);
             let model_override = params
                 .get("model")
                 .and_then(|v| v.as_str())
@@ -185,16 +193,26 @@ impl AgentTool for ThreadTool {
                 .and_then(|v| v.as_u64())
                 .unwrap_or(120);
 
-            // Resolve model
-            let model = if let Some(ref model_id) = model_override {
-                ai::models::find_model(model_id)
+            // Resolve model: slot name → slot config → find_model, or raw ID → find_model
+            let default_model_id = &default_model.id;
+            let model = if let Some(ref model_param) = model_override {
+                let resolved_id = if ModelSlots::is_slot(model_param) {
+                    model_slots.resolve(model_param, default_model_id)
+                } else {
+                    model_param.clone()
+                };
+                ai::models::find_model(&resolved_id)
                     .map(|m| (*m).clone())
                     .unwrap_or_else(|| {
-                        eprintln!("[thread] model '{}' not found, using default", model_id);
+                        eprintln!("[thread] model '{}' not found, using default", resolved_id);
                         default_model.clone()
                     })
             } else {
-                default_model.clone()
+                // No override — use subagent slot
+                let subagent_id = model_slots.resolve("subagent", default_model_id);
+                ai::models::find_model(&subagent_id)
+                    .map(|m| (*m).clone())
+                    .unwrap_or(default_model.clone())
             };
 
             // Generate thread ID
@@ -413,4 +431,37 @@ fn build_thread_system_prompt(tool_names: &[String], cwd: &str) -> String {
     parts.push(format!("# Environment\nCurrent working directory: {}", cwd));
 
     parts.join("\n\n")
+}
+
+/// Expand capability aliases into concrete tool names.
+///
+/// Capabilities: read, write, terminal, web, full.
+/// Raw tool names pass through unchanged. Duplicates are removed.
+fn expand_capabilities(names: &[String]) -> Vec<String> {
+    let mut tools = Vec::new();
+    for name in names {
+        match name.as_str() {
+            "read" => tools.extend(["file_read", "grep", "glob"].map(String::from)),
+            "write" => tools.extend(["file_read", "file_edit", "file_write"].map(String::from)),
+            "terminal" => tools.push("bash".to_string()),
+            "web" => tools.extend(["web_fetch", "web_search"].map(String::from)),
+            "full" => tools.extend(
+                [
+                    "bash",
+                    "file_read",
+                    "file_edit",
+                    "file_write",
+                    "glob",
+                    "grep",
+                    "web_fetch",
+                    "web_search",
+                ]
+                .map(String::from),
+            ),
+            other => tools.push(other.to_string()),
+        }
+    }
+    tools.sort();
+    tools.dedup();
+    tools
 }

@@ -13,10 +13,13 @@ use futures::StreamExt;
 use serde_json::{json, Value};
 use tokio_util::sync::CancellationToken;
 
+use crate::config::ModelSlots;
+
 pub struct QueryTool {
     orchestrator: Arc<OrchestratorState>,
     get_api_key: Option<GetApiKeyFn>,
     default_model: Model,
+    model_slots: ModelSlots,
 }
 
 impl QueryTool {
@@ -24,11 +27,13 @@ impl QueryTool {
         orchestrator: Arc<OrchestratorState>,
         get_api_key: Option<GetApiKeyFn>,
         default_model: Model,
+        model_slots: ModelSlots,
     ) -> Self {
         Self {
             orchestrator,
             get_api_key,
             default_model,
+            model_slots,
         }
     }
 
@@ -36,8 +41,14 @@ impl QueryTool {
         orchestrator: Arc<OrchestratorState>,
         get_api_key: Option<GetApiKeyFn>,
         default_model: Model,
+        model_slots: ModelSlots,
     ) -> Arc<dyn AgentTool> {
-        Arc::new(Self::new(orchestrator, get_api_key, default_model))
+        Arc::new(Self::new(
+            orchestrator,
+            get_api_key,
+            default_model,
+            model_slots,
+        ))
     }
 }
 
@@ -72,7 +83,7 @@ impl AgentTool for QueryTool {
                     },
                     "model": {
                         "type": "string",
-                        "description": "Model override (e.g. 'claude-haiku-4-5' for cheap queries)."
+                        "description": "Model slot name (search, reasoning) or raw model ID. Defaults to search slot."
                     }
                 },
                 "required": ["prompt"]
@@ -90,6 +101,7 @@ impl AgentTool for QueryTool {
         let orchestrator = self.orchestrator.clone();
         let get_api_key = self.get_api_key.clone();
         let default_model = self.default_model.clone();
+        let model_slots = self.model_slots.clone();
 
         Box::pin(async move {
             let prompt = params
@@ -107,13 +119,23 @@ impl AgentTool for QueryTool {
                 .and_then(|v| v.as_str())
                 .map(String::from);
 
-            // Resolve model
-            let model = if let Some(ref model_id) = model_override {
-                ai::models::find_model(model_id)
+            // Resolve model: slot name → slot config → find_model, or raw ID → find_model
+            let default_model_id = &default_model.id;
+            let model = if let Some(ref model_param) = model_override {
+                let resolved_id = if ModelSlots::is_slot(model_param) {
+                    model_slots.resolve(model_param, default_model_id)
+                } else {
+                    model_param.clone()
+                };
+                ai::models::find_model(&resolved_id)
                     .map(|m| (*m).clone())
                     .unwrap_or(default_model)
             } else {
-                default_model
+                // No override — use search slot
+                let search_id = model_slots.resolve("search", default_model_id);
+                ai::models::find_model(&search_id)
+                    .map(|m| (*m).clone())
+                    .unwrap_or(default_model)
             };
 
             // Resolve API key
