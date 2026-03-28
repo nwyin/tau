@@ -6,6 +6,7 @@ pub mod file_write;
 pub mod glob;
 pub mod grep;
 pub mod hashline;
+pub mod py_repl;
 pub mod query;
 pub mod subagent;
 pub mod thread;
@@ -23,6 +24,7 @@ use crate::config::EditMode;
 pub use bash::BashTool;
 pub use document::DocumentTool;
 pub use file_edit::FileEditTool;
+// py_repl re-exported but not in static registry (needs runtime state)
 pub use file_read::FileReadTool;
 pub use file_write::FileWriteTool;
 pub use glob::GlobTool;
@@ -94,18 +96,32 @@ pub fn orchestration_tools(
     model_slots: crate::config::ModelSlots,
 ) -> (Vec<Arc<dyn AgentTool>>, thread::EventForwarderCell) {
     let cell = thread::event_forwarder_cell();
-    let tools = vec![
-        ThreadTool::arc(
-            orchestrator.clone(),
-            get_api_key.clone(),
-            model.clone(),
-            edit_mode.to_string(),
-            cell.clone(),
-            model_slots.clone(),
-        ),
-        QueryTool::arc(orchestrator.clone(), get_api_key, model, model_slots),
-        DocumentTool::arc(orchestrator),
-    ];
+    let thread_tool = ThreadTool::arc(
+        orchestrator.clone(),
+        get_api_key.clone(),
+        model.clone(),
+        edit_mode.to_string(),
+        cell.clone(),
+        model_slots.clone(),
+    );
+    let query_tool = QueryTool::arc(
+        orchestrator.clone(),
+        get_api_key.clone(),
+        model.clone(),
+        model_slots.clone(),
+    );
+    let document_tool = DocumentTool::arc(orchestrator.clone());
+    let py_repl_tool = py_repl::PyReplTool::arc(
+        orchestrator,
+        get_api_key,
+        model,
+        edit_mode.to_string(),
+        model_slots,
+        thread_tool.clone(),
+        query_tool.clone(),
+        document_tool.clone(),
+    );
+    let tools = vec![thread_tool, query_tool, document_tool, py_repl_tool];
     (tools, cell)
 }
 

@@ -308,6 +308,16 @@ async fn main() -> Result<()> {
                             None => Some(op.to_string()),
                         }
                     }
+                    "py_repl" => args.get("code").and_then(|v| v.as_str()).map(|s| {
+                        let line = s.lines().next().unwrap_or(s);
+                        if line.len() > 60 {
+                            format!("{}...", &line[..57])
+                        } else if s.lines().count() > 1 {
+                            format!("{}...", line)
+                        } else {
+                            line.to_string()
+                        }
+                    }),
                     _ => None,
                 };
                 match detail {

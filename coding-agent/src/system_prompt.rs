@@ -120,6 +120,15 @@ pub fn build_system_prompt(tools: &[Arc<dyn AgentTool>], skills: &[Skill], cwd: 
                 .to_string(),
         );
     }
+    if has("py_repl") {
+        guidelines.push(
+            "Use py_repl for programmatic orchestration: complex control flow, loops, \
+             data aggregation, and parallel fan-out/gather patterns. The Python namespace \
+             persists across calls. Access tau tools via tau.tool(), threads via tau.thread(), \
+             queries via tau.query(), and concurrent execution via tau.parallel()."
+                .to_string(),
+        );
+    }
     if has("todo") {
         guidelines.push(
             "Use todo to track progress on tasks with 3+ steps. Send the full todo list \
