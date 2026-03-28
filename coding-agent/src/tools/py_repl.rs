@@ -398,7 +398,8 @@ struct RpcDispatcher {
 
 impl RpcDispatcher {
     async fn dispatch(&self, method: &str, params: &Value) -> Result<Value, String> {
-        match method {
+        eprintln!("[py_repl:rpc] {} {}", method, params);
+        let result = match method {
             "tool" => self.dispatch_tool(params).await,
             "thread" => self.dispatch_to_tool(&self.thread_tool, params).await,
             "query" => self.dispatch_to_tool(&self.query_tool, params).await,
@@ -411,7 +412,12 @@ impl RpcDispatcher {
                 Ok(Value::Null)
             }
             _ => Err(format!("unknown RPC method: {}", method)),
+        };
+        match &result {
+            Ok(_) => eprintln!("[py_repl:rpc] {} completed", method),
+            Err(e) => eprintln!("[py_repl:rpc] {} failed: {}", method, e),
         }
+        result
     }
 
     async fn dispatch_tool(&self, params: &Value) -> Result<Value, String> {
