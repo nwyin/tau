@@ -202,6 +202,17 @@ impl Agent {
     // Subscriptions
     // -----------------------------------------------------------------------
 
+    /// Create an event forwarder closure that emits events to this agent's listeners.
+    /// Useful for forwarding inner agent events (e.g., from threads) to the parent.
+    pub fn event_forwarder(&self) -> Arc<dyn Fn(AgentEvent) + Send + Sync> {
+        let listeners = Arc::clone(&self.listeners);
+        Arc::new(move |event| {
+            for listener in listeners.lock().unwrap().iter() {
+                listener(&event);
+            }
+        })
+    }
+
     /// Subscribe to agent events. Returns an unsubscribe closure.
     pub fn subscribe(&self, f: impl Fn(&AgentEvent) + Send + Sync + 'static) -> impl FnOnce() {
         let mut listeners = self.listeners.lock().unwrap();

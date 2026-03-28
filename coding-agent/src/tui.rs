@@ -51,7 +51,8 @@ pub async fn run(agent: Arc<Agent>, config: TuiRunConfig) -> Result<()> {
     crossterm::execute!(
         io::stderr(),
         EnterAlternateScreen,
-        crossterm::event::EnableMouseCapture,
+        // Mouse capture disabled — breaks text selection for copy/paste.
+        // Scrolling via PageUp/PageDown still works.
         crossterm::event::EnableBracketedPaste
     )?;
     let backend = ratatui::backend::CrosstermBackend::new(io::stderr());
@@ -64,7 +65,6 @@ pub async fn run(agent: Arc<Agent>, config: TuiRunConfig) -> Result<()> {
         let _ = crossterm::execute!(
             io::stderr(),
             crossterm::event::DisableBracketedPaste,
-            crossterm::event::DisableMouseCapture,
             LeaveAlternateScreen
         );
         original_hook(info);
@@ -77,7 +77,6 @@ pub async fn run(agent: Arc<Agent>, config: TuiRunConfig) -> Result<()> {
     crossterm::execute!(
         io::stderr(),
         crossterm::event::DisableBracketedPaste,
-        crossterm::event::DisableMouseCapture,
         LeaveAlternateScreen
     )?;
 
@@ -123,6 +122,8 @@ struct App {
     abort_count: Arc<AtomicU8>,
     should_quit: bool,
     debug: bool,
+    /// Number of active threads (for indenting sub-tool calls).
+    active_thread_count: usize,
 }
 
 impl App {
@@ -155,6 +156,7 @@ impl App {
             abort_count: Arc::new(AtomicU8::new(0)),
             should_quit: false,
             debug: false,
+            active_thread_count: 0,
         }
     }
 
@@ -889,12 +891,22 @@ async fn run_app(
 // ---------------------------------------------------------------------------
 
 fn ui(frame: &mut ratatui::Frame, app: &App, perm_display: &Option<String>, perm_count: usize) {
-    let perm_height = if perm_display.is_some() { 4 } else { 1 };
+    let area_width = frame.area().width as usize;
+    let input_height: u16 = if perm_display.is_some() {
+        4
+    } else if area_width > 0 {
+        // Calculate wrapped height for input line
+        let prompt_len = app.model_id.len() + 2; // "model> " or "model  "
+        let total_len = prompt_len + app.input.len();
+        std::cmp::max(1, (total_len as u16).div_ceil(area_width as u16))
+    } else {
+        1
+    };
     let chunks = Layout::vertical([
-        Constraint::Min(1),              // output area
-        Constraint::Length(perm_height), // input line or permission modal
-        Constraint::Length(1),           // separator
-        Constraint::Length(1),           // status bar
+        Constraint::Min(1),               // output area
+        Constraint::Length(input_height), // input line (wraps for long input)
+        Constraint::Length(1),            // separator
+        Constraint::Length(1),            // status bar
     ])
     .split(frame.area());
 
@@ -985,12 +997,17 @@ fn ui(frame: &mut ratatui::Frame, app: &App, perm_display: &Option<String>, perm
             Span::styled(&prompt_text, Style::default().fg(Color::Cyan)),
             Span::raw(&app.input),
         ]);
-        frame.render_widget(Paragraph::new(input_line), chunks[1]);
+        frame.render_widget(
+            Paragraph::new(input_line).wrap(Wrap { trim: false }),
+            chunks[1],
+        );
 
-        // Set cursor only when not busy and no permission prompt
+        // Set cursor position accounting for line wrapping
         if !app.is_busy {
-            let cursor_x = chunks[1].x + prompt_text.len() as u16 + app.cursor_pos as u16;
-            let cursor_y = chunks[1].y;
+            let total_offset = prompt_text.len() as u16 + app.cursor_pos as u16;
+            let w = chunks[1].width;
+            let cursor_x = chunks[1].x + (total_offset % w);
+            let cursor_y = chunks[1].y + (total_offset / w);
             frame.set_cursor_position((cursor_x, cursor_y));
         }
     }
@@ -1342,7 +1359,13 @@ fn handle_agent_event(app: &mut App, event: &AgentEvent) {
             app.active_tools.push(tool_name.clone());
 
             let detail = extract_tool_detail(tool_name, args);
+            let indent = if app.active_thread_count > 0 {
+                "  "
+            } else {
+                ""
+            };
             let mut spans = vec![
+                Span::raw(indent),
                 Span::styled("[tool: ", Style::default().fg(Color::Blue)),
                 Span::styled(
                     tool_name.to_string(),
@@ -1377,6 +1400,54 @@ fn handle_agent_event(app: &mut App, event: &AgentEvent) {
             app.tokens_in += am.usage.input;
             app.tokens_out += am.usage.output;
             app.total_cost += am.usage.cost.total;
+        }
+        AgentEvent::ThreadStart {
+            alias, task, model, ..
+        } => {
+            let task_preview = if task.len() > 60 {
+                format!("{}...", &task[..57])
+            } else {
+                task.clone()
+            };
+            app.active_thread_count += 1;
+            app.push_line(Line::from(vec![
+                Span::styled("[thread: ", Style::default().fg(Color::Blue)),
+                Span::styled(
+                    alias.to_string(),
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(format!(" @{}", model), Style::default().fg(Color::DarkGray)),
+                Span::styled("] ", Style::default().fg(Color::Blue)),
+                Span::styled(task_preview, Style::default().fg(Color::DarkGray)),
+            ]));
+        }
+        AgentEvent::ThreadEnd {
+            alias,
+            outcome,
+            duration_ms,
+            ..
+        } => {
+            let secs = *duration_ms as f64 / 1000.0;
+            let status = outcome.status_str();
+            let (color, symbol) = match outcome {
+                agent::thread::ThreadOutcome::Completed { .. } => (Color::Green, "✓"),
+                agent::thread::ThreadOutcome::Aborted { .. } => (Color::Red, "✗"),
+                agent::thread::ThreadOutcome::Escalated { .. } => (Color::Yellow, "!"),
+                agent::thread::ThreadOutcome::TimedOut => (Color::Red, "⏱"),
+            };
+            app.active_thread_count = app.active_thread_count.saturating_sub(1);
+            app.push_line(Line::from(vec![
+                Span::styled(
+                    format!("[thread: {}] ", alias),
+                    Style::default().fg(Color::Blue),
+                ),
+                Span::styled(
+                    format!("{} {} ({:.1}s)", symbol, status, secs),
+                    Style::default().fg(color),
+                ),
+            ]));
         }
         AgentEvent::AgentEnd { .. } => {
             app.flush_streaming();
@@ -1425,6 +1496,52 @@ fn extract_tool_detail(tool_name: &str, args: &serde_json::Value) -> Option<Stri
                 .count();
             format!("[{}/{}]", done, total)
         }),
+        "thread" => {
+            let alias = args.get("alias").and_then(|v| v.as_str()).unwrap_or("?");
+            let task = args.get("task").and_then(|v| v.as_str()).unwrap_or("");
+            let task_preview = if task.len() > 50 {
+                format!("{}...", &task[..47])
+            } else {
+                task.to_string()
+            };
+            Some(format!("{} — {}", alias, task_preview))
+        }
+        "query" => args.get("prompt").and_then(|v| v.as_str()).map(|s| {
+            if s.len() > 60 {
+                format!("{}...", &s[..57])
+            } else {
+                s.to_string()
+            }
+        }),
+        "document" => {
+            let op = args
+                .get("operation")
+                .and_then(|v| v.as_str())
+                .unwrap_or("?");
+            let name = args.get("name").and_then(|v| v.as_str());
+            match name {
+                Some(n) => Some(format!("{} '{}'", op, n)),
+                None => Some(op.to_string()),
+            }
+        }
+        "py_repl" => args.get("code").and_then(|v| v.as_str()).map(|s| {
+            let line = s.lines().next().unwrap_or(s);
+            if line.len() > 60 {
+                format!("{}...", &line[..57])
+            } else if s.lines().count() > 1 {
+                format!("{}...", line)
+            } else {
+                line.to_string()
+            }
+        }),
+        "log" => args.get("message").and_then(|v| v.as_str()).map(|s| {
+            if s.len() > 60 {
+                format!("{}...", &s[..57])
+            } else {
+                s.to_string()
+            }
+        }),
+        "from_id" => args.get("alias").and_then(|v| v.as_str()).map(String::from),
         _ => None,
     }
 }

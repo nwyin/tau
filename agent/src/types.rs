@@ -205,6 +205,20 @@ pub enum AgentEvent {
         message: AgentMessage,
     },
 
+    // Thread lifecycle
+    ThreadStart {
+        thread_id: String,
+        alias: String,
+        task: String,
+        model: String,
+    },
+    ThreadEnd {
+        thread_id: String,
+        alias: String,
+        outcome: crate::thread::ThreadOutcome,
+        duration_ms: u64,
+    },
+
     // Tool execution lifecycle
     ToolExecutionStart {
         tool_call_id: String,

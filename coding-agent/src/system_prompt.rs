@@ -10,6 +10,7 @@ const SYSTEM: &str = include_str!("../prompts/system.md");
 const DOING_TASKS: &str = include_str!("../prompts/doing_tasks.md");
 const EXECUTING_WITH_CARE: &str = include_str!("../prompts/executing_with_care.md");
 const TONE_AND_OUTPUT: &str = include_str!("../prompts/tone_and_output.md");
+const ORCHESTRATION: &str = include_str!("../prompts/orchestration.md");
 
 /// Truncate a description to the first sentence (up to the first '.').
 fn first_sentence(desc: &str) -> &str {
@@ -112,6 +113,22 @@ pub fn build_system_prompt(tools: &[Arc<dyn AgentTool>], skills: &[Skill], cwd: 
                 .to_string(),
         );
     }
+    if has("thread") {
+        guidelines.push(
+            "Use thread and query for orchestration. See the dedicated orchestration section \
+             below for patterns and guidance. Prefer thread over subagent."
+                .to_string(),
+        );
+    }
+    if has("py_repl") {
+        guidelines.push(
+            "Use py_repl for programmatic orchestration: complex control flow, loops, \
+             data aggregation, and parallel fan-out/gather patterns. The Python namespace \
+             persists across calls. Access tau tools via tau.tool(), threads via tau.thread(), \
+             queries via tau.query(), and concurrent execution via tau.parallel()."
+                .to_string(),
+        );
+    }
     if has("todo") {
         guidelines.push(
             "Use todo to track progress on tasks with 3+ steps. Send the full todo list \
@@ -137,10 +154,15 @@ pub fn build_system_prompt(tools: &[Arc<dyn AgentTool>], skills: &[Skill], cwd: 
         parts.push(section);
     }
 
-    // ── 7. Tone and output (static) ──
+    // ── 7. Orchestration (conditional on thread tool) ──
+    if has("thread") {
+        parts.push(ORCHESTRATION.to_string());
+    }
+
+    // ── 8. Tone and output (static) ──
     parts.push(TONE_AND_OUTPUT.to_string());
 
-    // ── 8. Skills (dynamic — progressive disclosure) ──
+    // ── 9. Skills (dynamic — progressive disclosure) ──
     if !skills.is_empty() && has("file_read") {
         let mut section = "# Available skills\n\
              Skills are invoked with `/skill:<name> [args]`. Do NOT load skills automatically; \
@@ -157,7 +179,7 @@ pub fn build_system_prompt(tools: &[Arc<dyn AgentTool>], skills: &[Skill], cwd: 
         parts.push(section);
     }
 
-    // ── 9. Environment (dynamic) ──
+    // ── 10. Environment (dynamic) ──
     parts.push(format!("# Environment\nCurrent working directory: {}", cwd));
 
     parts.join("\n\n")
