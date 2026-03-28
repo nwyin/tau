@@ -114,6 +114,7 @@ impl PyReplTool {
         std::fs::write(&path, PY_KERNEL_SOURCE)?;
 
         let mut child = Command::new("python3")
+            .arg("-u") // unbuffered stdout/stderr — critical for pipe communication
             .arg(&path)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())

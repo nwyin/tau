@@ -21,6 +21,13 @@ import sys
 import traceback
 
 
+# Keep references to the real stdin/stdout before any redirects.
+# exec_cell uses contextlib.redirect_stdout which replaces sys.stdout,
+# but RPC must always go through the actual pipe to the host.
+_real_stdin = sys.stdin
+_real_stdout = sys.stdout
+
+
 class TauProxy:
     """The `tau` object available in the kernel namespace.
 
@@ -39,11 +46,11 @@ class TauProxy:
         self._rpc_counter += 1
         rpc_id = f"rpc-{self._rpc_counter}"
         msg = {"type": "rpc", "id": rpc_id, "method": method, "params": params}
-        sys.stdout.write(json.dumps(msg, default=str) + "\n")
-        sys.stdout.flush()
+        _real_stdout.write(json.dumps(msg, default=str) + "\n")
+        _real_stdout.flush()
         # Block reading stdin until we get the matching rpc_result
         while True:
-            line = sys.stdin.readline()
+            line = _real_stdin.readline()
             if not line:
                 raise RuntimeError("Host closed connection")
             resp = json.loads(line)
