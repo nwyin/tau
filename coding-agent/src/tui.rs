@@ -1409,13 +1409,8 @@ fn handle_agent_event(app: &mut App, event: &AgentEvent) {
             } else {
                 task.clone()
             };
-            let indent = if app.active_thread_count > 0 {
-                "  "
-            } else {
-                ""
-            };
+            app.active_thread_count += 1;
             app.push_line(Line::from(vec![
-                Span::raw(indent),
                 Span::styled("[thread: ", Style::default().fg(Color::Blue)),
                 Span::styled(
                     alias.to_string(),
@@ -1427,7 +1422,6 @@ fn handle_agent_event(app: &mut App, event: &AgentEvent) {
                 Span::styled("] ", Style::default().fg(Color::Blue)),
                 Span::styled(task_preview, Style::default().fg(Color::DarkGray)),
             ]));
-            app.active_thread_count += 1;
         }
         AgentEvent::ThreadEnd {
             alias,
@@ -1444,13 +1438,7 @@ fn handle_agent_event(app: &mut App, event: &AgentEvent) {
                 agent::thread::ThreadOutcome::TimedOut => (Color::Red, "⏱"),
             };
             app.active_thread_count = app.active_thread_count.saturating_sub(1);
-            let indent = if app.active_thread_count > 0 {
-                "  "
-            } else {
-                ""
-            };
             app.push_line(Line::from(vec![
-                Span::raw(indent),
                 Span::styled(
                     format!("[thread: {}] ", alias),
                     Style::default().fg(Color::Blue),
