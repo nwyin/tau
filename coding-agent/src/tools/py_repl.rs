@@ -243,6 +243,12 @@ impl AgentTool for PyReplTool {
 
             let kp = kernel_guard.as_mut().unwrap();
 
+            debug_log(&format!(
+                "exec cell {} code={}",
+                cell_id,
+                &code[..code.len().min(100)]
+            ));
+
             // Send exec message
             let exec_msg = json!({
                 "type": "exec",
@@ -294,6 +300,7 @@ impl AgentTool for PyReplTool {
                         }));
                     }
                     Ok(_) => {
+                        debug_log(&format!("kernel stdout: {}", line_buf.trim()));
                         let parsed: Value = match serde_json::from_str(line_buf.trim()) {
                             Ok(v) => v,
                             Err(_) => continue,
@@ -398,7 +405,7 @@ struct RpcDispatcher {
 
 impl RpcDispatcher {
     async fn dispatch(&self, method: &str, params: &Value) -> Result<Value, String> {
-        eprintln!("[py_repl:rpc] {} {}", method, params);
+        debug_log(&format!("rpc dispatch: {} {}", method, params));
         let result = match method {
             "tool" => self.dispatch_tool(params).await,
             "thread" => self.dispatch_to_tool(&self.thread_tool, params).await,
@@ -414,8 +421,8 @@ impl RpcDispatcher {
             _ => Err(format!("unknown RPC method: {}", method)),
         };
         match &result {
-            Ok(_) => eprintln!("[py_repl:rpc] {} completed", method),
-            Err(e) => eprintln!("[py_repl:rpc] {} failed: {}", method, e),
+            Ok(v) => debug_log(&format!("rpc done: {} => {}", method, truncate_for_log(v))),
+            Err(e) => debug_log(&format!("rpc fail: {} => {}", method, e)),
         }
         result
     }
@@ -602,4 +609,27 @@ fn truncate_output(text: &str) -> String {
 
     // Over byte limit but under line limit — truncate bytes
     text[..MAX_OUTPUT_BYTES].to_string() + "\n[... truncated ...]"
+}
+
+/// Debug log to file (visible even in TUI mode).
+fn debug_log(msg: &str) {
+    use std::io::Write;
+    let path = std::env::temp_dir().join("tau_py_repl_debug.log");
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
+        let _ = writeln!(f, "[{:?}] {}", std::time::SystemTime::now(), msg);
+    }
+}
+
+/// Truncate a value for logging.
+fn truncate_for_log(v: &Value) -> String {
+    let s = v.to_string();
+    if s.len() > 200 {
+        format!("{}...", &s[..197])
+    } else {
+        s
+    }
 }
