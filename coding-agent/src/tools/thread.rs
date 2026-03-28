@@ -254,6 +254,8 @@ impl AgentTool for ThreadTool {
             thread_tools.push(AbortTool::arc(outcome_signal.clone()));
             thread_tools.push(EscalateTool::arc(outcome_signal));
             thread_tools.push(tools::DocumentTool::arc(orchestrator.clone()));
+            thread_tools.push(tools::LogTool::arc(orchestrator.clone()));
+            thread_tools.push(tools::FromIdTool::arc(orchestrator.clone()));
 
             // Capture model ID before model is moved into Agent
             let resolved_model_id = model.id.clone();

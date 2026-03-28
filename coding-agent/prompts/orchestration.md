@@ -52,6 +52,17 @@ thread("implementer", "Add rate limiting to auth", tools=["file_read","file_edit
 query("Based on the project structure, should we add the feature to the existing auth module or create a new service?")
 ```
 
+**Logging:** Record progress notes between orchestration steps.
+```
+log(message="Scanned 3 modules, found 5 issues. Proceeding to fix phase.")
+```
+
+**Retrieve prior results:** Look up a completed thread/query episode by alias.
+```
+from_id(alias="scanner")
+// Returns the compact trace of the scanner thread's last run
+```
+
 ## Thread tool capabilities
 
 Threads accept capability aliases or raw tool names in the `tools` parameter:

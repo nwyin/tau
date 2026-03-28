@@ -3,9 +3,11 @@ pub mod document;
 pub mod file_edit;
 pub mod file_read;
 pub mod file_write;
+pub mod from_id;
 pub mod glob;
 pub mod grep;
 pub mod hashline;
+pub mod log;
 pub mod py_repl;
 pub mod query;
 pub mod subagent;
@@ -24,11 +26,12 @@ use crate::config::EditMode;
 pub use bash::BashTool;
 pub use document::DocumentTool;
 pub use file_edit::FileEditTool;
-// py_repl re-exported but not in static registry (needs runtime state)
 pub use file_read::FileReadTool;
 pub use file_write::FileWriteTool;
+pub use from_id::FromIdTool;
 pub use glob::GlobTool;
 pub use grep::GrepTool;
+pub use log::LogTool;
 pub use query::QueryTool;
 pub use subagent::SubagentTool;
 pub use thread::ThreadTool;
@@ -111,13 +114,22 @@ pub fn orchestration_tools(
         model_slots.clone(),
     );
     let document_tool = DocumentTool::arc(orchestrator.clone());
+    let log_tool = LogTool::arc(orchestrator.clone());
+    let from_id_tool = FromIdTool::arc(orchestrator);
     let py_repl_tool = py_repl::PyReplTool::arc(
         edit_mode.to_string(),
         thread_tool.clone(),
         query_tool.clone(),
         document_tool.clone(),
     );
-    let tools = vec![thread_tool, query_tool, document_tool, py_repl_tool];
+    let tools = vec![
+        thread_tool,
+        query_tool,
+        document_tool,
+        log_tool,
+        from_id_tool,
+        py_repl_tool,
+    ];
     (tools, cell)
 }
 

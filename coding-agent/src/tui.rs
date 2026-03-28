@@ -1534,6 +1534,14 @@ fn extract_tool_detail(tool_name: &str, args: &serde_json::Value) -> Option<Stri
                 line.to_string()
             }
         }),
+        "log" => args.get("message").and_then(|v| v.as_str()).map(|s| {
+            if s.len() > 60 {
+                format!("{}...", &s[..57])
+            } else {
+                s.to_string()
+            }
+        }),
+        "from_id" => args.get("alias").and_then(|v| v.as_str()).map(String::from),
         _ => None,
     }
 }
