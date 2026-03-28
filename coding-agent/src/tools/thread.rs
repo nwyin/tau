@@ -241,6 +241,11 @@ impl AgentTool for ThreadTool {
             // Get or create thread state
             let lookup = orchestrator.get_or_create_thread(&alias, &system_prompt);
 
+            // On reuse with new episodes, update the stored system prompt
+            if lookup.is_reuse && !episode_aliases.is_empty() {
+                orchestrator.update_system_prompt(&alias, system_prompt.clone());
+            }
+
             // Build tool list: requested tools + completion tools
             let (outcome_signal, mut outcome_rx) = completion_tools::outcome_channel();
             let mut thread_tools: Vec<Arc<dyn AgentTool>> =
@@ -292,7 +297,7 @@ impl AgentTool for ThreadTool {
             }
 
             // Subscribe to inner agent events and forward to parent
-            let forward_fn = event_forwarder.lock().unwrap().clone();
+            let forward_fn = event_forwarder.lock().ok().and_then(|g| g.clone());
             if let Some(ref fwd) = forward_fn {
                 let fwd = fwd.clone();
                 let tid = thread_id.clone();
@@ -340,7 +345,12 @@ impl AgentTool for ThreadTool {
             }
 
             let outcome = if timed_out {
-                ThreadOutcome::TimedOut
+                // Grace period: completion tool may still be sending outcome
+                match tokio::time::timeout(std::time::Duration::from_millis(100), outcome_rx).await
+                {
+                    Ok(Ok(outcome)) => outcome,
+                    _ => ThreadOutcome::TimedOut,
+                }
             } else {
                 match outcome_rx.try_recv() {
                     Ok(outcome) => outcome,

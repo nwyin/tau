@@ -118,7 +118,7 @@ impl PyReplTool {
             .arg(&path)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::null())
+            .stderr(std::process::Stdio::inherit())
             .kill_on_drop(true)
             .spawn()
             .map_err(|e| anyhow::anyhow!("Failed to start Python kernel: {}", e))?;
