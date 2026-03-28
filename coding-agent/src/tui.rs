@@ -889,12 +889,22 @@ async fn run_app(
 // ---------------------------------------------------------------------------
 
 fn ui(frame: &mut ratatui::Frame, app: &App, perm_display: &Option<String>, perm_count: usize) {
-    let perm_height = if perm_display.is_some() { 4 } else { 1 };
+    let area_width = frame.area().width as usize;
+    let input_height: u16 = if perm_display.is_some() {
+        4
+    } else if area_width > 0 {
+        // Calculate wrapped height for input line
+        let prompt_len = app.model_id.len() + 2; // "model> " or "model  "
+        let total_len = prompt_len + app.input.len();
+        std::cmp::max(1, (total_len as u16).div_ceil(area_width as u16))
+    } else {
+        1
+    };
     let chunks = Layout::vertical([
-        Constraint::Min(1),              // output area
-        Constraint::Length(perm_height), // input line or permission modal
-        Constraint::Length(1),           // separator
-        Constraint::Length(1),           // status bar
+        Constraint::Min(1),               // output area
+        Constraint::Length(input_height), // input line (wraps for long input)
+        Constraint::Length(1),            // separator
+        Constraint::Length(1),            // status bar
     ])
     .split(frame.area());
 
@@ -985,12 +995,17 @@ fn ui(frame: &mut ratatui::Frame, app: &App, perm_display: &Option<String>, perm
             Span::styled(&prompt_text, Style::default().fg(Color::Cyan)),
             Span::raw(&app.input),
         ]);
-        frame.render_widget(Paragraph::new(input_line), chunks[1]);
+        frame.render_widget(
+            Paragraph::new(input_line).wrap(Wrap { trim: false }),
+            chunks[1],
+        );
 
-        // Set cursor only when not busy and no permission prompt
+        // Set cursor position accounting for line wrapping
         if !app.is_busy {
-            let cursor_x = chunks[1].x + prompt_text.len() as u16 + app.cursor_pos as u16;
-            let cursor_y = chunks[1].y;
+            let total_offset = prompt_text.len() as u16 + app.cursor_pos as u16;
+            let w = chunks[1].width;
+            let cursor_x = chunks[1].x + (total_offset % w);
+            let cursor_y = chunks[1].y + (total_offset / w);
             frame.set_cursor_position((cursor_x, cursor_y));
         }
     }
