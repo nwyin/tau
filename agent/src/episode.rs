@@ -177,6 +177,14 @@ fn format_compact_trace(
     out
 }
 
+/// Truncate a string at a character boundary (safe for multi-byte UTF-8).
+fn truncate_str(s: &str, max_chars: usize) -> &str {
+    match s.char_indices().nth(max_chars) {
+        Some((idx, _)) => &s[..idx],
+        None => s,
+    }
+}
+
 /// Format tool call arguments as a brief string.
 fn format_args_brief(args: &std::collections::HashMap<String, serde_json::Value>) -> String {
     if args.is_empty() {
@@ -187,7 +195,7 @@ fn format_args_brief(args: &std::collections::HashMap<String, serde_json::Value>
             let v_str = match v {
                 serde_json::Value::String(s) => {
                     if s.len() > 60 {
-                        format!("\"{}...\"", &s[..57])
+                        format!("\"{}...\"", truncate_str(s, 57))
                     } else {
                         format!("\"{}\"", s)
                     }
@@ -195,7 +203,7 @@ fn format_args_brief(args: &std::collections::HashMap<String, serde_json::Value>
                 other => {
                     let s = other.to_string();
                     if s.len() > 60 {
-                        format!("{}...", &s[..57])
+                        format!("{}...", truncate_str(&s, 57))
                     } else {
                         s
                     }
@@ -226,7 +234,7 @@ fn tool_result_summary(blocks: &[ai::types::UserBlock], is_error: bool) -> Strin
     let line_count = text.lines().count();
 
     let summary = if first_line.len() > 80 {
-        format!("{}...", &first_line[..77])
+        format!("{}...", truncate_str(first_line, 77))
     } else if line_count > 1 {
         format!("{} ({} lines)", first_line, line_count)
     } else {

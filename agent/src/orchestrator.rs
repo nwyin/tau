@@ -81,7 +81,11 @@ impl OrchestratorState {
                 thread.episodes.push(episode.clone());
             }
         }
-        self.episode_log.lock().unwrap().push(episode);
+        let mut log = self.episode_log.lock().unwrap();
+        if log.len() >= 100 {
+            log.remove(0);
+        }
+        log.push(episode);
     }
 
     /// Retrieve the most recent episode for a given alias.
@@ -106,6 +110,14 @@ impl OrchestratorState {
     /// Get all episodes in sequence order.
     pub fn all_episodes(&self) -> Vec<Episode> {
         self.episode_log.lock().unwrap().clone()
+    }
+
+    /// Update the system prompt for an existing thread (e.g., to inject new episodes on reuse).
+    pub fn update_system_prompt(&self, alias: &str, new_prompt: String) {
+        let mut threads = self.threads.lock().unwrap();
+        if let Some(thread) = threads.get_mut(alias) {
+            thread.system_prompt = new_prompt;
+        }
     }
 
     /// Check if a thread alias exists.
