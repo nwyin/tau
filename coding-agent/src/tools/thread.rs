@@ -243,6 +243,9 @@ impl AgentTool for ThreadTool {
             thread_tools.push(EscalateTool::arc(outcome_signal));
             thread_tools.push(tools::DocumentTool::arc(orchestrator.clone()));
 
+            // Capture model ID before model is moved into Agent
+            let resolved_model_id = model.id.clone();
+
             // Build compaction callback
             let model_for_compact = model.clone();
             let transform_context: agent::types::TransformContextFn =
@@ -310,6 +313,7 @@ impl AgentTool for ThreadTool {
                     thread_id: thread_id.clone(),
                     alias: alias.clone(),
                     task: task.clone(),
+                    model: resolved_model_id.clone(),
                 });
             }
 

@@ -293,6 +293,7 @@ fn handle_event(s: &mut TraceInner, event: &AgentEvent, trace_dir: &Path) {
             thread_id,
             alias,
             task,
+            model,
         } => {
             write_trace_event(
                 s,
@@ -302,6 +303,7 @@ fn handle_event(s: &mut TraceInner, event: &AgentEvent, trace_dir: &Path) {
                     "thread_id": thread_id,
                     "alias": alias,
                     "task": task,
+                    "model": model,
                 }),
             );
         }

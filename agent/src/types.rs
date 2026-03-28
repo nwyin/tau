@@ -210,6 +210,7 @@ pub enum AgentEvent {
         thread_id: String,
         alias: String,
         task: String,
+        model: String,
     },
     ThreadEnd {
         thread_id: String,

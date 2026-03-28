@@ -324,13 +324,15 @@ async fn main() -> Result<()> {
                     eprintln!("[tool error: {}]", tool_name);
                 }
             }
-            AgentEvent::ThreadStart { alias, task, .. } => {
+            AgentEvent::ThreadStart {
+                alias, task, model, ..
+            } => {
                 let preview = if task.len() > 60 {
                     format!("{}...", &task[..57])
                 } else {
                     task.clone()
                 };
-                eprintln!("[thread: {}] {}", alias, preview);
+                eprintln!("[thread: {} @{}] {}", alias, model, preview);
             }
             AgentEvent::ThreadEnd {
                 alias,

@@ -1378,7 +1378,9 @@ fn handle_agent_event(app: &mut App, event: &AgentEvent) {
             app.tokens_out += am.usage.output;
             app.total_cost += am.usage.cost.total;
         }
-        AgentEvent::ThreadStart { alias, task, .. } => {
+        AgentEvent::ThreadStart {
+            alias, task, model, ..
+        } => {
             let task_preview = if task.len() > 60 {
                 format!("{}...", &task[..57])
             } else {
@@ -1392,6 +1394,7 @@ fn handle_agent_event(app: &mut App, event: &AgentEvent) {
                         .fg(Color::Cyan)
                         .add_modifier(Modifier::BOLD),
                 ),
+                Span::styled(format!(" @{}", model), Style::default().fg(Color::DarkGray)),
                 Span::styled("] ", Style::default().fg(Color::Blue)),
                 Span::styled(task_preview, Style::default().fg(Color::DarkGray)),
             ]));
