@@ -112,11 +112,7 @@ pub fn orchestration_tools(
     );
     let document_tool = DocumentTool::arc(orchestrator.clone());
     let py_repl_tool = py_repl::PyReplTool::arc(
-        orchestrator,
-        get_api_key,
-        model,
         edit_mode.to_string(),
-        model_slots,
         thread_tool.clone(),
         query_tool.clone(),
         document_tool.clone(),

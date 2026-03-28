@@ -7,16 +7,13 @@
 
 use std::sync::Arc;
 
-use agent::orchestrator::OrchestratorState;
-use agent::types::{AgentTool, AgentToolResult, BoxFuture, GetApiKeyFn, ToolUpdateFn};
-use ai::types::{Model, UserBlock};
+use crate::tools;
+use agent::types::{AgentTool, AgentToolResult, BoxFuture, ToolUpdateFn};
+use ai::types::UserBlock;
 use serde_json::{json, Value};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 use tokio_util::sync::CancellationToken;
-
-use crate::config::ModelSlots;
-use crate::tools;
 
 const PY_KERNEL_SOURCE: &str = include_str!("../../prompts/py_kernel.py");
 
@@ -43,11 +40,7 @@ impl Drop for KernelProcess {
 }
 
 pub struct PyReplTool {
-    orchestrator: Arc<OrchestratorState>,
-    get_api_key: Option<GetApiKeyFn>,
-    default_model: Model,
     edit_mode: String,
-    model_slots: ModelSlots,
     // Pre-built tool instances for reverse RPC dispatch
     thread_tool: Arc<dyn AgentTool>,
     query_tool: Arc<dyn AgentTool>,
@@ -59,23 +52,14 @@ pub struct PyReplTool {
 }
 
 impl PyReplTool {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
-        orchestrator: Arc<OrchestratorState>,
-        get_api_key: Option<GetApiKeyFn>,
-        default_model: Model,
         edit_mode: String,
-        model_slots: ModelSlots,
         thread_tool: Arc<dyn AgentTool>,
         query_tool: Arc<dyn AgentTool>,
         document_tool: Arc<dyn AgentTool>,
     ) -> Self {
         Self {
-            orchestrator,
-            get_api_key,
-            default_model,
             edit_mode,
-            model_slots,
             thread_tool,
             query_tool,
             document_tool,
@@ -84,27 +68,13 @@ impl PyReplTool {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub fn arc(
-        orchestrator: Arc<OrchestratorState>,
-        get_api_key: Option<GetApiKeyFn>,
-        default_model: Model,
         edit_mode: String,
-        model_slots: ModelSlots,
         thread_tool: Arc<dyn AgentTool>,
         query_tool: Arc<dyn AgentTool>,
         document_tool: Arc<dyn AgentTool>,
     ) -> Arc<dyn AgentTool> {
-        Arc::new(Self::new(
-            orchestrator,
-            get_api_key,
-            default_model,
-            edit_mode,
-            model_slots,
-            thread_tool,
-            query_tool,
-            document_tool,
-        ))
+        Arc::new(Self::new(edit_mode, thread_tool, query_tool, document_tool))
     }
 
     /// Start the Python kernel subprocess. Returns a KernelProcess.
@@ -189,11 +159,7 @@ impl AgentTool for PyReplTool {
         );
 
         // Clone self references for the async block
-        let this_orchestrator = self.orchestrator.clone();
-        let this_get_api_key = self.get_api_key.clone();
-        let this_default_model = self.default_model.clone();
         let this_edit_mode = self.edit_mode.clone();
-        let this_model_slots = self.model_slots.clone();
         let this_thread_tool = self.thread_tool.clone();
         let this_query_tool = self.query_tool.clone();
         let this_document_tool = self.document_tool.clone();
@@ -211,11 +177,7 @@ impl AgentTool for PyReplTool {
 
             // Build a temporary self-like struct for RPC dispatch
             let dispatcher = RpcDispatcher {
-                _orchestrator: this_orchestrator,
-                _get_api_key: this_get_api_key,
-                _default_model: this_default_model,
                 edit_mode: this_edit_mode,
-                _model_slots: this_model_slots,
                 thread_tool: this_thread_tool,
                 query_tool: this_query_tool,
                 document_tool: this_document_tool,
@@ -243,12 +205,6 @@ impl AgentTool for PyReplTool {
             }
 
             let kp = kernel_guard.as_mut().unwrap();
-
-            debug_log(&format!(
-                "exec cell {} code={}",
-                cell_id,
-                &code[..code.len().min(100)]
-            ));
 
             // Send exec message
             let exec_msg = json!({
@@ -301,7 +257,6 @@ impl AgentTool for PyReplTool {
                         }));
                     }
                     Ok(_) => {
-                        debug_log(&format!("kernel stdout: {}", line_buf.trim()));
                         let parsed: Value = match serde_json::from_str(line_buf.trim()) {
                             Ok(v) => v,
                             Err(_) => continue,
@@ -394,11 +349,7 @@ impl AgentTool for PyReplTool {
 
 /// Helper struct for dispatching RPCs from inside the execute future.
 struct RpcDispatcher {
-    _orchestrator: Arc<OrchestratorState>,
-    _get_api_key: Option<GetApiKeyFn>,
-    _default_model: Model,
     edit_mode: String,
-    _model_slots: ModelSlots,
     thread_tool: Arc<dyn AgentTool>,
     query_tool: Arc<dyn AgentTool>,
     document_tool: Arc<dyn AgentTool>,
@@ -406,7 +357,6 @@ struct RpcDispatcher {
 
 impl RpcDispatcher {
     async fn dispatch(&self, method: &str, params: &Value) -> Result<Value, String> {
-        debug_log(&format!("rpc dispatch: {} {}", method, params));
         let result = match method {
             "tool" => self.dispatch_tool(params).await,
             "thread" => self.dispatch_to_tool(&self.thread_tool, params).await,
@@ -421,10 +371,6 @@ impl RpcDispatcher {
             }
             _ => Err(format!("unknown RPC method: {}", method)),
         };
-        match &result {
-            Ok(v) => debug_log(&format!("rpc done: {} => {}", method, truncate_for_log(v))),
-            Err(e) => debug_log(&format!("rpc fail: {} => {}", method, e)),
-        }
         result
     }
 
@@ -610,27 +556,4 @@ fn truncate_output(text: &str) -> String {
 
     // Over byte limit but under line limit — truncate bytes
     text[..MAX_OUTPUT_BYTES].to_string() + "\n[... truncated ...]"
-}
-
-/// Debug log to file (visible even in TUI mode).
-fn debug_log(msg: &str) {
-    use std::io::Write;
-    let path = std::env::temp_dir().join("tau_py_repl_debug.log");
-    if let Ok(mut f) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&path)
-    {
-        let _ = writeln!(f, "[{:?}] {}", std::time::SystemTime::now(), msg);
-    }
-}
-
-/// Truncate a value for logging.
-fn truncate_for_log(v: &Value) -> String {
-    let s = v.to_string();
-    if s.len() > 200 {
-        format!("{}...", &s[..197])
-    } else {
-        s
-    }
 }
