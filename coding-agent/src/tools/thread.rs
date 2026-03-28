@@ -193,26 +193,33 @@ impl AgentTool for ThreadTool {
                 .and_then(|v| v.as_u64())
                 .unwrap_or(120);
 
-            // Resolve model: slot name → slot config → find_model, or raw ID → find_model
+            // Resolve model: slot name → slot config → find_model, or raw ID → find_model.
+            // Important: when the resolved ID matches the default model, use default_model
+            // directly to preserve OAuth base_url/header modifications from agent_builder.
             let default_model_id = &default_model.id;
+            let resolve_model = |resolved_id: &str| -> Model {
+                if resolved_id == default_model_id.as_str() {
+                    default_model.clone()
+                } else {
+                    ai::models::find_model(resolved_id)
+                        .map(|m| (*m).clone())
+                        .unwrap_or_else(|| {
+                            eprintln!("[thread] model '{}' not found, using default", resolved_id);
+                            default_model.clone()
+                        })
+                }
+            };
             let model = if let Some(ref model_param) = model_override {
                 let resolved_id = if ModelSlots::is_slot(model_param) {
                     model_slots.resolve(model_param, default_model_id)
                 } else {
                     model_param.clone()
                 };
-                ai::models::find_model(&resolved_id)
-                    .map(|m| (*m).clone())
-                    .unwrap_or_else(|| {
-                        eprintln!("[thread] model '{}' not found, using default", resolved_id);
-                        default_model.clone()
-                    })
+                resolve_model(&resolved_id)
             } else {
                 // No override — use subagent slot
                 let subagent_id = model_slots.resolve("subagent", default_model_id);
-                ai::models::find_model(&subagent_id)
-                    .map(|m| (*m).clone())
-                    .unwrap_or(default_model.clone())
+                resolve_model(&subagent_id)
             };
 
             // Generate thread ID

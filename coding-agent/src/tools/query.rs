@@ -119,23 +119,29 @@ impl AgentTool for QueryTool {
                 .and_then(|v| v.as_str())
                 .map(String::from);
 
-            // Resolve model: slot name → slot config → find_model, or raw ID → find_model
+            // Resolve model: slot name → slot config → find_model, or raw ID → find_model.
+            // When resolved ID matches default, use default_model to preserve OAuth modifications.
             let default_model_id = &default_model.id;
+            let resolve_model = |resolved_id: &str, fallback: Model| -> Model {
+                if resolved_id == fallback.id {
+                    fallback
+                } else {
+                    ai::models::find_model(resolved_id)
+                        .map(|m| (*m).clone())
+                        .unwrap_or(fallback)
+                }
+            };
             let model = if let Some(ref model_param) = model_override {
                 let resolved_id = if ModelSlots::is_slot(model_param) {
                     model_slots.resolve(model_param, default_model_id)
                 } else {
                     model_param.clone()
                 };
-                ai::models::find_model(&resolved_id)
-                    .map(|m| (*m).clone())
-                    .unwrap_or(default_model)
+                resolve_model(&resolved_id, default_model)
             } else {
                 // No override — use search slot
                 let search_id = model_slots.resolve("search", default_model_id);
-                ai::models::find_model(&search_id)
-                    .map(|m| (*m).clone())
-                    .unwrap_or(default_model)
+                resolve_model(&search_id, default_model)
             };
 
             // Resolve API key
