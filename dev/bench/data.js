@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1774774575414,
+  "lastUpdate": 1774780758025,
   "repoUrl": "https://github.com/nwyin/tau",
   "entries": {
     "tau benchmarks": [
@@ -4661,6 +4661,132 @@ window.BENCHMARK_DATA = {
             "name": "sse_parsing/events/1000",
             "value": 361569,
             "range": "± 6394",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "tommynguyen0512@gmail.com",
+            "name": "Tommy Bui Nguyen",
+            "username": "nwyin"
+          },
+          "committer": {
+            "email": "tommynguyen0512@gmail.com",
+            "name": "Tommy Bui Nguyen",
+            "username": "nwyin"
+          },
+          "distinct": true,
+          "id": "7128b2f4e40c38a67a5086be427aa2a539f0149d",
+          "message": "test: remove 18 trivial tests that assert defaults or CLI parsing\n\nRemove tests that only check struct default values, trivial setters,\nbasic CLI flag parsing (covered by clap), or empty-input identity.\nThese broke on config changes and added no real coverage.\n\nKept: error handling, invariants, integration, concurrency, edge cases.",
+          "timestamp": "2026-03-29T17:13:49+08:00",
+          "tree_id": "88b99c528c0dddd627b73a752a4f05f42849f705",
+          "url": "https://github.com/nwyin/tau/commit/7128b2f4e40c38a67a5086be427aa2a539f0149d"
+        },
+        "date": 1774780757113,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "agent_construction/new_agent",
+            "value": 2174,
+            "range": "± 58",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/10",
+            "value": 3767,
+            "range": "± 19",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/50",
+            "value": 13091,
+            "range": "± 92",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/100",
+            "value": 21360,
+            "range": "± 79",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/500",
+            "value": 94524,
+            "range": "± 594",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/10",
+            "value": 3629,
+            "range": "± 24",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/50",
+            "value": 18489,
+            "range": "± 47",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/100",
+            "value": 36804,
+            "range": "± 1701",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/10",
+            "value": 12956,
+            "range": "± 28",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/50",
+            "value": 74816,
+            "range": "± 395",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/100",
+            "value": 147337,
+            "range": "± 685",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/10",
+            "value": 17301,
+            "range": "± 52",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/50",
+            "value": 93628,
+            "range": "± 294",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/100",
+            "value": 187222,
+            "range": "± 2127",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/10",
+            "value": 3081,
+            "range": "± 45",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/100",
+            "value": 39737,
+            "range": "± 280",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/1000",
+            "value": 372792,
+            "range": "± 1381",
             "unit": "ns/iter"
           }
         ]
