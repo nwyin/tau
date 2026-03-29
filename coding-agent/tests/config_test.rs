@@ -6,7 +6,7 @@ fn config_missing_file_returns_defaults() {
     let dir = TempDir::new().unwrap();
     let path = dir.path().join("nonexistent.toml");
     let config = load_config_from(&path);
-    assert_eq!(config.model, "gpt-5.4-mini");
+    assert_eq!(config.model, "gpt-5.4");
     assert_eq!(config.edit_mode, "replace");
 }
 
@@ -40,7 +40,7 @@ fn config_invalid_toml_returns_defaults() {
     let path = dir.path().join("config.toml");
     std::fs::write(&path, "this is not valid toml {{{{").unwrap();
     let config = load_config_from(&path);
-    assert_eq!(config.model, "gpt-5.4-mini");
+    assert_eq!(config.model, "gpt-5.4");
     assert_eq!(config.edit_mode, "replace");
 }
 
@@ -50,7 +50,7 @@ fn config_empty_file_returns_defaults() {
     let path = dir.path().join("config.toml");
     std::fs::write(&path, "").unwrap();
     let config = load_config_from(&path);
-    assert_eq!(config.model, "gpt-5.4-mini");
+    assert_eq!(config.model, "gpt-5.4");
     assert_eq!(config.edit_mode, "replace");
 }
 

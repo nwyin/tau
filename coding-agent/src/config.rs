@@ -73,12 +73,12 @@ pub struct TauConfig {
 impl Default for TauConfig {
     fn default() -> Self {
         Self {
-            model: "gpt-5.4-mini".to_string(),
+            model: "gpt-5.4".to_string(),
             edit_mode: "replace".to_string(),
             max_turns: None,
             tools: None,
             skills: None,
-            thinking: None,
+            thinking: Some("high".to_string()),
             permissions: None,
             models: ModelSlots::default(),
         }
