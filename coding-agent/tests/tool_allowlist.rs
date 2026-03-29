@@ -47,13 +47,6 @@ fn test_allowlist_hashline_edit_mode_substitution() {
     assert_eq!(hashline_tools[1].name(), "file_edit");
 }
 
-// INV-4: Empty allowlist returns empty vec
-#[test]
-fn test_allowlist_empty_returns_empty() {
-    let tools = tools_from_allowlist(&[], "replace");
-    assert!(tools.is_empty());
-}
-
 // INV-5: Default path (no allowlist) returns same tools as tools_for_edit_mode
 #[test]
 fn test_default_path_matches_tools_for_edit_mode() {

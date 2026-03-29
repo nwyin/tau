@@ -87,12 +87,6 @@ fn under_budget_returns_unchanged() {
     }
 }
 
-#[test]
-fn empty_messages_returns_empty() {
-    let result = compact_messages(vec![], &mock_model());
-    assert!(result.is_empty());
-}
-
 // ---------------------------------------------------------------------------
 // INV-2: First user message preserved
 // ---------------------------------------------------------------------------

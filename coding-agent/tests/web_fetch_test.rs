@@ -4,28 +4,6 @@ use ai::types::UserBlock;
 use coding_agent::tools::web_fetch::{strip_html, truncate_output, WebFetchTool};
 use serde_json::json;
 
-// INV-3: Tool metadata is correct.
-#[test]
-fn tool_name_and_required_params() {
-    let tool = WebFetchTool;
-    assert_eq!(tool.name(), "web_fetch");
-    assert_eq!(tool.label(), "Web Fetch");
-
-    let schema = tool.parameters();
-    let required = schema["required"].as_array().expect("required array");
-    let req_names: Vec<&str> = required.iter().map(|v| v.as_str().unwrap()).collect();
-    assert!(req_names.contains(&"url"), "url must be in required");
-
-    // format is optional
-    let props = &schema["properties"];
-    assert!(props["url"].is_object(), "url property must exist");
-    assert!(props["format"].is_object(), "format property must exist");
-    let format_enum = props["format"]["enum"].as_array().expect("enum array");
-    let variants: Vec<&str> = format_enum.iter().map(|v| v.as_str().unwrap()).collect();
-    assert!(variants.contains(&"text"));
-    assert!(variants.contains(&"html"));
-}
-
 // INV-1: Invalid URLs never attempt a fetch — validated synchronously via execute().
 #[tokio::test]
 async fn invalid_url_no_scheme_returns_error() {

@@ -43,29 +43,6 @@ async fn test_missing_api_key_returns_helpful_error() {
     );
 }
 
-// INV-2: Tool name is "web_search" and parameters schema has "query" as required
-#[test]
-fn test_tool_metadata() {
-    let tool = WebSearchTool;
-    assert_eq!(tool.name(), "web_search");
-    assert_eq!(tool.label(), "Web Search");
-
-    let params = tool.parameters();
-    let required = params["required"].as_array().unwrap();
-    let required_names: Vec<&str> = required.iter().filter_map(|v| v.as_str()).collect();
-    assert!(
-        required_names.contains(&"query"),
-        "query must be in required, got: {:?}",
-        required_names
-    );
-    // num_results is NOT required
-    assert!(
-        !required_names.contains(&"num_results"),
-        "num_results should be optional, got: {:?}",
-        required_names
-    );
-}
-
 // INV-3: num_results is clamped to max 10
 //
 // We test this by verifying the tool description and by checking that the

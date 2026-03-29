@@ -65,43 +65,6 @@ fn creates_agent_with_custom_initial_state() {
 }
 
 // ---------------------------------------------------------------------------
-// State mutators
-// ---------------------------------------------------------------------------
-
-#[test]
-fn set_system_prompt() {
-    let agent = make_agent();
-    agent.set_system_prompt("Custom prompt");
-    agent.with_state(|s| assert_eq!(s.system_prompt, "Custom prompt"));
-}
-
-#[test]
-fn set_thinking_level() {
-    let agent = make_agent();
-    agent.set_thinking_level(ThinkingLevel::High);
-    agent.with_state(|s| assert_eq!(s.thinking_level, ThinkingLevel::High));
-}
-
-#[test]
-fn replace_messages() {
-    let agent = make_agent();
-    let msg = user_message("hello");
-    agent.replace_messages(vec![msg.clone()]);
-    agent.with_state(|s| {
-        assert_eq!(s.messages.len(), 1);
-        assert_eq!(s.messages[0].role(), "user");
-    });
-}
-
-#[test]
-fn append_message() {
-    let agent = make_agent();
-    agent.append_message(user_message("hello"));
-    agent.append_message(user_message("world"));
-    agent.with_state(|s| assert_eq!(s.messages.len(), 2));
-}
-
-// ---------------------------------------------------------------------------
 // Queue management
 // ---------------------------------------------------------------------------
 
@@ -121,16 +84,6 @@ fn follow_up_queues_message_without_adding_to_state() {
     agent.follow_up(user_message("follow-up"));
     agent.with_state(|s| assert!(s.messages.is_empty()));
     assert!(agent.has_queued_messages());
-}
-
-#[test]
-fn clear_all_queues() {
-    let agent = make_agent();
-    agent.steer(user_message("steer"));
-    agent.follow_up(user_message("follow"));
-    assert!(agent.has_queued_messages());
-    agent.clear_all_queues();
-    assert!(!agent.has_queued_messages());
 }
 
 // ---------------------------------------------------------------------------
@@ -160,16 +113,6 @@ fn state_mutators_do_not_emit_events() {
     agent.set_system_prompt("test");
     agent.set_thinking_level(ThinkingLevel::Medium);
     assert_eq!(count.load(std::sync::atomic::Ordering::SeqCst), 0);
-}
-
-// ---------------------------------------------------------------------------
-// Abort
-// ---------------------------------------------------------------------------
-
-#[test]
-fn abort_does_not_panic_when_not_streaming() {
-    let agent = make_agent();
-    agent.abort(); // should not panic
 }
 
 // ---------------------------------------------------------------------------

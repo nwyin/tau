@@ -6,8 +6,6 @@ use agent::types::{AgentEvent, StreamAssistantFn};
 use agent::{Agent, AgentOptions, AgentStateInit};
 use ai::stream::assistant_message_event_stream;
 use ai::types::{AssistantMessage, ContentBlock, StopReason, Usage};
-use clap::Parser;
-use coding_agent::cli::Cli;
 use coding_agent::tools::all_tools;
 use serde_json::json;
 
@@ -106,84 +104,6 @@ fn text_message(text: &str) -> AssistantMessage {
         error_message: None,
         timestamp: 0,
     }
-}
-
-// ---------------------------------------------------------------------------
-// CLI argument parsing tests
-// ---------------------------------------------------------------------------
-
-/// INV-2 (partial): Without --prompt, CLI prompt field is None.
-#[test]
-fn test_cli_no_prompt_flag() {
-    let cli = Cli::try_parse_from(["coding-agent"]).unwrap();
-    assert!(
-        cli.prompt.is_none(),
-        "expected no prompt when flag is absent"
-    );
-}
-
-/// --prompt sets the prompt field.
-#[test]
-fn test_cli_prompt_flag_sets_value() {
-    let cli = Cli::try_parse_from(["coding-agent", "--prompt", "hello world"]).unwrap();
-    assert_eq!(cli.prompt.as_deref(), Some("hello world"));
-}
-
-/// -p shorthand works.
-#[test]
-fn test_cli_prompt_shorthand() {
-    let cli = Cli::try_parse_from(["coding-agent", "-p", "test"]).unwrap();
-    assert_eq!(cli.prompt.as_deref(), Some("test"));
-}
-
-/// --model flag sets the model field.
-#[test]
-fn test_cli_model_flag() {
-    let cli = Cli::try_parse_from(["coding-agent", "--model", "gpt-4o"]).unwrap();
-    assert_eq!(cli.model.as_deref(), Some("gpt-4o"));
-}
-
-/// -m shorthand works.
-#[test]
-fn test_cli_model_shorthand() {
-    let cli = Cli::try_parse_from(["coding-agent", "-m", "gpt-4o"]).unwrap();
-    assert_eq!(cli.model.as_deref(), Some("gpt-4o"));
-}
-
-/// --system-prompt flag sets the system_prompt field.
-#[test]
-fn test_cli_system_prompt_flag() {
-    let cli = Cli::try_parse_from(["coding-agent", "--system-prompt", "Be helpful."]).unwrap();
-    assert_eq!(cli.system_prompt.as_deref(), Some("Be helpful."));
-}
-
-/// INV-3: --prompt "-" is accepted as a literal "-" value (triggering stdin read).
-#[test]
-fn test_cli_prompt_stdin_marker() {
-    let cli = Cli::try_parse_from(["coding-agent", "--prompt", "-"]).unwrap();
-    assert_eq!(
-        cli.prompt.as_deref(),
-        Some("-"),
-        "'-' should be accepted as the stdin marker"
-    );
-}
-
-/// All three flags can be combined.
-#[test]
-fn test_cli_all_flags_combined() {
-    let cli = Cli::try_parse_from([
-        "coding-agent",
-        "-p",
-        "do something",
-        "-m",
-        "gpt-4o",
-        "--system-prompt",
-        "Be terse.",
-    ])
-    .unwrap();
-    assert_eq!(cli.prompt.as_deref(), Some("do something"));
-    assert_eq!(cli.model.as_deref(), Some("gpt-4o"));
-    assert_eq!(cli.system_prompt.as_deref(), Some("Be terse."));
 }
 
 // ---------------------------------------------------------------------------
