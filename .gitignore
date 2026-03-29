@@ -30,3 +30,4 @@ benchmarks/harbor/jobs/
 benchmarks/fuzzy-match/corpus/*.json
 benchmarks/fuzzy-false-positive/corpus/*.json
 benchmarks/.venv/
+results/
