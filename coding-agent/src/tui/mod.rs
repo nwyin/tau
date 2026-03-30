@@ -10,6 +10,7 @@ mod sidebar;
 mod status;
 mod theme;
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use agent::types::AgentEvent;
@@ -88,16 +89,47 @@ pub async fn run(agent: Arc<Agent>, config: TuiRunConfig) -> Result<()> {
         }
     });
 
-    // Set the permission prompt function that bridges sync agent thread -> async channel
+    // Shutdown flag — set when the TUI exits so blocking permission prompts can bail out.
+    let shutdown = Arc::new(AtomicBool::new(false));
+
+    // Set the permission prompt function that bridges sync agent thread -> async channel.
+    // Uses recv_timeout + shutdown flag to avoid hanging the tokio runtime on exit.
+    let shutdown_for_perm = Arc::clone(&shutdown);
     let prompt_fn: crate::permissions::PromptFn = Arc::new(move |tool_name: &str, desc: &str| {
+        if shutdown_for_perm.load(Ordering::Relaxed) {
+            return PromptResult::Deny;
+        }
         let (resp_tx, resp_rx) = std::sync::mpsc::channel();
-        let _ = perm_req_tx.send((tool_name.to_string(), desc.to_string(), resp_tx));
-        resp_rx.recv().unwrap_or(PromptResult::Deny)
+        if perm_req_tx
+            .send((tool_name.to_string(), desc.to_string(), resp_tx))
+            .is_err()
+        {
+            return PromptResult::Deny;
+        }
+        // Poll with timeout so we detect shutdown and don't block forever.
+        loop {
+            match resp_rx.recv_timeout(std::time::Duration::from_millis(200)) {
+                Ok(result) => return result,
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                    if shutdown_for_perm.load(Ordering::Relaxed) {
+                        return PromptResult::Deny;
+                    }
+                }
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                    return PromptResult::Deny;
+                }
+            }
+        }
     });
     permission_service.set_prompt_fn(prompt_fn);
 
     // Run the program
     fut.await.map_err(|e| anyhow::anyhow!("TUI error: {}", e))?;
+
+    // Signal shutdown and abort the agent so spawned tasks can complete
+    // and the tokio runtime can shut down cleanly.
+    shutdown.store(true, Ordering::Relaxed);
+    agent.abort();
 
     Ok(())
 }
