@@ -1,0 +1,750 @@
+use std::sync::Arc;
+
+use agent::types::{AgentEvent, AgentMessage, ThinkingLevel};
+use agent::Agent;
+use ai::types::AssistantMessageEvent;
+use ruse::prelude::*;
+
+use super::anim::GradientSpinner;
+use super::chat::tools::extract_tool_detail;
+use super::chat::{AssistantMessage, ChatMessage, ToolCallMessage, ToolStatus, UserMessage};
+use super::layout;
+use super::msg::TauMsg;
+use super::sidebar;
+use super::status::{self, FocusHint};
+use super::theme;
+use crate::permissions::{PermissionService, PromptResult};
+use crate::session::{SessionFile, SessionManager};
+use crate::skills::Skill;
+
+// ---------------------------------------------------------------------------
+// Screen & focus state
+// ---------------------------------------------------------------------------
+
+#[derive(Clone, Copy, PartialEq)]
+enum Screen {
+    Landing,
+    Chat,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum FocusState {
+    Editor,
+    Chat,
+}
+
+// ---------------------------------------------------------------------------
+// Streaming state
+// ---------------------------------------------------------------------------
+
+struct StreamingState {
+    assistant_buf: String,
+    thinking_buf: String,
+    is_thinking: bool,
+    assistant_msg_idx: usize,
+}
+
+// ---------------------------------------------------------------------------
+// TauModel
+// ---------------------------------------------------------------------------
+
+#[allow(dead_code)] // Fields used in later phases
+pub struct TauModel {
+    // Dimensions
+    width: usize,
+    height: usize,
+    is_compact: bool,
+
+    // Screen
+    screen: Screen,
+    focus: FocusState,
+
+    // Chat
+    messages: Vec<ChatMessage>,
+    chat_viewport: Viewport,
+    selected_msg: usize,
+    scroll_follow: bool,
+
+    // Editor
+    input: TextInput,
+
+    // Streaming
+    streaming: Option<StreamingState>,
+    spinner: GradientSpinner,
+
+    // Agent
+    agent: Arc<Agent>,
+
+    // Metrics
+    model_id: String,
+    context_window: u64,
+    tokens_in: u64,
+    tokens_out: u64,
+    total_cost: f64,
+    thinking_level: ThinkingLevel,
+    active_tools: Vec<String>,
+
+    // Permissions
+    permission_service: Arc<PermissionService>,
+    perm_pending: Option<PendingPermission>,
+
+    // Session
+    session_manager: SessionManager,
+    session_file: Option<Arc<SessionFile>>,
+
+    // Skills + state
+    skills: Vec<Skill>,
+    is_busy: bool,
+    should_quit: bool,
+    active_thread_count: usize,
+    startup_messages: Vec<String>,
+}
+
+struct PendingPermission {
+    tool_name: String,
+    description: String,
+    resp_tx: std::sync::mpsc::Sender<PromptResult>,
+}
+
+// ---------------------------------------------------------------------------
+// Configuration (matches TuiRunConfig)
+// ---------------------------------------------------------------------------
+
+pub struct TauConfig {
+    pub model_id: String,
+    pub context_window: u64,
+    pub session_file: Option<Arc<SessionFile>>,
+    pub session_manager: SessionManager,
+    pub skills: Vec<Skill>,
+    pub permission_service: Arc<PermissionService>,
+    pub startup_messages: Vec<String>,
+}
+
+impl TauModel {
+    pub fn new(agent: Arc<Agent>, config: TauConfig) -> Self {
+        let mut input = TextInput::new();
+        input = input.with_placeholder("Ready for instructions");
+
+        Self {
+            width: 80,
+            height: 24,
+            is_compact: false,
+            screen: Screen::Landing,
+            focus: FocusState::Editor,
+            messages: Vec::new(),
+            chat_viewport: Viewport::new(80, 20),
+            selected_msg: 0,
+            scroll_follow: true,
+            input,
+            streaming: None,
+            spinner: GradientSpinner::new("Thinking"),
+            agent,
+            model_id: config.model_id,
+            context_window: config.context_window,
+            tokens_in: 0,
+            tokens_out: 0,
+            total_cost: 0.0,
+            thinking_level: ThinkingLevel::Off,
+            active_tools: Vec::new(),
+            permission_service: config.permission_service,
+            perm_pending: None,
+            session_manager: config.session_manager,
+            session_file: config.session_file,
+            skills: config.skills,
+            is_busy: false,
+            should_quit: false,
+            active_thread_count: 0,
+            startup_messages: config.startup_messages,
+        }
+    }
+
+    fn refresh_chat_content(&mut self) {
+        let w = self
+            .width
+            .saturating_sub(if self.is_compact { 0 } else { 30 });
+        let mut content = String::new();
+
+        for (i, msg) in self.messages.iter().enumerate() {
+            if i > 0 {
+                content.push('\n');
+            }
+            let focused = i == self.selected_msg && self.focus == FocusState::Chat;
+            content.push_str(&msg.render(w, focused));
+        }
+
+        self.chat_viewport.set_content(&content);
+        if self.scroll_follow {
+            self.chat_viewport.goto_bottom();
+        }
+    }
+
+    fn handle_tau_msg(&mut self, tau_msg: &TauMsg) -> Cmd {
+        match tau_msg {
+            TauMsg::AgentEvent(event) => self.handle_agent_event(event),
+            TauMsg::PermissionRequest {
+                tool_name,
+                description,
+                resp_tx,
+            } => {
+                self.perm_pending = Some(PendingPermission {
+                    tool_name: tool_name.clone(),
+                    description: description.clone(),
+                    resp_tx: resp_tx.clone(),
+                });
+                None
+            }
+            TauMsg::SpinnerTick => {
+                self.spinner.tick();
+                if self.is_busy {
+                    self.refresh_chat_content();
+                    Some(ruse::runtime::CmdInner::Async(Box::pin(async {
+                        tokio::time::sleep(GradientSpinner::tick_duration()).await;
+                        Msg::custom(TauMsg::SpinnerTick)
+                    })))
+                } else {
+                    None
+                }
+            }
+        }
+    }
+
+    fn handle_agent_event(&mut self, event: &AgentEvent) -> Cmd {
+        match event {
+            AgentEvent::MessageUpdate {
+                assistant_event, ..
+            } => {
+                match assistant_event.as_ref() {
+                    AssistantMessageEvent::TextDelta { delta, .. } => {
+                        if self.streaming.is_none() {
+                            self.messages.push(ChatMessage::Assistant(AssistantMessage {
+                                thinking: None,
+                                thinking_expanded: false,
+                                content: String::new(),
+                                rendered_content: None,
+                                model_name: self.model_id.clone(),
+                            }));
+                            self.streaming = Some(StreamingState {
+                                assistant_msg_idx: self.messages.len() - 1,
+                                assistant_buf: String::new(),
+                                thinking_buf: String::new(),
+                                is_thinking: false,
+                            });
+                        }
+                        if let Some(ref mut stream) = self.streaming {
+                            stream.assistant_buf.push_str(delta);
+                            if let Some(ChatMessage::Assistant(a)) =
+                                self.messages.get_mut(stream.assistant_msg_idx)
+                            {
+                                a.content.clone_from(&stream.assistant_buf);
+                            }
+                        }
+                        self.refresh_chat_content();
+                    }
+                    AssistantMessageEvent::ThinkingDelta { delta, .. } => {
+                        if self.streaming.is_none() {
+                            self.messages.push(ChatMessage::Assistant(AssistantMessage {
+                                thinking: Some(String::new()),
+                                thinking_expanded: false,
+                                content: String::new(),
+                                rendered_content: None,
+                                model_name: self.model_id.clone(),
+                            }));
+                            self.streaming = Some(StreamingState {
+                                assistant_msg_idx: self.messages.len() - 1,
+                                assistant_buf: String::new(),
+                                thinking_buf: String::new(),
+                                is_thinking: true,
+                            });
+                        }
+                        if let Some(ref mut stream) = self.streaming {
+                            stream.is_thinking = true;
+                            stream.thinking_buf.push_str(delta);
+                            if let Some(ChatMessage::Assistant(a)) =
+                                self.messages.get_mut(stream.assistant_msg_idx)
+                            {
+                                a.thinking = Some(stream.thinking_buf.clone());
+                            }
+                        }
+                        self.refresh_chat_content();
+                    }
+                    _ => {}
+                }
+                None
+            }
+
+            AgentEvent::ToolExecutionStart {
+                tool_name, args, ..
+            } => {
+                let header = extract_tool_detail(tool_name, args);
+                self.messages.push(ChatMessage::ToolCall(ToolCallMessage {
+                    tool_name: tool_name.clone(),
+                    header,
+                    body: String::new(),
+                    status: ToolStatus::Pending,
+                    expanded: false,
+                }));
+                self.active_tools.push(tool_name.clone());
+                self.refresh_chat_content();
+                None
+            }
+
+            AgentEvent::ToolExecutionEnd {
+                tool_name,
+                result,
+                is_error,
+                ..
+            } => {
+                // Update the last tool message with this name
+                let body_text = result
+                    .content
+                    .iter()
+                    .filter_map(|b| {
+                        if let ai::types::UserBlock::Text { text } = b {
+                            Some(text.as_str())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                for msg in self.messages.iter_mut().rev() {
+                    if let ChatMessage::ToolCall(tc) = msg {
+                        if tc.tool_name == *tool_name && tc.status == ToolStatus::Pending {
+                            tc.status = if *is_error {
+                                ToolStatus::Error
+                            } else {
+                                ToolStatus::Success
+                            };
+                            tc.body = body_text.clone();
+                            break;
+                        }
+                    }
+                }
+                self.active_tools.retain(|t| t != tool_name);
+                self.refresh_chat_content();
+                None
+            }
+
+            AgentEvent::TurnEnd { message, .. } => {
+                // Accumulate token usage
+                if let AgentMessage::Llm(ai::types::Message::Assistant(am)) = message {
+                    self.tokens_in += am.usage.input;
+                    self.tokens_out += am.usage.output;
+                    self.total_cost += am.usage.cost.total;
+                }
+                None
+            }
+
+            AgentEvent::ThreadStart { alias, task, .. } => {
+                self.active_thread_count += 1;
+                let header = format!("{}: {}", alias, task.chars().take(60).collect::<String>());
+                self.messages.push(ChatMessage::ToolCall(ToolCallMessage {
+                    tool_name: "thread".to_string(),
+                    header,
+                    body: String::new(),
+                    status: ToolStatus::Pending,
+                    expanded: false,
+                }));
+                self.refresh_chat_content();
+                None
+            }
+
+            AgentEvent::ThreadEnd { alias, outcome, .. } => {
+                self.active_thread_count = self.active_thread_count.saturating_sub(1);
+                // Update matching thread tool message
+                for msg in self.messages.iter_mut().rev() {
+                    if let ChatMessage::ToolCall(tc) = msg {
+                        if tc.tool_name == "thread" && tc.header.starts_with(&format!("{}:", alias))
+                        {
+                            tc.status = match outcome {
+                                agent::thread::ThreadOutcome::Completed { .. } => {
+                                    ToolStatus::Success
+                                }
+                                _ => ToolStatus::Error,
+                            };
+                            break;
+                        }
+                    }
+                }
+                self.refresh_chat_content();
+                None
+            }
+
+            AgentEvent::AgentEnd { .. } => {
+                // Render markdown on final content
+                if let Some(stream) = self.streaming.take() {
+                    if let Some(ChatMessage::Assistant(a)) =
+                        self.messages.get_mut(stream.assistant_msg_idx)
+                    {
+                        // Use glamour for markdown rendering
+                        a.rendered_content = Some(ruse::glamour::render_dark(&a.content));
+                    }
+                }
+                self.is_busy = false;
+                self.active_tools.clear();
+                self.refresh_chat_content();
+                None
+            }
+
+            _ => None,
+        }
+    }
+
+    fn submit_prompt(&mut self) -> Cmd {
+        let input = self.input.value().trim().to_string();
+        if input.is_empty() {
+            return None;
+        }
+        self.input.set_value("");
+
+        // Transition to chat screen
+        if self.screen == Screen::Landing {
+            self.screen = Screen::Chat;
+        }
+
+        // Add user message
+        self.messages.push(ChatMessage::User(UserMessage {
+            text: input.clone(),
+        }));
+        self.is_busy = true;
+        self.scroll_follow = true;
+        self.refresh_chat_content();
+
+        // Start spinner
+        let spinner_cmd: Cmd = Some(ruse::runtime::CmdInner::Async(Box::pin(async {
+            tokio::time::sleep(GradientSpinner::tick_duration()).await;
+            Msg::custom(TauMsg::SpinnerTick)
+        })));
+
+        // Spawn agent prompt
+        let agent = Arc::clone(&self.agent);
+        let prompt_cmd: Cmd = Some(ruse::runtime::CmdInner::Async(Box::pin(async move {
+            if let Err(e) = agent.prompt(input).await {
+                eprintln!("Agent error: {}", e);
+            }
+            // AgentEnd event will arrive via the bridge
+            Msg::custom(TauMsg::AgentEvent(AgentEvent::AgentEnd {
+                messages: Vec::new(),
+            }))
+        })));
+
+        ruse::runtime::batch(vec![spinner_cmd, prompt_cmd])
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Model trait implementation
+// ---------------------------------------------------------------------------
+
+impl Model for TauModel {
+    fn init(&mut self) -> Cmd {
+        None
+    }
+
+    fn update(&mut self, msg: Msg) -> Cmd {
+        // Handle custom TauMsg
+        if let Some(tau_msg) = msg.downcast_ref::<TauMsg>() {
+            return self.handle_tau_msg(tau_msg);
+        }
+
+        // Handle permission input
+        if self.perm_pending.is_some() {
+            if let Msg::KeyPress(key) = &msg {
+                match key.code {
+                    KeyCode::Char('a') | KeyCode::Char('y') => {
+                        if let Some(perm) = self.perm_pending.take() {
+                            let _ = perm.resp_tx.send(PromptResult::Allow);
+                        }
+                        return None;
+                    }
+                    KeyCode::Char('s') => {
+                        if let Some(perm) = self.perm_pending.take() {
+                            let _ = perm.resp_tx.send(PromptResult::AlwaysAllow);
+                        }
+                        return None;
+                    }
+                    KeyCode::Char('d') | KeyCode::Char('n') | KeyCode::Escape => {
+                        if let Some(perm) = self.perm_pending.take() {
+                            let _ = perm.resp_tx.send(PromptResult::Deny);
+                        }
+                        return None;
+                    }
+                    _ => return None,
+                }
+            }
+            return None;
+        }
+
+        match msg {
+            Msg::KeyPress(key) => {
+                // Global keys
+                match key.code {
+                    KeyCode::Char('c') if key.modifiers.contains(Modifiers::CTRL) => {
+                        if self.is_busy {
+                            self.agent.abort();
+                            self.is_busy = false;
+                            self.streaming = None;
+                            self.active_tools.clear();
+                            self.refresh_chat_content();
+                        } else {
+                            self.should_quit = true;
+                            return ruse::runtime::quit();
+                        }
+                        return None;
+                    }
+                    KeyCode::Char('d') if key.modifiers.contains(Modifiers::CTRL) => {
+                        self.should_quit = true;
+                        return ruse::runtime::quit();
+                    }
+                    KeyCode::Tab => {
+                        self.focus = match self.focus {
+                            FocusState::Editor => FocusState::Chat,
+                            FocusState::Chat => FocusState::Editor,
+                        };
+                        self.refresh_chat_content();
+                        return None;
+                    }
+                    _ => {}
+                }
+
+                // Focus-specific keys
+                match self.focus {
+                    FocusState::Editor => {
+                        if self.is_busy {
+                            return None;
+                        }
+                        match key.code {
+                            KeyCode::Enter => return self.submit_prompt(),
+                            _ => {
+                                self.input.update(&Msg::KeyPress(key));
+                            }
+                        }
+                    }
+                    FocusState::Chat => match key.code {
+                        KeyCode::Char('j') | KeyCode::Down => {
+                            self.chat_viewport.line_down(1);
+                            self.scroll_follow = false;
+                        }
+                        KeyCode::Char('k') | KeyCode::Up => {
+                            self.chat_viewport.line_up(1);
+                            self.scroll_follow = false;
+                        }
+                        KeyCode::Char('d') => {
+                            self.chat_viewport.half_page_down();
+                            self.scroll_follow = false;
+                        }
+                        KeyCode::Char('u') => {
+                            self.chat_viewport.half_page_up();
+                            self.scroll_follow = false;
+                        }
+                        KeyCode::Char('G') => {
+                            self.chat_viewport.goto_bottom();
+                            self.scroll_follow = true;
+                        }
+                        KeyCode::Char('g') => {
+                            self.chat_viewport.goto_top();
+                            self.scroll_follow = false;
+                        }
+                        KeyCode::Char('J') => {
+                            if self.selected_msg + 1 < self.messages.len() {
+                                self.selected_msg += 1;
+                                self.refresh_chat_content();
+                            }
+                        }
+                        KeyCode::Char('K') => {
+                            if self.selected_msg > 0 {
+                                self.selected_msg -= 1;
+                                self.refresh_chat_content();
+                            }
+                        }
+                        KeyCode::Char(' ') => {
+                            if let Some(ChatMessage::ToolCall(tc)) =
+                                self.messages.get_mut(self.selected_msg)
+                            {
+                                tc.expanded = !tc.expanded;
+                                self.refresh_chat_content();
+                            }
+                            if let Some(ChatMessage::Assistant(a)) =
+                                self.messages.get_mut(self.selected_msg)
+                            {
+                                a.thinking_expanded = !a.thinking_expanded;
+                                self.refresh_chat_content();
+                            }
+                        }
+                        _ => {}
+                    },
+                }
+                None
+            }
+
+            Msg::MouseWheel(mouse) => {
+                match mouse.button {
+                    ruse::runtime::MouseButton::WheelUp => {
+                        self.chat_viewport.line_up(3);
+                        self.scroll_follow = false;
+                    }
+                    ruse::runtime::MouseButton::WheelDown => {
+                        self.chat_viewport.line_down(3);
+                    }
+                    _ => {}
+                }
+                None
+            }
+
+            Msg::WindowSize { width, height } => {
+                self.width = width as usize;
+                self.height = height as usize;
+                self.is_compact = layout::is_compact(self.width, self.height);
+                let lo = layout::compute_layout(self.width, self.height, self.is_compact, 3);
+                self.chat_viewport = Viewport::new(lo.chat_w, lo.chat_h);
+                self.refresh_chat_content();
+                None
+            }
+
+            _ => None,
+        }
+    }
+
+    fn view(&self) -> View {
+        let content = match self.screen {
+            Screen::Landing => self.view_landing(),
+            Screen::Chat => self.view_chat(),
+        };
+
+        View::new(content).with_alt_screen()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// View rendering
+// ---------------------------------------------------------------------------
+
+impl TauModel {
+    fn view_landing(&self) -> String {
+        let mut lines = Vec::new();
+
+        // Logo
+        let logo = Style::new()
+            .foreground(Color::parse(theme::PRIMARY))
+            .bold(true)
+            .render(&["tau"]);
+        lines.push(logo);
+        lines.push(theme::half_muted_style().render(&["Terminal AI Assistant"]));
+        lines.push(String::new());
+
+        // CWD
+        let cwd = std::env::current_dir()
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|_| ".".to_string());
+        lines.push(theme::half_muted_style().render(&[&cwd]));
+
+        // Model
+        let model_line = format!(
+            "{} {} ",
+            theme::primary_style().render(&[theme::MODEL_ICON]),
+            theme::subtle_style().render(&[&self.model_id]),
+        );
+        lines.push(model_line);
+        lines.push(String::new());
+
+        // Startup messages
+        for msg in &self.startup_messages {
+            lines.push(theme::half_muted_style().render(&[msg.as_str()]));
+        }
+
+        // Spacer to push input to bottom
+        let used = lines.len() + 3; // input + separator + help
+        let spacer = self.height.saturating_sub(used);
+        for _ in 0..spacer {
+            lines.push(String::new());
+        }
+
+        // Input
+        let prompt = format!("{} ", theme::primary_style().render(&[">"]),);
+        lines.push(format!("{}{}", prompt, self.input.view()));
+
+        // Separator
+        lines.push(theme::separator(self.width));
+
+        // Help
+        lines.push(theme::half_muted_style().render(&["enter send | ctrl+c quit"]));
+
+        lines.join("\n")
+    }
+
+    fn view_chat(&self) -> String {
+        let lo = layout::compute_layout(self.width, self.height, self.is_compact, 3);
+
+        // Chat viewport
+        let chat = self.chat_viewport.view();
+
+        // Input area
+        let input_area = if let Some(ref perm) = self.perm_pending {
+            // Permission modal
+            let header = format!(
+                "{}  {} {}",
+                theme::green_dark_style().render(&[theme::TOOL_PENDING]),
+                theme::subtle_style().render(&[&perm.tool_name]),
+                theme::half_muted_style().render(&[&perm.description]),
+            );
+            let options = theme::half_muted_style().render(&["[a]llow  [s]ession  [d]eny"]);
+            let box_content = format!("{}\n{}", header, options);
+            Style::new()
+                .border(ROUNDED_BORDER, &[true])
+                .border_foreground(Color::parse(theme::GREEN_DARK))
+                .padding(&[0, 1])
+                .width(lo.chat_w as u16)
+                .render(&[&box_content])
+        } else if self.is_busy {
+            // Spinner
+            self.spinner.view()
+        } else {
+            // Normal input
+            let prompt = format!(
+                "{}{} ",
+                theme::primary_style().render(&[&self.model_id]),
+                theme::half_muted_style().render(&[">"]),
+            );
+            format!("{}{}", prompt, self.input.view())
+        };
+
+        // Status bar
+        let focus_hint = if self.perm_pending.is_some() {
+            FocusHint::Permission
+        } else {
+            match self.focus {
+                FocusState::Editor => FocusHint::Editor,
+                FocusState::Chat => FocusHint::Chat,
+            }
+        };
+        let status_bar = status::render_status_bar(self.width, focus_hint);
+
+        // Compose
+        let main_col = format!("{}\n{}\n{}", chat, input_area, status_bar,);
+
+        if self.is_compact {
+            main_col
+        } else {
+            let thinking_str = match self.thinking_level {
+                ThinkingLevel::Off => "off",
+                ThinkingLevel::Minimal => "minimal",
+                ThinkingLevel::Low => "low",
+                ThinkingLevel::Medium => "medium",
+                ThinkingLevel::High => "high",
+                ThinkingLevel::XHigh => "xhigh",
+            };
+            let sb = sidebar::render_sidebar(&sidebar::SidebarState {
+                width: lo.sidebar_w,
+                height: lo.chat_h,
+                model_id: &self.model_id,
+                tokens_in: self.tokens_in,
+                tokens_out: self.tokens_out,
+                context_window: self.context_window,
+                total_cost: self.total_cost,
+                thinking_level: thinking_str,
+                active_tools: &self.active_tools,
+            });
+            ruse::style::join_horizontal(Position::TOP, &[&main_col, &sb])
+        }
+    }
+}

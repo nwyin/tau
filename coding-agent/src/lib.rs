@@ -11,6 +11,8 @@ pub mod system_prompt;
 pub mod tools;
 pub mod trace;
 pub mod tui;
+#[allow(dead_code)]
+mod tui_legacy;
 
 pub use tools::all_tools;
 
