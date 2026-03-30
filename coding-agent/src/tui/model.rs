@@ -986,7 +986,9 @@ impl Model for TauModel {
                 self.height = height as usize;
                 self.is_compact = layout::is_compact(self.width, self.height);
                 let lo = layout::compute_layout(self.width, self.height, self.is_compact, 3);
-                self.chat_viewport = Viewport::new(lo.chat_w, lo.chat_h);
+                // Resize viewport without losing content
+                self.chat_viewport.set_width(lo.chat_w);
+                self.chat_viewport.set_height(lo.chat_h);
                 self.refresh_chat_content();
                 None
             }
@@ -1110,11 +1112,10 @@ impl TauModel {
         };
         let status_bar = status::render_status_bar(self.width, focus_hint);
 
-        // Compose
-        let main_col = format!("{}\n{}\n{}", chat, input_area, status_bar);
-
-        if self.is_compact {
-            main_col
+        // Compose: sidebar must be joined with ONLY the chat area (same height),
+        // then input + status go below as full-width rows.
+        let chat_row = if self.is_compact {
+            chat
         } else {
             let thinking_str = match self.thinking_level {
                 ThinkingLevel::Off => "off",
@@ -1135,7 +1136,9 @@ impl TauModel {
                 thinking_level: thinking_str,
                 active_tools: &self.active_tools,
             });
-            ruse::style::join_horizontal(Position::TOP, &[&main_col, &sb])
-        }
+            ruse::style::join_horizontal(Position::TOP, &[&chat, &sb])
+        };
+
+        format!("{}\n{}\n{}", chat_row, input_area, status_bar)
     }
 }
