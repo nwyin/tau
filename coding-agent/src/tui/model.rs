@@ -15,7 +15,7 @@ use super::status::{self, FocusHint};
 use super::theme;
 use crate::permissions::{PermissionService, PromptResult};
 use crate::session::{SessionFile, SessionManager};
-use crate::skills::Skill;
+use crate::skills::{self, Skill};
 
 // ---------------------------------------------------------------------------
 // Screen & focus state
@@ -40,15 +40,26 @@ enum FocusState {
 struct StreamingState {
     assistant_buf: String,
     thinking_buf: String,
+    #[allow(dead_code)]
     is_thinking: bool,
     assistant_msg_idx: usize,
+}
+
+// ---------------------------------------------------------------------------
+// Tab completion
+// ---------------------------------------------------------------------------
+
+struct TabState {
+    #[allow(dead_code)]
+    prefix: String,
+    candidates: Vec<String>,
+    index: usize,
 }
 
 // ---------------------------------------------------------------------------
 // TauModel
 // ---------------------------------------------------------------------------
 
-#[allow(dead_code)] // Fields used in later phases
 pub struct TauModel {
     // Dimensions
     width: usize,
@@ -67,6 +78,7 @@ pub struct TauModel {
 
     // Editor
     input: TextInput,
+    tab_state: Option<TabState>,
 
     // Streaming
     streaming: Option<StreamingState>,
@@ -90,14 +102,18 @@ pub struct TauModel {
 
     // Session
     session_manager: SessionManager,
+    #[allow(dead_code)]
     session_file: Option<Arc<SessionFile>>,
 
     // Skills + state
     skills: Vec<Skill>,
     is_busy: bool,
     should_quit: bool,
+    ctrl_c_count: u8,
+    #[allow(dead_code)]
     active_thread_count: usize,
     startup_messages: Vec<String>,
+    debug: bool,
 }
 
 struct PendingPermission {
@@ -122,8 +138,7 @@ pub struct TauConfig {
 
 impl TauModel {
     pub fn new(agent: Arc<Agent>, config: TauConfig) -> Self {
-        let mut input = TextInput::new();
-        input = input.with_placeholder("Ready for instructions");
+        let input = TextInput::new().with_placeholder("Ready for instructions");
 
         Self {
             width: 80,
@@ -136,6 +151,7 @@ impl TauModel {
             selected_msg: 0,
             scroll_follow: true,
             input,
+            tab_state: None,
             streaming: None,
             spinner: GradientSpinner::new("Thinking"),
             agent,
@@ -153,10 +169,16 @@ impl TauModel {
             skills: config.skills,
             is_busy: false,
             should_quit: false,
+            ctrl_c_count: 0,
             active_thread_count: 0,
             startup_messages: config.startup_messages,
+            debug: false,
         }
     }
+
+    // -----------------------------------------------------------------------
+    // Chat content management
+    // -----------------------------------------------------------------------
 
     fn refresh_chat_content(&mut self) {
         let w = self
@@ -177,6 +199,336 @@ impl TauModel {
             self.chat_viewport.goto_bottom();
         }
     }
+
+    /// Push a system/info message into the chat (styled as tool blurred).
+    fn push_system_msg(&mut self, text: &str) {
+        self.messages.push(ChatMessage::ToolCall(ToolCallMessage {
+            tool_name: String::new(),
+            header: text.to_string(),
+            body: String::new(),
+            status: ToolStatus::Success,
+            expanded: false,
+        }));
+        self.refresh_chat_content();
+    }
+
+    // -----------------------------------------------------------------------
+    // Slash commands
+    // -----------------------------------------------------------------------
+
+    fn all_slash_commands(&self) -> Vec<String> {
+        let mut cmds = Vec::new();
+        for skill in &self.skills {
+            cmds.push(format!("/skill:{}", skill.name));
+        }
+        cmds.extend([
+            "/help".into(),
+            "/clear".into(),
+            "/model".into(),
+            "/thinking".into(),
+            "/skills".into(),
+            "/compact".into(),
+            "/sessions".into(),
+            "/resume".into(),
+            "/yolo".into(),
+            "/debug".into(),
+        ]);
+        cmds
+    }
+
+    /// Handle slash command. Returns:
+    /// - Some(None) = handled locally
+    /// - Some(Some(text)) = expand to text, send to LLM
+    /// - None = not a slash command
+    fn handle_slash_command(&mut self, input: &str) -> Option<Option<String>> {
+        let input = input.trim();
+        if !input.starts_with('/') {
+            return None;
+        }
+
+        let (cmd, args) = input
+            .split_once(' ')
+            .map(|(c, a)| (c, a.trim()))
+            .unwrap_or((input, ""));
+
+        match cmd {
+            "/help" => {
+                let commands = [
+                    ("/help", "Show this help"),
+                    ("/clear", "Clear output"),
+                    ("/model <id>", "Switch model"),
+                    ("/thinking <level>", "Set thinking: off|low|medium|high"),
+                    ("/skills", "List available skills"),
+                    ("/compact", "Show token/context stats"),
+                    ("/sessions", "List sessions for this directory"),
+                    ("/resume [id]", "Resume a session (latest if no id)"),
+                    ("/yolo", "Toggle auto-approve all tools"),
+                    ("/debug", "Toggle debug logging"),
+                    ("/skill:<name>", "Run a skill"),
+                ];
+                let mut text = String::from("Commands:\n");
+                for (name, desc) in commands {
+                    text.push_str(&format!("  {:<24} {}\n", name, desc));
+                }
+                text.push_str("\nKeybindings:\n");
+                let keys = [
+                    ("Ctrl-T", "Cycle thinking level"),
+                    ("Ctrl-C", "Abort / exit"),
+                    ("Ctrl-D", "Exit"),
+                    ("Tab", "Switch focus (editor/chat)"),
+                    ("j/k", "Scroll chat"),
+                    ("J/K", "Jump between messages"),
+                    ("Space", "Expand/collapse"),
+                ];
+                for (key, desc) in keys {
+                    text.push_str(&format!("  {:<24} {}\n", key, desc));
+                }
+                self.push_system_msg(&text);
+                Some(None)
+            }
+            "/clear" => {
+                self.messages.clear();
+                self.selected_msg = 0;
+                self.scroll_follow = true;
+                self.refresh_chat_content();
+                Some(None)
+            }
+            "/model" => {
+                if args.is_empty() {
+                    self.push_system_msg(&format!(
+                        "Current model: {}\nUsage: /model <model-id>",
+                        self.model_id
+                    ));
+                } else {
+                    ai::register_builtin_providers();
+                    match ai::models::find_model(args) {
+                        Some(model) => {
+                            let new_id = model.id.clone();
+                            let ctx = model.context_window;
+                            self.agent.set_model((*model).clone());
+                            self.model_id = new_id.clone();
+                            self.context_window = ctx;
+                            self.push_system_msg(&format!("[model: {}]", new_id));
+                        }
+                        None => {
+                            self.push_system_msg(&format!("Unknown model '{}'", args));
+                        }
+                    }
+                }
+                Some(None)
+            }
+            "/thinking" => {
+                if args.is_empty() {
+                    let label = format!("{:?}", self.thinking_level).to_lowercase();
+                    self.push_system_msg(&format!(
+                        "Current thinking level: {}\nUsage: /thinking <off|low|medium|high>",
+                        label
+                    ));
+                } else {
+                    let level: Result<ThinkingLevel, _> =
+                        serde_json::from_value(serde_json::Value::String(args.to_string()));
+                    match level {
+                        Ok(l) => {
+                            self.agent.set_thinking_level(l.clone());
+                            self.thinking_level = l;
+                            let label = format!("{:?}", self.thinking_level).to_lowercase();
+                            self.push_system_msg(&format!("[thinking: {}]", label));
+                        }
+                        Err(_) => {
+                            self.push_system_msg(&format!(
+                                "Invalid thinking level '{}'. Use: off, low, medium, high, xhigh",
+                                args
+                            ));
+                        }
+                    }
+                }
+                Some(None)
+            }
+            "/skills" => {
+                if self.skills.is_empty() {
+                    self.push_system_msg("No skills loaded.");
+                } else {
+                    let mut text = String::from("Available skills:\n");
+                    for s in &self.skills {
+                        text.push_str(&format!("  /skill:{:<16} {}\n", s.name, s.description));
+                    }
+                    self.push_system_msg(&text);
+                }
+                Some(None)
+            }
+            "/compact" => {
+                let ctx_pct = if self.context_window > 0 {
+                    (self.tokens_in + self.tokens_out) as f64 / self.context_window as f64 * 100.0
+                } else {
+                    0.0
+                };
+                self.push_system_msg(&format!(
+                    "Tokens: {} in, {} out | Context: {:.1}% of {} | Cost: ${:.4}",
+                    self.tokens_in, self.tokens_out, ctx_pct, self.context_window, self.total_cost
+                ));
+                Some(None)
+            }
+            "/sessions" => {
+                let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+                match self.session_manager.list_for_cwd(&cwd) {
+                    Ok(sessions) if sessions.is_empty() => {
+                        self.push_system_msg("No sessions for this directory.");
+                    }
+                    Ok(sessions) => {
+                        let mut text = String::from("Sessions:\n");
+                        for (id, ts, count) in sessions.iter().take(10) {
+                            let date = ts.split('T').next().unwrap_or(ts);
+                            let time = ts
+                                .split('T')
+                                .nth(1)
+                                .and_then(|t| t.split('.').next())
+                                .unwrap_or("");
+                            text.push_str(&format!(
+                                "  {} {} {} ({} msgs)\n",
+                                id, date, time, count
+                            ));
+                        }
+                        text.push_str("Use /resume <id> to resume a session.");
+                        self.push_system_msg(&text);
+                    }
+                    Err(e) => {
+                        self.push_system_msg(&format!("Error listing sessions: {}", e));
+                    }
+                }
+                Some(None)
+            }
+            "/resume" => {
+                let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+                let session_id = if args.is_empty() {
+                    match self.session_manager.latest_for_cwd(&cwd) {
+                        Ok(Some(id)) => id,
+                        Ok(None) => {
+                            self.push_system_msg("No sessions found for this directory.");
+                            return Some(None);
+                        }
+                        Err(e) => {
+                            self.push_system_msg(&format!("Error: {}", e));
+                            return Some(None);
+                        }
+                    }
+                } else {
+                    args.to_string()
+                };
+
+                match self.session_manager.load(&session_id) {
+                    Ok(messages) => {
+                        let count = messages.len();
+                        self.agent.replace_messages(messages);
+                        self.push_system_msg(&format!(
+                            "[resumed session {} ({} messages)]",
+                            session_id, count
+                        ));
+                    }
+                    Err(e) => {
+                        self.push_system_msg(&format!(
+                            "Error loading session '{}': {}",
+                            session_id, e
+                        ));
+                    }
+                }
+                Some(None)
+            }
+            "/yolo" => {
+                let new_state = !self.permission_service.is_yolo();
+                self.permission_service.set_yolo(new_state);
+                self.push_system_msg(&format!("[yolo: {}]", if new_state { "on" } else { "off" }));
+                Some(None)
+            }
+            "/debug" => {
+                self.debug = !self.debug;
+                self.push_system_msg(&format!(
+                    "[debug: {}]",
+                    if self.debug { "on" } else { "off" }
+                ));
+                Some(None)
+            }
+            _ if cmd.starts_with("/skill:") => {
+                let skill_name = &cmd[7..];
+                match skills::expand_skill_command(input, &self.skills) {
+                    Some(expanded) => {
+                        self.push_system_msg(&format!("[skill: {}]", skill_name));
+                        Some(Some(expanded))
+                    }
+                    None => {
+                        self.push_system_msg(&format!("Unknown skill '{}'", skill_name));
+                        Some(None)
+                    }
+                }
+            }
+            _ => {
+                self.push_system_msg(&format!(
+                    "Unknown command '{}'. Type /help for available commands.",
+                    cmd
+                ));
+                Some(None)
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Tab completion
+    // -----------------------------------------------------------------------
+
+    fn tab_complete(&mut self) {
+        // If already cycling, advance
+        if let Some(ref mut state) = self.tab_state {
+            if state.candidates.is_empty() {
+                return;
+            }
+            state.index = (state.index + 1) % state.candidates.len();
+            let completed = format!("{} ", state.candidates[state.index]);
+            self.input.set_value(&completed);
+            return;
+        }
+
+        let value = self.input.value().to_string();
+        if !value.starts_with('/') || value.contains(' ') {
+            return;
+        }
+
+        let candidates: Vec<String> = self
+            .all_slash_commands()
+            .into_iter()
+            .filter(|c| c.starts_with(&value))
+            .collect();
+
+        if candidates.is_empty() {
+            return;
+        }
+
+        let first = candidates[0].clone();
+        self.tab_state = Some(TabState {
+            prefix: value,
+            candidates,
+            index: 0,
+        });
+        self.input.set_value(&format!("{} ", first));
+    }
+
+    // -----------------------------------------------------------------------
+    // Thinking level cycling
+    // -----------------------------------------------------------------------
+
+    fn cycle_thinking(&mut self) {
+        self.thinking_level = match self.thinking_level {
+            ThinkingLevel::Off => ThinkingLevel::Low,
+            ThinkingLevel::Minimal | ThinkingLevel::Low => ThinkingLevel::Medium,
+            ThinkingLevel::Medium => ThinkingLevel::High,
+            ThinkingLevel::High | ThinkingLevel::XHigh => ThinkingLevel::Off,
+        };
+        self.agent.set_thinking_level(self.thinking_level.clone());
+        let label = format!("{:?}", self.thinking_level).to_lowercase();
+        self.push_system_msg(&format!("[thinking: {}]", label));
+    }
+
+    // -----------------------------------------------------------------------
+    // Agent event handling
+    // -----------------------------------------------------------------------
 
     fn handle_tau_msg(&mut self, tau_msg: &TauMsg) -> Cmd {
         match tau_msg {
@@ -294,7 +646,6 @@ impl TauModel {
                 is_error,
                 ..
             } => {
-                // Update the last tool message with this name
                 let body_text = result
                     .content
                     .iter()
@@ -326,7 +677,6 @@ impl TauModel {
             }
 
             AgentEvent::TurnEnd { message, .. } => {
-                // Accumulate token usage
                 if let AgentMessage::Llm(ai::types::Message::Assistant(am)) = message {
                     self.tokens_in += am.usage.input;
                     self.tokens_out += am.usage.output;
@@ -351,7 +701,6 @@ impl TauModel {
 
             AgentEvent::ThreadEnd { alias, outcome, .. } => {
                 self.active_thread_count = self.active_thread_count.saturating_sub(1);
-                // Update matching thread tool message
                 for msg in self.messages.iter_mut().rev() {
                     if let ChatMessage::ToolCall(tc) = msg {
                         if tc.tool_name == "thread" && tc.header.starts_with(&format!("{}:", alias))
@@ -371,12 +720,10 @@ impl TauModel {
             }
 
             AgentEvent::AgentEnd { .. } => {
-                // Render markdown on final content
                 if let Some(stream) = self.streaming.take() {
                     if let Some(ChatMessage::Assistant(a)) =
                         self.messages.get_mut(stream.assistant_msg_idx)
                     {
-                        // Use glamour for markdown rendering
                         a.rendered_content = Some(ruse::glamour::render_dark(&a.content));
                     }
                 }
@@ -390,22 +737,33 @@ impl TauModel {
         }
     }
 
+    // -----------------------------------------------------------------------
+    // Submit prompt
+    // -----------------------------------------------------------------------
+
     fn submit_prompt(&mut self) -> Cmd {
-        let input = self.input.value().trim().to_string();
-        if input.is_empty() {
+        let raw_input = self.input.value().trim().to_string();
+        if raw_input.is_empty() {
             return None;
         }
         self.input.set_value("");
+        self.tab_state = None;
 
         // Transition to chat screen
         if self.screen == Screen::Landing {
             self.screen = Screen::Chat;
         }
 
+        // Try slash command first
+        let prompt_text = match self.handle_slash_command(&raw_input) {
+            Some(None) => return None,        // handled locally
+            Some(Some(expanded)) => expanded, // skill expansion
+            None => raw_input.clone(),        // normal prompt
+        };
+
         // Add user message
-        self.messages.push(ChatMessage::User(UserMessage {
-            text: input.clone(),
-        }));
+        self.messages
+            .push(ChatMessage::User(UserMessage { text: raw_input }));
         self.is_busy = true;
         self.scroll_follow = true;
         self.refresh_chat_content();
@@ -419,10 +777,10 @@ impl TauModel {
         // Spawn agent prompt
         let agent = Arc::clone(&self.agent);
         let prompt_cmd: Cmd = Some(ruse::runtime::CmdInner::Async(Box::pin(async move {
-            if let Err(e) = agent.prompt(input).await {
+            if let Err(e) = agent.prompt(prompt_text).await {
                 eprintln!("Agent error: {}", e);
             }
-            // AgentEnd event will arrive via the bridge
+            // AgentEnd event will arrive via the bridge — this is a fallback
             Msg::custom(TauMsg::AgentEvent(AgentEvent::AgentEnd {
                 messages: Vec::new(),
             }))
@@ -447,7 +805,7 @@ impl Model for TauModel {
             return self.handle_tau_msg(tau_msg);
         }
 
-        // Handle permission input
+        // Handle permission input — intercepts all keys while active
         if self.perm_pending.is_some() {
             if let Msg::KeyPress(key) = &msg {
                 match key.code {
@@ -455,21 +813,29 @@ impl Model for TauModel {
                         if let Some(perm) = self.perm_pending.take() {
                             let _ = perm.resp_tx.send(PromptResult::Allow);
                         }
-                        return None;
                     }
                     KeyCode::Char('s') => {
                         if let Some(perm) = self.perm_pending.take() {
                             let _ = perm.resp_tx.send(PromptResult::AlwaysAllow);
                         }
-                        return None;
                     }
                     KeyCode::Char('d') | KeyCode::Char('n') | KeyCode::Escape => {
                         if let Some(perm) = self.perm_pending.take() {
                             let _ = perm.resp_tx.send(PromptResult::Deny);
                         }
-                        return None;
                     }
-                    _ => return None,
+                    KeyCode::Char('c') if key.modifiers.contains(Modifiers::CTRL) => {
+                        // Ctrl-C during permission: deny and abort
+                        if let Some(perm) = self.perm_pending.take() {
+                            let _ = perm.resp_tx.send(PromptResult::Deny);
+                        }
+                        self.agent.abort();
+                        self.is_busy = false;
+                        self.streaming = None;
+                        self.active_tools.clear();
+                        self.push_system_msg("^C (aborted)");
+                    }
+                    _ => {}
                 }
             }
             return None;
@@ -477,6 +843,11 @@ impl Model for TauModel {
 
         match msg {
             Msg::KeyPress(key) => {
+                // Reset ctrl-c counter on any non-ctrl-c key
+                if !(key.code == KeyCode::Char('c') && key.modifiers.contains(Modifiers::CTRL)) {
+                    self.ctrl_c_count = 0;
+                }
+
                 // Global keys
                 match key.code {
                     KeyCode::Char('c') if key.modifiers.contains(Modifiers::CTRL) => {
@@ -485,10 +856,14 @@ impl Model for TauModel {
                             self.is_busy = false;
                             self.streaming = None;
                             self.active_tools.clear();
-                            self.refresh_chat_content();
+                            self.push_system_msg("^C (aborted)");
                         } else {
-                            self.should_quit = true;
-                            return ruse::runtime::quit();
+                            self.ctrl_c_count += 1;
+                            if self.ctrl_c_count >= 2 {
+                                self.should_quit = true;
+                                return ruse::runtime::quit();
+                            }
+                            self.push_system_msg("^C (press again to exit)");
                         }
                         return None;
                     }
@@ -496,11 +871,23 @@ impl Model for TauModel {
                         self.should_quit = true;
                         return ruse::runtime::quit();
                     }
+                    KeyCode::Char('t') if key.modifiers.contains(Modifiers::CTRL) => {
+                        self.cycle_thinking();
+                        return None;
+                    }
+                    KeyCode::Tab if self.focus == FocusState::Editor => {
+                        // Tab in editor: try slash command completion first
+                        let value = self.input.value().to_string();
+                        if value.starts_with('/') {
+                            self.tab_complete();
+                        } else {
+                            self.focus = FocusState::Chat;
+                            self.refresh_chat_content();
+                        }
+                        return None;
+                    }
                     KeyCode::Tab => {
-                        self.focus = match self.focus {
-                            FocusState::Editor => FocusState::Chat,
-                            FocusState::Chat => FocusState::Editor,
-                        };
+                        self.focus = FocusState::Editor;
                         self.refresh_chat_content();
                         return None;
                     }
@@ -513,6 +900,8 @@ impl Model for TauModel {
                         if self.is_busy {
                             return None;
                         }
+                        // Reset tab state on non-tab keys
+                        self.tab_state = None;
                         match key.code {
                             KeyCode::Enter => return self.submit_prompt(),
                             _ => {
@@ -563,8 +952,7 @@ impl Model for TauModel {
                             {
                                 tc.expanded = !tc.expanded;
                                 self.refresh_chat_content();
-                            }
-                            if let Some(ChatMessage::Assistant(a)) =
+                            } else if let Some(ChatMessage::Assistant(a)) =
                                 self.messages.get_mut(self.selected_msg)
                             {
                                 a.thinking_expanded = !a.thinking_expanded;
@@ -667,7 +1055,8 @@ impl TauModel {
         lines.push(theme::separator(self.width));
 
         // Help
-        lines.push(theme::half_muted_style().render(&["enter send | ctrl+c quit"]));
+        lines
+            .push(theme::half_muted_style().render(&["enter send | ctrl+c quit | /help commands"]));
 
         lines.join("\n")
     }
@@ -720,7 +1109,7 @@ impl TauModel {
         let status_bar = status::render_status_bar(self.width, focus_hint);
 
         // Compose
-        let main_col = format!("{}\n{}\n{}", chat, input_area, status_bar,);
+        let main_col = format!("{}\n{}\n{}", chat, input_area, status_bar);
 
         if self.is_compact {
             main_col
