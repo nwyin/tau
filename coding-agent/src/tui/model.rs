@@ -580,6 +580,7 @@ impl TauModel {
                                 content: String::new(),
                                 rendered_content: None,
                                 model_name: self.model_id.clone(),
+                                is_streaming: true,
                             }));
                             self.streaming = Some(StreamingState {
                                 assistant_msg_idx: self.messages.len() - 1,
@@ -606,6 +607,7 @@ impl TauModel {
                                 content: String::new(),
                                 rendered_content: None,
                                 model_name: self.model_id.clone(),
+                                is_streaming: true,
                             }));
                             self.streaming = Some(StreamingState {
                                 assistant_msg_idx: self.messages.len() - 1,
@@ -730,6 +732,7 @@ impl TauModel {
                     if let Some(ChatMessage::Assistant(a)) =
                         self.messages.get_mut(stream.assistant_msg_idx)
                     {
+                        a.is_streaming = false;
                         a.rendered_content = Some(ruse::glamour::render_dark(&a.content));
                     }
                 }
