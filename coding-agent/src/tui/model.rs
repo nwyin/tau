@@ -96,6 +96,9 @@ pub struct TauModel {
     thinking_level: ThinkingLevel,
     active_tools: Vec<String>,
 
+    // Environment
+    cwd: String,
+
     // Permissions
     permission_service: Arc<PermissionService>,
     perm_pending: Option<PendingPermission>,
@@ -162,6 +165,9 @@ impl TauModel {
             total_cost: 0.0,
             thinking_level: ThinkingLevel::Off,
             active_tools: Vec::new(),
+            cwd: std::env::current_dir()
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|_| ".".to_string()),
             permission_service: config.permission_service,
             perm_pending: None,
             session_manager: config.session_manager,
@@ -1090,14 +1096,10 @@ impl TauModel {
                 .render(&[&box_content])
         } else if self.is_busy {
             // Spinner
-            self.spinner.view()
+            format!("  {}", self.spinner.view())
         } else {
-            // Normal input
-            let prompt = format!(
-                "{}{} ",
-                theme::primary_style().render(&[&self.model_id]),
-                theme::half_muted_style().render(&[">"]),
-            );
+            // Normal input — simple prompt, model info is in sidebar
+            let prompt = format!("  {} ", theme::primary_style().render(&[">"]),);
             format!("{}{}", prompt, self.input.view())
         };
 
@@ -1135,6 +1137,7 @@ impl TauModel {
                 total_cost: self.total_cost,
                 thinking_level: thinking_str,
                 active_tools: &self.active_tools,
+                cwd: &self.cwd,
             });
             ruse::style::join_horizontal(Position::TOP, &[&chat, &sb])
         };

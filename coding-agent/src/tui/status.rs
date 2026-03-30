@@ -15,6 +15,12 @@ pub fn render_status_bar(width: usize, hint: FocusHint) -> String {
         FocusHint::Permission => "a allow | s session | d deny | esc cancel",
     };
 
+    // Indent to align with chat content (2 spaces matching input prompt indent)
     let styled = theme::half_muted_style().render(&[help]);
-    Style::new().width(width as u16).render(&[&styled])
+    format!(
+        "  {}",
+        Style::new()
+            .width(width.saturating_sub(2) as u16)
+            .render(&[&styled])
+    )
 }

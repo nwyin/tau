@@ -12,52 +12,58 @@ pub struct SidebarState<'a> {
     pub total_cost: f64,
     pub thinking_level: &'a str,
     pub active_tools: &'a [String],
+    pub cwd: &'a str,
 }
 
 pub fn render_sidebar(s: &SidebarState) -> String {
+    let inner_w = s.width.saturating_sub(3); // left border + padding
     let mut lines = Vec::new();
 
-    // Model info
+    // Session name (placeholder)
+    lines.push(theme::subtle_style().render(&["New Session"]));
+    lines.push(String::new());
+
+    // CWD — truncate from the left if too long, show with ~ for home
+    let cwd_display = shorten_cwd(s.cwd, inner_w);
+    lines.push(theme::half_muted_style().render(&[&cwd_display]));
+    lines.push(String::new());
+
+    // Model block
     let model_line = format!(
         "{} {}",
         theme::primary_style().render(&[theme::MODEL_ICON]),
-        theme::subtle_style().render(&[s.model_id]),
+        Style::new()
+            .foreground(Color::parse(theme::FG_SUBTLE))
+            .bold(true)
+            .render(&[s.model_id]),
     );
     lines.push(model_line);
-    lines.push(String::new());
 
-    // Context usage
+    // Thinking level (if not off)
+    if s.thinking_level != "off" {
+        let think_line = format!("  Reasoning {}", capitalize(s.thinking_level));
+        lines.push(theme::half_muted_style().render(&[&think_line]));
+    }
+
+    // Context + cost on one line
     let ctx_pct = if s.context_window > 0 {
         ((s.tokens_in + s.tokens_out) as f64 / s.context_window as f64 * 100.0) as u64
     } else {
         0
     };
-    let ctx_line = format!(
-        "ctx {}%  {} / {}",
+    let tokens_total = s.tokens_in + s.tokens_out;
+    let ctx_cost = format!(
+        "  {}% ({}) ${:.2}",
         ctx_pct,
-        format_tokens(s.tokens_in + s.tokens_out),
-        format_tokens(s.context_window),
+        format_tokens(tokens_total),
+        s.total_cost
     );
-    lines.push(theme::half_muted_style().render(&[&ctx_line]));
-
-    // Cost
-    if s.total_cost > 0.0 {
-        let cost_line = format!("${:.2}", s.total_cost);
-        lines.push(theme::half_muted_style().render(&[&cost_line]));
-    }
-
-    // Thinking level
-    if s.thinking_level != "off" {
-        let think_line = format!("think: {}", s.thinking_level);
-        lines.push(theme::half_muted_style().render(&[&think_line]));
-    }
+    lines.push(theme::half_muted_style().render(&[&ctx_cost]));
 
     // Active tools
     if !s.active_tools.is_empty() {
         lines.push(String::new());
-        lines.push(
-            theme::muted_style().render(&[&theme::SECTION_SEP.repeat(s.width.saturating_sub(2))]),
-        );
+        lines.push(section_header("Active", inner_w));
         for tool in s.active_tools {
             let tool_line = format!(
                 "{} {}",
@@ -84,6 +90,14 @@ pub fn render_sidebar(s: &SidebarState) -> String {
         .render(&[&body])
 }
 
+fn section_header(label: &str, width: usize) -> String {
+    let label_styled = theme::half_muted_style().render(&[label]);
+    let label_w = label.len() + 1; // +1 for space
+    let rule_w = width.saturating_sub(label_w);
+    let rule = theme::muted_style().render(&[&theme::SECTION_SEP.repeat(rule_w)]);
+    format!("{} {}", label_styled, rule)
+}
+
 fn format_tokens(n: u64) -> String {
     if n >= 1_000_000 {
         format!("{:.1}M", n as f64 / 1_000_000.0)
@@ -91,5 +105,31 @@ fn format_tokens(n: u64) -> String {
         format!("{:.1}K", n as f64 / 1_000.0)
     } else {
         n.to_string()
+    }
+}
+
+fn capitalize(s: &str) -> String {
+    let mut c = s.chars();
+    match c.next() {
+        None => String::new(),
+        Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+    }
+}
+
+fn shorten_cwd(cwd: &str, max_w: usize) -> String {
+    // Replace home dir with ~
+    let home = std::env::var("HOME").unwrap_or_default();
+    let display = if !home.is_empty() && cwd.starts_with(&home) {
+        format!("~{}", &cwd[home.len()..])
+    } else {
+        cwd.to_string()
+    };
+
+    if display.len() <= max_w {
+        display
+    } else {
+        // Truncate from left, keeping the rightmost path segments
+        let truncated = &display[display.len().saturating_sub(max_w.saturating_sub(1))..];
+        format!("…{}", truncated)
     }
 }
