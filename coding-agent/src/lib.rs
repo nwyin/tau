@@ -1,7 +1,6 @@
 pub mod agent_builder;
 pub mod cli;
 pub mod config;
-pub mod markdown;
 pub mod permissions;
 pub mod rpc;
 pub mod serve;
@@ -11,8 +10,6 @@ pub mod system_prompt;
 pub mod tools;
 pub mod trace;
 pub mod tui;
-#[allow(dead_code)]
-mod tui_legacy;
 
 pub use tools::all_tools;
 
