@@ -796,7 +796,8 @@ impl TauModel {
 
 impl Model for TauModel {
     fn init(&mut self) -> Cmd {
-        None
+        // Focus the input so it accepts keystrokes and shows a cursor
+        self.input.focus()
     }
 
     fn update(&mut self, msg: Msg) -> Cmd {
@@ -881,6 +882,7 @@ impl Model for TauModel {
                         if value.starts_with('/') {
                             self.tab_complete();
                         } else {
+                            self.input.blur();
                             self.focus = FocusState::Chat;
                             self.refresh_chat_content();
                         }
@@ -889,7 +891,7 @@ impl Model for TauModel {
                     KeyCode::Tab => {
                         self.focus = FocusState::Editor;
                         self.refresh_chat_content();
-                        return None;
+                        return self.input.focus();
                     }
                     _ => {}
                 }
