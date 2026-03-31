@@ -319,18 +319,39 @@ impl AgentTool for ThreadTool {
                 let tid = thread_id.clone();
                 let a = alias.clone();
                 let _unsub = agent.subscribe(move |event| {
-                    // Forward inner tool execution events with thread context
+                    // Forward tool events with thread identity baked in
                     match event {
-                        AgentEvent::ToolExecutionStart { .. }
-                        | AgentEvent::ToolExecutionEnd { .. } => {
-                            // Wrap as a thread-scoped event by re-emitting directly
-                            fwd(event.clone());
+                        AgentEvent::ToolExecutionStart {
+                            tool_call_id,
+                            tool_name,
+                            args,
+                            ..
+                        } => {
+                            fwd(AgentEvent::ToolExecutionStart {
+                                tool_call_id: tool_call_id.clone(),
+                                tool_name: tool_name.clone(),
+                                args: args.clone(),
+                                thread_id: Some(tid.clone()),
+                                thread_alias: Some(a.clone()),
+                            });
                         }
-                        _ => {
-                            // Skip agent lifecycle events from inner agent to avoid
-                            // confusion with the outer agent's lifecycle
-                            let _ = (&tid, &a);
+                        AgentEvent::ToolExecutionEnd {
+                            tool_call_id,
+                            tool_name,
+                            result,
+                            is_error,
+                            ..
+                        } => {
+                            fwd(AgentEvent::ToolExecutionEnd {
+                                tool_call_id: tool_call_id.clone(),
+                                tool_name: tool_name.clone(),
+                                result: result.clone(),
+                                is_error: *is_error,
+                                thread_id: Some(tid.clone()),
+                                thread_alias: Some(a.clone()),
+                            });
                         }
+                        _ => {}
                     }
                 });
             }

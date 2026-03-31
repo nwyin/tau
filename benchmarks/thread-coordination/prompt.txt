@@ -1,0 +1,40 @@
+Build a recipe book web app using FastAPI and SQLite. Create all files in the current working directory. Use threads to parallelize independent work streams.
+
+The app should have:
+
+1. **Database & Models** — SQLite database `recipes.db` with tables:
+   - `recipes` (id, title, description, cuisine, prep_time_min, servings, created_at)
+   - `ingredients` (id, recipe_id FK, name, quantity, unit)
+   - `tags` (id, name UNIQUE)
+   - `recipe_tags` (recipe_id FK, tag_id FK, PRIMARY KEY both)
+   Seed with 8 real recipes spanning at least 3 cuisines, each with 4-8 ingredients and 1-3 tags.
+
+2. **CRUD API** — FastAPI endpoints:
+   - `GET /api/recipes` — list all recipes (with ingredients and tags included)
+   - `GET /api/recipes/{id}` — single recipe with full details
+   - `POST /api/recipes` — create recipe (with nested ingredients and tags)
+   - `DELETE /api/recipes/{id}` — delete recipe and its ingredients
+   - `GET /api/recipes/search?q=...&cuisine=...&tag=...` — search by title/cuisine/tag
+
+3. **HTML Frontend** — served by FastAPI with Jinja2 templates:
+   - `GET /` — homepage listing all recipes as cards (title, cuisine, prep time, tags)
+   - `GET /recipes/{id}` — detail page showing full recipe with ingredients
+   - Basic CSS styling (responsive grid of cards, readable detail page)
+
+4. **Tests** — `test_app.py` using pytest:
+   - Test CRUD: create, read, list, delete
+   - Test search: by title substring, by cuisine, by tag
+   - Test HTML pages return 200
+   - Test that seeded data has 8 recipes
+
+5. **Setup** — virtual environment with `uv`:
+   - `uv venv && uv pip install fastapi uvicorn jinja2 pytest httpx`
+   - Run `uv run python -m pytest test_app.py -v` and confirm all tests pass.
+
+Approach this by decomposing into parallel work streams:
+- One thread for the database schema, models, and seed data
+- One thread for the API endpoints (can stub the DB layer initially, then integrate)
+- One thread for the HTML templates and CSS
+- A final thread for tests (after the others complete)
+
+Use shared documents to coordinate interfaces between threads (e.g., write the schema to a document so the API thread knows the table structure). Pass episode context from earlier threads to later ones so they have the full picture.

@@ -477,6 +477,8 @@ async fn execute_tool_calls(
             args: serde_json::Value::Object(
                 args.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
             ),
+            thread_id: None,
+            thread_alias: None,
         });
     }
 
@@ -542,6 +544,8 @@ async fn execute_tool_calls(
             tool_name: call_name.clone(),
             result: exec_result.clone(),
             is_error,
+            thread_id: None,
+            thread_alias: None,
         });
 
         let tr = ToolResultMessage {

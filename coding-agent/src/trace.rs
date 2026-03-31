@@ -275,6 +275,8 @@ fn handle_event(s: &mut TraceInner, event: &AgentEvent, trace_dir: &Path) {
             tool_call_id,
             tool_name,
             args,
+            thread_id,
+            thread_alias,
         } => {
             s.tool_starts.insert(
                 tool_call_id.clone(),
@@ -288,7 +290,13 @@ fn handle_event(s: &mut TraceInner, event: &AgentEvent, trace_dir: &Path) {
                 "tool_name": tool_name,
                 "args": args,
             });
-            add_thread_context(s, &mut event);
+            // Use thread context from event (set by thread subscriber) or fall back to stack
+            if let (Some(tid), Some(ta)) = (thread_id, thread_alias) {
+                event["thread_id"] = json!(tid);
+                event["thread_alias"] = json!(ta);
+            } else {
+                add_thread_context(s, &mut event);
+            }
             write_trace_event(s, &event);
         }
 
@@ -299,6 +307,8 @@ fn handle_event(s: &mut TraceInner, event: &AgentEvent, trace_dir: &Path) {
             tool_name,
             result,
             is_error,
+            thread_id,
+            thread_alias,
         } => {
             let duration_ms = s
                 .tool_starts
@@ -318,7 +328,12 @@ fn handle_event(s: &mut TraceInner, event: &AgentEvent, trace_dir: &Path) {
                 "is_error": is_error,
                 "result_content": result_content,
             });
-            add_thread_context(s, &mut event);
+            if let (Some(tid), Some(ta)) = (thread_id, thread_alias) {
+                event["thread_id"] = json!(tid);
+                event["thread_alias"] = json!(ta);
+            } else {
+                add_thread_context(s, &mut event);
+            }
             write_trace_event(s, &event);
         }
 

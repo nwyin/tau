@@ -209,6 +209,8 @@ fn test_tool_start_end_pairing() {
         tool_call_id: tool_id.to_string(),
         tool_name: tool_name.to_string(),
         args: serde_json::json!({"path": "/tmp/foo.rs"}),
+        thread_id: None,
+        thread_alias: None,
     });
 
     h(&AgentEvent::ToolExecutionEnd {
@@ -216,6 +218,8 @@ fn test_tool_start_end_pairing() {
         tool_name: tool_name.to_string(),
         result: mock_tool_result(tool_id, tool_name, "fn main() {}"),
         is_error: false,
+        thread_id: None,
+        thread_alias: None,
     });
 
     h(&turn_end_event(StopReason::Stop));
@@ -325,12 +329,16 @@ fn test_multiple_tool_calls_trace_order() {
         tool_call_id: "id-1".to_string(),
         tool_name: "file_read".to_string(),
         args: serde_json::json!({}),
+        thread_id: None,
+        thread_alias: None,
     });
     h(&AgentEvent::ToolExecutionEnd {
         tool_call_id: "id-1".to_string(),
         tool_name: "file_read".to_string(),
         result: mock_tool_result("id-1", "file_read", "content"),
         is_error: false,
+        thread_id: None,
+        thread_alias: None,
     });
 
     // Tool 2
@@ -338,12 +346,16 @@ fn test_multiple_tool_calls_trace_order() {
         tool_call_id: "id-2".to_string(),
         tool_name: "bash".to_string(),
         args: serde_json::json!({}),
+        thread_id: None,
+        thread_alias: None,
     });
     h(&AgentEvent::ToolExecutionEnd {
         tool_call_id: "id-2".to_string(),
         tool_name: "bash".to_string(),
         result: mock_tool_result("id-2", "bash", "output"),
         is_error: false,
+        thread_id: None,
+        thread_alias: None,
     });
 
     h(&turn_end_event(StopReason::Stop));
@@ -476,12 +488,16 @@ fn test_result_content_full_no_truncation() {
         tool_call_id: "id-long".to_string(),
         tool_name: "file_read".to_string(),
         args: serde_json::json!({}),
+        thread_id: None,
+        thread_alias: None,
     });
     h(&AgentEvent::ToolExecutionEnd {
         tool_call_id: "id-long".to_string(),
         tool_name: "file_read".to_string(),
         result: mock_tool_result("id-long", "file_read", &long_text),
         is_error: false,
+        thread_id: None,
+        thread_alias: None,
     });
 
     h(&turn_end_event(StopReason::Stop));

@@ -40,7 +40,7 @@ done
 # Build the agent
 echo "=== Building coding-agent ==="
 cargo build -p coding-agent --manifest-path "$REPO_ROOT/Cargo.toml" 2>&1 | tail -1
-AGENT_BIN="$REPO_ROOT/target/debug/coding-agent"
+AGENT_BIN="$REPO_ROOT/target/debug/tau"
 
 if [[ ! -x "$AGENT_BIN" ]]; then
     echo "ERROR: coding-agent binary not found at $AGENT_BIN"

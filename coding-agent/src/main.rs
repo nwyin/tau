@@ -249,9 +249,9 @@ async fn main() -> Result<()> {
                     print!("{}", delta);
                     let _ = io::stdout().flush();
                 }
-                AssistantMessageEvent::ThinkingDelta { delta, .. } => {
-                    eprint!("[thinking] {}", delta);
-                    let _ = io::stderr().flush();
+                AssistantMessageEvent::ThinkingDelta { .. } => {
+                    // Thinking deltas are captured in trace.jsonl via ThinkingEnd;
+                    // don't print them token-by-token in headless mode.
                 }
                 _ => {}
             },

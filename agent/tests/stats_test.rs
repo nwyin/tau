@@ -169,12 +169,16 @@ fn inv3_tool_times_non_negative() {
         tool_call_id: "call-1".into(),
         tool_name: "bash".into(),
         args: json!({}),
+        thread_id: None,
+        thread_alias: None,
     });
     h(&AgentEvent::ToolExecutionEnd {
         tool_call_id: "call-1".into(),
         tool_name: "bash".into(),
         result: tool_result("bash"),
         is_error: false,
+        thread_id: None,
+        thread_alias: None,
     });
     h(&AgentEvent::TurnEnd {
         message: agent_message(assistant_message_with_usage(50, 20, 0.0)),

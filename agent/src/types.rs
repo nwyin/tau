@@ -224,18 +224,24 @@ pub enum AgentEvent {
         tool_call_id: String,
         tool_name: String,
         args: Value,
+        thread_id: Option<String>,
+        thread_alias: Option<String>,
     },
     ToolExecutionUpdate {
         tool_call_id: String,
         tool_name: String,
         args: Value,
         partial_result: AgentToolResult,
+        thread_id: Option<String>,
+        thread_alias: Option<String>,
     },
     ToolExecutionEnd {
         tool_call_id: String,
         tool_name: String,
         result: AgentToolResult,
         is_error: bool,
+        thread_id: Option<String>,
+        thread_alias: Option<String>,
     },
 
     // Orchestration observability
