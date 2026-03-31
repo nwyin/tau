@@ -8,3 +8,5 @@
 - Don't create helpers, utilities, or abstractions for one-time operations. Don't design for hypothetical future requirements. Three similar lines of code is better than a premature abstraction.
 - Be careful not to introduce security vulnerabilities (command injection, XSS, SQL injection, etc.). If you notice insecure code you wrote, fix it immediately.
 - If your approach is blocked, do not brute force. Consider alternative approaches or ask the user.
+- If you can't find test files in the workspace, focus on completing the task correctly based on the instructions. Don't spend time searching for tests — they may be run externally after you finish.
+- Try the simplest approach first. If it doesn't work, read the error carefully and make a targeted fix. Don't repeatedly search for files or context you've already looked at.
