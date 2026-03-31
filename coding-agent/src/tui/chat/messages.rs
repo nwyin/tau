@@ -59,6 +59,8 @@ fn render_user(msg: &UserMessage, width: usize, focused: bool) -> String {
 
 fn render_assistant(msg: &AssistantMessage, width: usize, focused: bool) -> String {
     let mut parts = Vec::new();
+    // Inner width accounts for left padding/border (~3 chars)
+    let inner_w = width.saturating_sub(4).max(20);
 
     // Thinking block
     if let Some(ref thinking) = msg.thinking {
@@ -77,10 +79,12 @@ fn render_assistant(msg: &AssistantMessage, width: usize, focused: bool) -> Stri
                 } else {
                     thinking.clone()
                 };
+                // Word-wrap to fit within the chat area
+                let wrapped = ruse::ansi::wordwrap(&display, inner_w);
                 let thinking_styled = Style::new()
                     .foreground(Color::parse(theme::FG_HALF_MUTED))
                     .italic(true)
-                    .render(&[&display]);
+                    .render(&[&wrapped]);
                 parts.push(thinking_styled);
             } else {
                 // Collapsed summary
@@ -95,10 +99,16 @@ fn render_assistant(msg: &AssistantMessage, width: usize, focused: bool) -> Stri
         }
     }
 
-    // Main content
+    // Main content — rendered markdown already handles wrapping via glamour
     let content = msg.rendered_content.as_deref().unwrap_or(&msg.content);
     if !content.is_empty() {
-        parts.push(content.to_string());
+        // Word-wrap raw streaming content (rendered markdown is already wrapped)
+        if msg.rendered_content.is_some() {
+            parts.push(content.to_string());
+        } else {
+            let wrapped = ruse::ansi::wordwrap(content, inner_w);
+            parts.push(wrapped);
+        }
     }
 
     // If streaming with no content yet, show nothing extra (spinner handles it)
