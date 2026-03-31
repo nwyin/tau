@@ -241,19 +241,38 @@ pub fn convert_anthropic_messages(
         }
     }
 
+    // Mark the last content block of the last user message for caching.
+    // This caches the conversation prefix so subsequent turns reuse it.
+    if let Some(last_user) = messages.iter_mut().rev().find(|m| m["role"] == "user") {
+        if let Some(blocks) = last_user["content"].as_array_mut() {
+            if let Some(last_block) = blocks.last_mut() {
+                last_block["cache_control"] = json!({ "type": "ephemeral" });
+            }
+        }
+    }
+
     (system_prompt, messages)
 }
 
 /// Convert tau `Tool` definitions to Anthropic `{ name, description, input_schema }` format.
+/// Marks the last tool with `cache_control: ephemeral` so the API caches the full tool set.
 pub fn convert_anthropic_tools(tools: &[Tool]) -> Vec<Value> {
+    let len = tools.len();
     tools
         .iter()
-        .map(|t| {
-            json!({
+        .enumerate()
+        .map(|(i, t)| {
+            let mut tool = json!({
                 "name": t.name,
                 "description": t.description,
                 "input_schema": t.parameters,
-            })
+            });
+            // Mark the last tool for caching — Anthropic caches everything
+            // up to and including this block.
+            if i == len - 1 {
+                tool["cache_control"] = json!({ "type": "ephemeral" });
+            }
+            tool
         })
         .collect()
 }
@@ -291,7 +310,14 @@ pub fn build_request_body(
     });
 
     if let Some(sys) = system_prompt {
-        body["system"] = json!(sys);
+        // Use array format with cache_control to enable prompt caching.
+        // Anthropic caches everything up to and including the last block
+        // with cache_control: ephemeral.
+        body["system"] = json!([{
+            "type": "text",
+            "text": sys,
+            "cache_control": { "type": "ephemeral" }
+        }]);
     }
 
     if let Some(temp) = opts.temperature {

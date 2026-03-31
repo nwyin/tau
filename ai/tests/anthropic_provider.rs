@@ -795,7 +795,12 @@ fn request_body_includes_model_and_stream() {
     assert_eq!(body["model"], "claude-3-5-haiku-20241022");
     assert_eq!(body["stream"], true);
     assert!(body["max_tokens"].as_u64().unwrap() > 0);
-    assert_eq!(body["system"], "Be helpful.");
+    // System prompt is now an array of content blocks with cache_control
+    let sys = &body["system"];
+    assert!(sys.is_array());
+    assert_eq!(sys[0]["type"], "text");
+    assert_eq!(sys[0]["text"], "Be helpful.");
+    assert_eq!(sys[0]["cache_control"]["type"], "ephemeral");
 }
 
 #[test]
@@ -814,6 +819,8 @@ fn request_body_includes_tools_when_present() {
     assert!(body["tools"].is_array());
     assert_eq!(body["tools"][0]["name"], "search");
     assert!(body["tools"][0]["input_schema"].is_object());
+    // Last tool gets cache_control for prompt caching
+    assert_eq!(body["tools"][0]["cache_control"]["type"], "ephemeral");
 }
 
 #[test]
