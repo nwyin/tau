@@ -1191,27 +1191,28 @@ impl TauModel {
                 cwd: &self.cwd,
             });
 
-            // Line-by-line composition: pad each chat line to exact chat_w,
-            // then append the corresponding sidebar line.
-            let chat_lines: Vec<&str> = chat.lines().collect();
-            let sb_lines: Vec<&str> = sb.lines().collect();
-            let max_lines = chat_lines.len().max(sb_lines.len());
+            // Line-by-line composition: fit each chat line to exactly chat_w
+            // (truncate if wider, pad if narrower), then append the sidebar.
+            // Use split('\n') instead of .lines() to preserve trailing empties.
+            let chat_parts: Vec<&str> = chat.split('\n').collect();
+            let sb_parts: Vec<&str> = sb.split('\n').collect();
+            // Use the sidebar height as the authoritative line count since
+            // it's explicitly padded to lo.chat_h.
+            let row_count = sb_parts.len().max(chat_parts.len());
+            let empty_chat = " ".repeat(lo.chat_w);
             let mut combined = String::new();
-            for i in 0..max_lines {
+            for i in 0..row_count {
                 if i > 0 {
                     combined.push('\n');
                 }
-                let cl = chat_lines.get(i).copied().unwrap_or("");
-                let sl = sb_lines.get(i).copied().unwrap_or("");
-                // Pad chat line to exact pixel width so sidebar stays aligned
-                let cl_w = ruse::ansi::string_width(cl);
-                if cl_w < lo.chat_w {
-                    combined.push_str(cl);
-                    for _ in 0..(lo.chat_w - cl_w) {
-                        combined.push(' ');
-                    }
+                let sl = sb_parts.get(i).copied().unwrap_or("");
+                if let Some(cl) = chat_parts.get(i) {
+                    // Truncate to chat_w (no-op if already fits), then pad
+                    let fitted = ruse::ansi::truncate(cl, lo.chat_w, "");
+                    let fitted = ruse::ansi::pad_right(&fitted, lo.chat_w);
+                    combined.push_str(&fitted);
                 } else {
-                    combined.push_str(&ruse::ansi::truncate(cl, lo.chat_w, ""));
+                    combined.push_str(&empty_chat);
                 }
                 combined.push_str(sl);
             }
