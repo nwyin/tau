@@ -46,6 +46,8 @@ struct TraceInner {
     turns: u32,
     total_input_tokens: u64,
     total_output_tokens: u64,
+    total_cache_read_tokens: u64,
+    total_cache_write_tokens: u64,
     total_cost: f64,
     tool_calls: u32,
     final_status: String,
@@ -67,6 +69,8 @@ impl Default for TraceInner {
             turns: 0,
             total_input_tokens: 0,
             total_output_tokens: 0,
+            total_cache_read_tokens: 0,
+            total_cache_write_tokens: 0,
             total_cost: 0.0,
             tool_calls: 0,
             final_status: "completed".to_string(),
@@ -214,9 +218,12 @@ fn handle_event(s: &mut TraceInner, event: &AgentEvent, trace_dir: &Path) {
         AgentEvent::TurnEnd { message, .. } => {
             s.turns += 1;
 
-            let (input_tokens, output_tokens, cost) = extract_usage(message);
+            let (input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost) =
+                extract_usage(message);
             s.total_input_tokens += input_tokens;
             s.total_output_tokens += output_tokens;
+            s.total_cache_read_tokens += cache_read_tokens;
+            s.total_cache_write_tokens += cache_write_tokens;
             s.total_cost += cost;
 
             // Track last stop reason and error for final_status determination.
@@ -234,6 +241,8 @@ fn handle_event(s: &mut TraceInner, event: &AgentEvent, trace_dir: &Path) {
                     "event": "turn_end",
                     "input_tokens": input_tokens,
                     "output_tokens": output_tokens,
+                    "cache_read_input_tokens": cache_read_tokens,
+                    "cache_creation_input_tokens": cache_write_tokens,
                 }),
             );
         }
@@ -354,6 +363,8 @@ fn write_run_json(s: &TraceInner, trace_dir: &Path, config: &TraceConfig) {
         "turns": s.turns,
         "total_input_tokens": s.total_input_tokens,
         "total_output_tokens": s.total_output_tokens,
+        "total_cache_read_input_tokens": s.total_cache_read_tokens,
+        "total_cache_creation_input_tokens": s.total_cache_write_tokens,
         "total_cost": s.total_cost,
         "tool_calls": s.tool_calls,
         "system_prompt_hash": config.system_prompt_hash,
@@ -402,12 +413,18 @@ fn determine_status(
     }
 }
 
-fn extract_usage(msg: &AgentMessage) -> (u64, u64, f64) {
+fn extract_usage(msg: &AgentMessage) -> (u64, u64, u64, u64, f64) {
     if let AgentMessage::Llm(Message::Assistant(am)) = msg {
         let usage = &am.usage;
-        (usage.input, usage.output, usage.cost.total)
+        (
+            usage.input,
+            usage.output,
+            usage.cache_read,
+            usage.cache_write,
+            usage.cost.total,
+        )
     } else {
-        (0, 0, 0.0)
+        (0, 0, 0, 0, 0.0)
     }
 }
 
