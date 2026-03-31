@@ -1164,10 +1164,11 @@ impl TauModel {
         };
         let status_bar = status::render_status_bar(self.width, focus_hint);
 
-        // Compose: sidebar must be joined with ONLY the chat area (same height),
-        // then input + status go below as full-width rows.
-        let chat_row = if self.is_compact {
-            chat
+        // Compose: manually join chat lines with sidebar lines.
+        // This avoids join_horizontal's ANSI width issues and ensures the
+        // sidebar renders independently of chat scroll position.
+        if self.is_compact {
+            format!("{}\n{}\n{}", chat, input_area, status_bar)
         } else {
             let thinking_str = match self.thinking_level {
                 ThinkingLevel::Off => "off",
@@ -1189,9 +1190,33 @@ impl TauModel {
                 active_tools: &self.active_tools,
                 cwd: &self.cwd,
             });
-            ruse::style::join_horizontal(Position::TOP, &[&chat, &sb])
-        };
 
-        format!("{}\n{}\n{}", chat_row, input_area, status_bar)
+            // Line-by-line composition: pad each chat line to exact chat_w,
+            // then append the corresponding sidebar line.
+            let chat_lines: Vec<&str> = chat.lines().collect();
+            let sb_lines: Vec<&str> = sb.lines().collect();
+            let max_lines = chat_lines.len().max(sb_lines.len());
+            let mut combined = String::new();
+            for i in 0..max_lines {
+                if i > 0 {
+                    combined.push('\n');
+                }
+                let cl = chat_lines.get(i).copied().unwrap_or("");
+                let sl = sb_lines.get(i).copied().unwrap_or("");
+                // Pad chat line to exact pixel width so sidebar stays aligned
+                let cl_w = ruse::ansi::string_width(cl);
+                if cl_w < lo.chat_w {
+                    combined.push_str(cl);
+                    for _ in 0..(lo.chat_w - cl_w) {
+                        combined.push(' ');
+                    }
+                } else {
+                    combined.push_str(&ruse::ansi::truncate(cl, lo.chat_w, ""));
+                }
+                combined.push_str(sl);
+            }
+
+            format!("{}\n{}\n{}", combined, input_area, status_bar)
+        }
     }
 }
