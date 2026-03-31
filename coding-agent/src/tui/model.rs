@@ -210,6 +210,7 @@ impl TauModel {
     /// Push a system/info message into the chat (styled as tool blurred).
     fn push_system_msg(&mut self, text: &str) {
         self.messages.push(ChatMessage::ToolCall(ToolCallMessage {
+            tool_call_id: None,
             tool_name: String::new(),
             header: text.to_string(),
             body: String::new(),
@@ -634,7 +635,10 @@ impl TauModel {
             }
 
             AgentEvent::ToolExecutionStart {
-                tool_name, args, ..
+                tool_call_id,
+                tool_name,
+                args,
+                ..
             } => {
                 // Skip "thread" tool — ThreadStart handles it with richer info
                 if tool_name == "thread" {
@@ -655,6 +659,7 @@ impl TauModel {
                 };
 
                 self.messages.push(ChatMessage::ToolCall(ToolCallMessage {
+                    tool_call_id: Some(tool_call_id.clone()),
                     tool_name: display_name,
                     header,
                     body: String::new(),
@@ -667,6 +672,7 @@ impl TauModel {
             }
 
             AgentEvent::ToolExecutionEnd {
+                tool_call_id,
                 tool_name,
                 result,
                 is_error,
@@ -689,9 +695,12 @@ impl TauModel {
                     })
                     .collect::<Vec<_>>()
                     .join("\n");
+                // Match by tool_call_id for correctness (display name may be prefixed)
                 for msg in self.messages.iter_mut().rev() {
                     if let ChatMessage::ToolCall(tc) = msg {
-                        if tc.tool_name == *tool_name && tc.status == ToolStatus::Pending {
+                        if tc.tool_call_id.as_deref() == Some(tool_call_id)
+                            && tc.status == ToolStatus::Pending
+                        {
                             tc.status = if *is_error {
                                 ToolStatus::Error
                             } else {
@@ -713,6 +722,20 @@ impl TauModel {
                     self.tokens_out += am.usage.output;
                     self.total_cost += am.usage.cost.total;
                 }
+                // Finalize the current streaming assistant message so that the
+                // next turn creates a fresh message *after* any tool calls that
+                // were appended between turns.  Without this, Turn 2's TextDelta
+                // would keep appending to Turn 1's message (above the tool calls),
+                // making tool calls appear after the final output.
+                if let Some(stream) = self.streaming.take() {
+                    if let Some(ChatMessage::Assistant(a)) =
+                        self.messages.get_mut(stream.assistant_msg_idx)
+                    {
+                        a.is_streaming = false;
+                        a.rendered_content = Some(ruse::glamour::render_dark(&a.content));
+                    }
+                    self.refresh_chat_content();
+                }
                 None
             }
 
@@ -721,6 +744,7 @@ impl TauModel {
                 self.active_thread_aliases.push(alias.clone());
                 let header = format!("{}: {}", alias, task.chars().take(60).collect::<String>());
                 self.messages.push(ChatMessage::ToolCall(ToolCallMessage {
+                    tool_call_id: None,
                     tool_name: "thread".to_string(),
                     header,
                     body: String::new(),

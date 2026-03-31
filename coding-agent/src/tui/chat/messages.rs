@@ -25,6 +25,8 @@ pub struct AssistantMessage {
 }
 
 pub struct ToolCallMessage {
+    /// Unique tool call ID from the API (used for matching start/end events).
+    pub tool_call_id: Option<String>,
     pub tool_name: String,
     pub header: String,
     pub body: String,
