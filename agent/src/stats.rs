@@ -134,9 +134,12 @@ fn handle_event(s: &mut StatsInner, event: &AgentEvent) {
                 .map(|t| t.elapsed())
                 .unwrap_or(Duration::ZERO);
 
-            let (input_tokens, output_tokens, cost) = extract_usage(message);
+            let (input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost) =
+                extract_usage(message);
             s.totals.input += input_tokens;
             s.totals.output += output_tokens;
+            s.totals.cache_read += cache_read_tokens;
+            s.totals.cache_write += cache_write_tokens;
             s.totals.total_cost += cost;
             s.totals.tool_calls += s.current_turn_tools.len() as u64;
 
@@ -186,14 +189,20 @@ fn handle_event(s: &mut StatsInner, event: &AgentEvent) {
     }
 }
 
-/// Extract (input_tokens, output_tokens, total_cost) from an AgentMessage.
-fn extract_usage(msg: &AgentMessage) -> (u64, u64, f64) {
+/// Extract (input_tokens, output_tokens, cache_read, cache_write, total_cost) from an AgentMessage.
+fn extract_usage(msg: &AgentMessage) -> (u64, u64, u64, u64, f64) {
     if let AgentMessage::Llm(Message::Assistant(am)) = msg {
         let usage = &am.usage;
         let cost = usage.cost.total;
-        (usage.input, usage.output, cost)
+        (
+            usage.input,
+            usage.output,
+            usage.cache_read,
+            usage.cache_write,
+            cost,
+        )
     } else {
-        (0, 0, 0.0)
+        (0, 0, 0, 0, 0.0)
     }
 }
 
