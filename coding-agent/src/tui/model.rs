@@ -1212,9 +1212,31 @@ impl TauModel {
                 cwd: &self.cwd,
             });
 
-            // join_horizontal places chat and sidebar side-by-side.
-            // It inserts \x1b[0m between columns to prevent ANSI leaking.
-            let combined = ruse::style::join_horizontal(ruse::style::Position::TOP, &[&chat, &sb]);
+            // Compose chat + sidebar side-by-side using CHA (Cursor
+            // Horizontal Absolute) to position the sidebar at a fixed
+            // column.  This bypasses all ANSI string-width calculations
+            // — the cell buffer moves the cursor to the exact column
+            // regardless of how wide the chat content actually renders.
+            let chat_lines: Vec<&str> = chat.split('\n').collect();
+            let sb_lines: Vec<&str> = sb.split('\n').collect();
+            let row_count = chat_lines.len().max(sb_lines.len());
+            // CHA escape: \x1b[{col}G  (1-based column)
+            let cha = format!("\x1b[{}G", lo.chat_w + 1);
+            let mut combined = String::with_capacity(row_count * (lo.chat_w + lo.sidebar_w + 16));
+            for i in 0..row_count {
+                if i > 0 {
+                    combined.push('\n');
+                }
+                // Chat line (may be wider/narrower than chat_w — doesn't matter)
+                let cl = chat_lines.get(i).copied().unwrap_or("");
+                combined.push_str(cl);
+                // Reset ANSI state, then jump to sidebar column
+                combined.push_str("\x1b[0m");
+                combined.push_str(&cha);
+                // Sidebar line
+                let sl = sb_lines.get(i).copied().unwrap_or("");
+                combined.push_str(sl);
+            }
 
             format!("{}\n{}\n{}", combined, input_area, status_bar)
         }
