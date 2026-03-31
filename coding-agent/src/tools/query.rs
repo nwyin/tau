@@ -7,12 +7,13 @@ use std::sync::Arc;
 
 use agent::orchestrator::OrchestratorState;
 use agent::thread::{Episode, ThreadOutcome};
-use agent::types::{AgentTool, AgentToolResult, BoxFuture, GetApiKeyFn, ToolUpdateFn};
+use agent::types::{AgentEvent, AgentTool, AgentToolResult, BoxFuture, GetApiKeyFn, ToolUpdateFn};
 use ai::types::{Model, UserBlock};
 use futures::StreamExt;
 use serde_json::{json, Value};
 use tokio_util::sync::CancellationToken;
 
+use super::thread::EventForwarderCell;
 use crate::config::ModelSlots;
 
 pub struct QueryTool {
@@ -20,6 +21,7 @@ pub struct QueryTool {
     get_api_key: Option<GetApiKeyFn>,
     default_model: Model,
     model_slots: ModelSlots,
+    event_forwarder: EventForwarderCell,
 }
 
 impl QueryTool {
@@ -28,12 +30,14 @@ impl QueryTool {
         get_api_key: Option<GetApiKeyFn>,
         default_model: Model,
         model_slots: ModelSlots,
+        event_forwarder: EventForwarderCell,
     ) -> Self {
         Self {
             orchestrator,
             get_api_key,
             default_model,
             model_slots,
+            event_forwarder,
         }
     }
 
@@ -42,12 +46,14 @@ impl QueryTool {
         get_api_key: Option<GetApiKeyFn>,
         default_model: Model,
         model_slots: ModelSlots,
+        event_forwarder: EventForwarderCell,
     ) -> Arc<dyn AgentTool> {
         Arc::new(Self::new(
             orchestrator,
             get_api_key,
             default_model,
             model_slots,
+            event_forwarder,
         ))
     }
 }
@@ -102,6 +108,7 @@ impl AgentTool for QueryTool {
         let get_api_key = self.get_api_key.clone();
         let default_model = self.default_model.clone();
         let model_slots = self.model_slots.clone();
+        let event_forwarder = self.event_forwarder.clone();
 
         Box::pin(async move {
             let prompt = params
@@ -143,6 +150,15 @@ impl AgentTool for QueryTool {
                 let search_id = model_slots.resolve("search", default_model_id);
                 resolve_model(&search_id, default_model)
             };
+
+            // Emit QueryStart
+            if let Some(fwd) = event_forwarder.lock().ok().and_then(|g| g.clone()) {
+                fwd(AgentEvent::QueryStart {
+                    query_id: alias.clone(),
+                    prompt: prompt.clone(),
+                    model: model.id.clone(),
+                });
+            }
 
             // Resolve API key
             let api_key = if let Some(ref get_key) = get_api_key {
@@ -204,6 +220,15 @@ impl AgentTool for QueryTool {
             }
 
             let duration_ms = start.elapsed().as_millis() as u64;
+
+            // Emit QueryEnd
+            if let Some(fwd) = event_forwarder.lock().ok().and_then(|g| g.clone()) {
+                fwd(AgentEvent::QueryEnd {
+                    query_id: alias.clone(),
+                    output: response_text.clone(),
+                    duration_ms,
+                });
+            }
 
             // Record as lightweight episode
             let thread_id = orchestrator.next_thread_id();

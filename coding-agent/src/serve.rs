@@ -61,25 +61,33 @@ pub async fn run_serve(
         .ok()
         .and_then(|v| v.parse().ok())
         .or(built.config.max_turns);
-    let (_trace, _trace_unsub) = if let Some(ref trace_dir) = trace_output {
-        let t = TraceSubscriber::new(
-            trace_dir,
-            TraceConfig {
-                run_id: uuid::Uuid::new_v4().to_string(),
-                task_id: task_id.clone(),
-                model_id: built.model_id.clone(),
-                provider: built.model_provider.clone(),
-                tool_names,
-                edit_mode: built.config.edit_mode.clone(),
-                system_prompt_hash,
-                max_turns,
-            },
-        );
-        let unsub = built.agent.subscribe(t.handler());
-        (Some(t), Some(unsub))
+    let trace_dir_path = if let Some(ref explicit_dir) = trace_output {
+        std::path::PathBuf::from(explicit_dir)
     } else {
-        (None, None)
+        let trace_id = {
+            let id = uuid::Uuid::new_v4().to_string().replace('-', "");
+            format!("serve-{}", &id[..8])
+        };
+        {
+            let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+            std::path::PathBuf::from(home).join(".tau").join("traces")
+        }
+        .join(trace_id)
     };
+    let trace = TraceSubscriber::new(
+        &trace_dir_path,
+        TraceConfig {
+            run_id: uuid::Uuid::new_v4().to_string(),
+            task_id: task_id.clone(),
+            model_id: built.model_id.clone(),
+            provider: built.model_provider.clone(),
+            tool_names,
+            edit_mode: built.config.edit_mode.clone(),
+            system_prompt_hash,
+            max_turns,
+        },
+    );
+    let _trace_unsub = built.agent.subscribe(trace.handler());
 
     // Build server state
     let state = Arc::new(ServerState {
@@ -147,9 +155,7 @@ pub async fn run_serve(
     }
 
     // Finalize trace before exit
-    if let Some(ref t) = _trace {
-        t.finalize();
-    }
+    trace.finalize();
 
     eprintln!("[serve] shutdown complete");
     // Force exit — the blocking stdin reader thread would otherwise prevent

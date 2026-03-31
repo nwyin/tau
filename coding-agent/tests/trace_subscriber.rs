@@ -463,7 +463,7 @@ fn test_token_accumulation() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn test_result_summary_truncated_at_100_chars() {
+fn test_result_content_full_no_truncation() {
     let dir = TempDir::new().unwrap();
     let t = TraceSubscriber::new(dir.path(), make_config(None));
     let h = t.handler();
@@ -493,13 +493,12 @@ fn test_result_summary_truncated_at_100_chars() {
         .iter()
         .find(|v| v["event"] == "tool_end")
         .expect("tool_end event missing");
-    let summary = tool_end["result_summary"].as_str().unwrap();
-    assert!(
-        summary.len() <= 103, // 100 chars + "..." = 103
-        "result_summary should be ≤103 chars, got {}",
-        summary.len()
+    let content = tool_end["result_content"].as_str().unwrap();
+    assert_eq!(
+        content.len(),
+        200,
+        "result_content should contain full content without truncation"
     );
-    assert!(summary.ends_with("..."), "long summary should end with ...");
 }
 
 // ---------------------------------------------------------------------------

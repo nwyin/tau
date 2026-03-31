@@ -35,7 +35,7 @@ pub use log::LogTool;
 pub use query::QueryTool;
 pub use subagent::SubagentTool;
 pub use thread::ThreadTool;
-pub use todo::TodoTool;
+pub use todo::{TodoItem, TodoTool};
 pub use web_fetch::WebFetchTool;
 pub use web_search::WebSearchTool;
 
@@ -112,8 +112,9 @@ pub fn orchestration_tools(
         get_api_key.clone(),
         model.clone(),
         model_slots.clone(),
+        cell.clone(),
     );
-    let document_tool = DocumentTool::arc(orchestrator.clone());
+    let document_tool = DocumentTool::arc(orchestrator.clone(), cell.clone());
     let log_tool = LogTool::arc(orchestrator.clone());
     let from_id_tool = FromIdTool::arc(orchestrator);
     let py_repl_tool = py_repl::PyReplTool::arc(

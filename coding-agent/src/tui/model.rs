@@ -96,6 +96,9 @@ pub struct TauModel {
     thinking_level: ThinkingLevel,
     active_tools: Vec<String>,
 
+    // Todos (latest state from todo tool)
+    todos: Vec<crate::tools::TodoItem>,
+
     // Environment
     cwd: String,
 
@@ -166,6 +169,7 @@ impl TauModel {
             total_cost: 0.0,
             thinking_level: ThinkingLevel::Off,
             active_tools: Vec::new(),
+            todos: Vec::new(),
             cwd: std::env::current_dir()
                 .map(|p| p.display().to_string())
                 .unwrap_or_else(|_| ".".to_string()),
@@ -726,6 +730,16 @@ impl TauModel {
                         }
                     }
                 }
+                // Extract structured todo state when available
+                if tool_name == "todo" {
+                    if let Some(details) = &result.details {
+                        if let Ok(items) = serde_json::from_value::<Vec<crate::tools::TodoItem>>(
+                            details.get("todos").cloned().unwrap_or_default(),
+                        ) {
+                            self.todos = items;
+                        }
+                    }
+                }
                 self.active_tools.retain(|t| t != tool_name);
                 self.refresh_chat_content();
                 None
@@ -1229,6 +1243,7 @@ impl TauModel {
                 total_cost: self.total_cost,
                 thinking_level: thinking_str,
                 active_tools: &self.active_tools,
+                todos: &self.todos,
                 cwd: &self.cwd,
             });
 

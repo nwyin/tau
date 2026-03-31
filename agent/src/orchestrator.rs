@@ -4,7 +4,9 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use crate::thread::Episode;
+use serde::{Deserialize, Serialize};
+
+use crate::thread::{Episode, ThreadOutcome};
 use crate::types::AgentMessage;
 
 /// A live thread's persistent state (conversation history for reuse).
@@ -180,6 +182,43 @@ impl OrchestratorState {
         }
         Some(out)
     }
+
+    /// Generate a summary of all orchestration activity.
+    pub fn summarize(&self) -> OrchestrationSummary {
+        let episodes = self.episode_log.lock().unwrap();
+        let docs = self.documents.lock().unwrap();
+        let mut summary = OrchestrationSummary {
+            total_episodes: episodes.len(),
+            completed: 0,
+            aborted: 0,
+            escalated: 0,
+            timed_out: 0,
+            total_duration_ms: 0,
+            document_count: docs.len(),
+        };
+        for ep in episodes.iter() {
+            summary.total_duration_ms += ep.duration_ms;
+            match &ep.outcome {
+                ThreadOutcome::Completed { .. } => summary.completed += 1,
+                ThreadOutcome::Aborted { .. } => summary.aborted += 1,
+                ThreadOutcome::Escalated { .. } => summary.escalated += 1,
+                ThreadOutcome::TimedOut => summary.timed_out += 1,
+            }
+        }
+        summary
+    }
+}
+
+/// Summary of orchestration activity for trace output.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrchestrationSummary {
+    pub total_episodes: usize,
+    pub completed: usize,
+    pub aborted: usize,
+    pub escalated: usize,
+    pub timed_out: usize,
+    pub total_duration_ms: u64,
+    pub document_count: usize,
 }
 
 impl Default for OrchestratorState {
@@ -196,7 +235,6 @@ impl Default for OrchestratorState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::thread::ThreadOutcome;
 
     fn make_episode(alias: &str, n: u32) -> Episode {
         Episode {

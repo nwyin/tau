@@ -82,6 +82,11 @@ fn default_session_dir() -> PathBuf {
     PathBuf::from(home).join(".tau").join("sessions")
 }
 
+fn default_trace_dir() -> PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+    PathBuf::from(home).join(".tau").join("traces")
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -190,30 +195,37 @@ async fn main() -> Result<()> {
         (None, None)
     };
 
-    // Set up trace output if requested
+    // Set up trace output (always-on; explicit --trace-output overrides default path)
     let tool_names: Vec<String> = tools_for_edit_mode(&config.edit_mode)
         .iter()
         .map(|t| t.name().to_string())
         .collect();
-    let (_trace, _trace_unsub) = if let Some(ref trace_dir) = trace_output {
-        let t = TraceSubscriber::new(
-            trace_dir,
-            TraceConfig {
-                run_id: uuid::Uuid::new_v4().to_string(),
-                task_id: task_id.clone(),
-                model_id: model_id.clone(),
-                provider: model_provider.clone(),
-                tool_names,
-                edit_mode: config.edit_mode.clone(),
-                system_prompt_hash,
-                max_turns,
-            },
-        );
-        let unsub = agent.subscribe(t.handler());
-        (Some(t), Some(unsub))
+    let trace_dir_path = if let Some(ref explicit_dir) = trace_output {
+        PathBuf::from(explicit_dir)
     } else {
-        (None, None)
+        let trace_id = session_file_opt
+            .as_ref()
+            .map(|sf| sf.id.clone())
+            .unwrap_or_else(|| {
+                let id = uuid::Uuid::new_v4().to_string().replace('-', "");
+                id[..8].to_string()
+            });
+        default_trace_dir().join(trace_id)
     };
+    let trace = TraceSubscriber::new(
+        &trace_dir_path,
+        TraceConfig {
+            run_id: uuid::Uuid::new_v4().to_string(),
+            task_id: task_id.clone(),
+            model_id: model_id.clone(),
+            provider: model_provider.clone(),
+            tool_names,
+            edit_mode: config.edit_mode.clone(),
+            system_prompt_hash,
+            max_turns,
+        },
+    );
+    let _trace_unsub = agent.subscribe(trace.handler());
 
     // Load pre-existing messages into agent state
     if !initial_messages.is_empty() {
@@ -398,11 +410,9 @@ async fn main() -> Result<()> {
 
         let result = agent.prompt(prompt_text).await;
 
-        // Emit stats after run
+        // Emit stats and finalize trace after run
         emit_stats(stats.as_ref(), print_stats, stats_json_path.as_deref());
-        if let Some(ref t) = _trace {
-            t.finalize();
-        }
+        trace.finalize();
 
         let had_error = result.is_err()
             || abort_count.load(Ordering::SeqCst) > 0
@@ -452,11 +462,9 @@ async fn main() -> Result<()> {
         )
         .await?;
 
-        // Emit stats after TUI exits
+        // Emit stats and finalize trace after TUI exits
         emit_stats(stats.as_ref(), print_stats, stats_json_path.as_deref());
-        if let Some(ref t) = _trace {
-            t.finalize();
-        }
+        trace.finalize();
     }
 
     Ok(())

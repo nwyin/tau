@@ -264,10 +264,29 @@ pub async fn build_agent(build_config: AgentBuildConfig) -> Result<BuiltAgent> {
             thinking_level: Some(thinking_level),
         }),
         convert_to_llm: None,
-        transform_context: Some(Arc::new(move |messages, _cancel| {
-            let model = model_for_compact.clone();
-            Box::pin(async move { agent::context::compact_messages(messages, &model) })
-        })),
+        transform_context: {
+            let cell_for_compact = event_forwarder_cell.clone();
+            Some(Arc::new(move |messages, _cancel| {
+                let model = model_for_compact.clone();
+                let cell = cell_for_compact.clone();
+                Box::pin(async move {
+                    let before = agent::context::estimate_tokens(&messages) as u64;
+                    let result = agent::context::compact_messages(messages, &model);
+                    let after = agent::context::estimate_tokens(&result) as u64;
+                    if after < before {
+                        if let Some(fwd) = cell.lock().ok().and_then(|g| g.clone()) {
+                            fwd(agent::types::AgentEvent::ContextCompact {
+                                thread_alias: None,
+                                before_tokens: before,
+                                after_tokens: after,
+                                strategy: "mechanical".to_string(),
+                            });
+                        }
+                    }
+                    result
+                })
+            }))
+        },
         stream_fn: None,
         steering_mode: None,
         follow_up_mode: None,

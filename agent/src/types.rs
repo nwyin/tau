@@ -237,6 +237,40 @@ pub enum AgentEvent {
         result: AgentToolResult,
         is_error: bool,
     },
+
+    // Orchestration observability
+    DocumentOp {
+        thread_alias: Option<String>,
+        op: String,
+        name: String,
+        content: String,
+    },
+    EpisodeInject {
+        source_aliases: Vec<String>,
+        target_alias: String,
+        target_thread_id: String,
+    },
+    EvidenceCite {
+        thread_alias: String,
+        thread_id: String,
+        tool_call_ids: Vec<String>,
+    },
+    QueryStart {
+        query_id: String,
+        prompt: String,
+        model: String,
+    },
+    QueryEnd {
+        query_id: String,
+        output: String,
+        duration_ms: u64,
+    },
+    ContextCompact {
+        thread_alias: Option<String>,
+        before_tokens: u64,
+        after_tokens: u64,
+        strategy: String,
+    },
 }
 
 // Needed so AgentToolResult can live inside AgentEvent::ToolExecutionUpdate.

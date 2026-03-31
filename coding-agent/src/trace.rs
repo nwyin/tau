@@ -1,4 +1,4 @@
-//! TraceSubscriber — writes run.json and trace.jsonl for benchmark analysis.
+//! TraceSubscriber — writes run.json and trace.jsonl for observability.
 //!
 //! Follows the same pattern as AgentStats: hook into `agent.subscribe()` via
 //! a handler closure, collect events into internal state, write output on end.
@@ -57,6 +57,8 @@ struct TraceInner {
     /// active: tool_call_id -> (timestamp, tool_name, instant)
     tool_starts: HashMap<String, (DateTime<Utc>, String, Instant)>,
     trace_writer: Option<File>,
+    /// Stack of active threads: (thread_id, alias)
+    active_thread_stack: Vec<(String, String)>,
 }
 
 impl Default for TraceInner {
@@ -79,6 +81,7 @@ impl Default for TraceInner {
             max_turns: None,
             tool_starts: HashMap::new(),
             trace_writer: None,
+            active_thread_stack: Vec::new(),
         }
     }
 }
@@ -247,6 +250,27 @@ fn handle_event(s: &mut TraceInner, event: &AgentEvent, trace_dir: &Path) {
             );
         }
 
+        AgentEvent::MessageStart { .. } => {}
+
+        AgentEvent::MessageUpdate {
+            assistant_event, ..
+        } => {
+            // Extract thinking content when a thinking block completes
+            if let ai::types::AssistantMessageEvent::ThinkingEnd { content, .. } =
+                assistant_event.as_ref()
+            {
+                let mut event = json!({
+                    "ts": now.to_rfc3339(),
+                    "event": "thinking",
+                    "content": content,
+                });
+                add_thread_context(s, &mut event);
+                write_trace_event(s, &event);
+            }
+        }
+
+        AgentEvent::MessageEnd { .. } => {}
+
         AgentEvent::ToolExecutionStart {
             tool_call_id,
             tool_name,
@@ -257,17 +281,18 @@ fn handle_event(s: &mut TraceInner, event: &AgentEvent, trace_dir: &Path) {
                 (now, tool_name.clone(), Instant::now()),
             );
 
-            write_trace_event(
-                s,
-                &json!({
-                    "ts": now.to_rfc3339(),
-                    "event": "tool_start",
-                    "tool_call_id": tool_call_id,
-                    "tool_name": tool_name,
-                    "args": args,
-                }),
-            );
+            let mut event = json!({
+                "ts": now.to_rfc3339(),
+                "event": "tool_start",
+                "tool_call_id": tool_call_id,
+                "tool_name": tool_name,
+                "args": args,
+            });
+            add_thread_context(s, &mut event);
+            write_trace_event(s, &event);
         }
+
+        AgentEvent::ToolExecutionUpdate { .. } => {}
 
         AgentEvent::ToolExecutionEnd {
             tool_call_id,
@@ -282,20 +307,19 @@ fn handle_event(s: &mut TraceInner, event: &AgentEvent, trace_dir: &Path) {
                 .unwrap_or(0);
             s.tool_calls += 1;
 
-            let result_summary = extract_result_summary(result);
+            let result_content = extract_result_content(result);
 
-            write_trace_event(
-                s,
-                &json!({
-                    "ts": now.to_rfc3339(),
-                    "event": "tool_end",
-                    "tool_call_id": tool_call_id,
-                    "tool_name": tool_name,
-                    "duration_ms": duration_ms,
-                    "is_error": is_error,
-                    "result_summary": result_summary,
-                }),
-            );
+            let mut event = json!({
+                "ts": now.to_rfc3339(),
+                "event": "tool_end",
+                "tool_call_id": tool_call_id,
+                "tool_name": tool_name,
+                "duration_ms": duration_ms,
+                "is_error": is_error,
+                "result_content": result_content,
+            });
+            add_thread_context(s, &mut event);
+            write_trace_event(s, &event);
         }
 
         AgentEvent::ThreadStart {
@@ -304,6 +328,9 @@ fn handle_event(s: &mut TraceInner, event: &AgentEvent, trace_dir: &Path) {
             task,
             model,
         } => {
+            s.active_thread_stack
+                .push((thread_id.clone(), alias.clone()));
+
             write_trace_event(
                 s,
                 &json!({
@@ -323,6 +350,8 @@ fn handle_event(s: &mut TraceInner, event: &AgentEvent, trace_dir: &Path) {
             outcome,
             duration_ms,
         } => {
+            s.active_thread_stack.retain(|(tid, _)| tid != thread_id);
+
             write_trace_event(
                 s,
                 &json!({
@@ -336,7 +365,120 @@ fn handle_event(s: &mut TraceInner, event: &AgentEvent, trace_dir: &Path) {
             );
         }
 
-        _ => {}
+        // Orchestration observability events
+        AgentEvent::DocumentOp {
+            thread_alias,
+            op,
+            name,
+            content,
+        } => {
+            write_trace_event(
+                s,
+                &json!({
+                    "ts": now.to_rfc3339(),
+                    "event": "document_op",
+                    "thread_alias": thread_alias,
+                    "op": op,
+                    "name": name,
+                    "content": content,
+                }),
+            );
+        }
+
+        AgentEvent::EpisodeInject {
+            source_aliases,
+            target_alias,
+            target_thread_id,
+        } => {
+            write_trace_event(
+                s,
+                &json!({
+                    "ts": now.to_rfc3339(),
+                    "event": "episode_inject",
+                    "source_aliases": source_aliases,
+                    "target_alias": target_alias,
+                    "target_thread_id": target_thread_id,
+                }),
+            );
+        }
+
+        AgentEvent::EvidenceCite {
+            thread_alias,
+            thread_id,
+            tool_call_ids,
+        } => {
+            write_trace_event(
+                s,
+                &json!({
+                    "ts": now.to_rfc3339(),
+                    "event": "evidence_cite",
+                    "thread_alias": thread_alias,
+                    "thread_id": thread_id,
+                    "tool_call_ids": tool_call_ids,
+                }),
+            );
+        }
+
+        AgentEvent::QueryStart {
+            query_id,
+            prompt,
+            model,
+        } => {
+            write_trace_event(
+                s,
+                &json!({
+                    "ts": now.to_rfc3339(),
+                    "event": "query_start",
+                    "query_id": query_id,
+                    "prompt": prompt,
+                    "model": model,
+                }),
+            );
+        }
+
+        AgentEvent::QueryEnd {
+            query_id,
+            output,
+            duration_ms,
+        } => {
+            write_trace_event(
+                s,
+                &json!({
+                    "ts": now.to_rfc3339(),
+                    "event": "query_end",
+                    "query_id": query_id,
+                    "output": output,
+                    "duration_ms": duration_ms,
+                }),
+            );
+        }
+
+        AgentEvent::ContextCompact {
+            thread_alias,
+            before_tokens,
+            after_tokens,
+            strategy,
+        } => {
+            write_trace_event(
+                s,
+                &json!({
+                    "ts": now.to_rfc3339(),
+                    "event": "context_compact",
+                    "thread_alias": thread_alias,
+                    "before_tokens": before_tokens,
+                    "after_tokens": after_tokens,
+                    "strategy": strategy,
+                }),
+            );
+        }
+    }
+}
+
+/// Add thread_id and thread_alias from the active thread stack, if any.
+fn add_thread_context(s: &TraceInner, event: &mut Value) {
+    if let Some((thread_id, thread_alias)) = s.active_thread_stack.last() {
+        event["thread_id"] = json!(thread_id);
+        event["thread_alias"] = json!(thread_alias);
     }
 }
 
@@ -428,16 +570,11 @@ fn extract_usage(msg: &AgentMessage) -> (u64, u64, u64, u64, f64) {
     }
 }
 
-/// Extract a short summary (first 100 chars) from the tool result's text content.
-fn extract_result_summary(result: &AgentToolResult) -> String {
+/// Extract full text content from the tool result (no truncation).
+fn extract_result_content(result: &AgentToolResult) -> String {
     for block in &result.content {
         if let UserBlock::Text { text } = block {
-            let trimmed = text.trim();
-            if trimmed.len() <= 100 {
-                return trimmed.to_string();
-            } else {
-                return format!("{}...", &trimmed[..100]);
-            }
+            return text.trim().to_string();
         }
     }
     String::new()

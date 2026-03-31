@@ -796,5 +796,11 @@ fn event_type(e: &AgentEvent) -> &'static str {
         AgentEvent::ToolExecutionEnd { .. } => "tool_execution_end",
         AgentEvent::ThreadStart { .. } => "thread_start",
         AgentEvent::ThreadEnd { .. } => "thread_end",
+        AgentEvent::DocumentOp { .. } => "document_op",
+        AgentEvent::EpisodeInject { .. } => "episode_inject",
+        AgentEvent::EvidenceCite { .. } => "evidence_cite",
+        AgentEvent::QueryStart { .. } => "query_start",
+        AgentEvent::QueryEnd { .. } => "query_end",
+        AgentEvent::ContextCompact { .. } => "context_compact",
     }
 }

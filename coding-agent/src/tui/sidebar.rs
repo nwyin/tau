@@ -1,6 +1,7 @@
 use ruse::prelude::*;
 
 use super::theme;
+use crate::tools::TodoItem;
 
 pub struct SidebarState<'a> {
     pub width: usize,
@@ -12,6 +13,7 @@ pub struct SidebarState<'a> {
     pub total_cost: f64,
     pub thinking_level: &'a str,
     pub active_tools: &'a [String],
+    pub todos: &'a [TodoItem],
     pub cwd: &'a str,
 }
 
@@ -101,6 +103,48 @@ pub fn render_sidebar(s: &SidebarState) -> String {
                 theme::half_muted_style().render(&[&display]),
             );
             lines.push(tool_line);
+        }
+    }
+
+    // Todo progress
+    if !s.todos.is_empty() {
+        lines.push(String::new());
+        lines.push(section_header("Progress", inner_w));
+
+        let total = s.todos.len();
+        let done = s.todos.iter().filter(|t| t.status == "completed").count();
+        let counter = format!("[{}/{}]", done, total);
+        lines.push(theme::half_muted_style().render(&[&counter]));
+
+        for item in s.todos {
+            let (icon, icon_style) = match item.status.as_str() {
+                "completed" => ("\u{2713}", theme::green_style()), // ✓
+                "in_progress" => ("\u{2192}", theme::green_dark_style()), // →
+                _ => ("\u{25CB}", theme::half_muted_style()),      // ○
+            };
+            let content_style = if item.status == "in_progress" {
+                theme::subtle_style()
+            } else {
+                theme::half_muted_style()
+            };
+            // Truncate content to fit sidebar
+            let max_content = inner_w.saturating_sub(4); // "  X " prefix
+            let content = if item.content.len() > max_content {
+                format!("{}…", &item.content[..max_content.saturating_sub(1)])
+            } else {
+                item.content.clone()
+            };
+            let line = format!(
+                "  {} {}",
+                icon_style.render(&[icon]),
+                content_style.render(&[&content]),
+            );
+            lines.push(line);
+
+            // Stop if we'd overflow the sidebar height
+            if lines.len() >= s.height.saturating_sub(1) {
+                break;
+            }
         }
     }
 

@@ -232,10 +232,22 @@ impl AgentTool for ThreadTool {
                 .to_string();
             let mut system_prompt = build_thread_system_prompt(&tool_names, &cwd);
 
+            // Resolve event forwarder early so we can emit EpisodeInject
+            let forward_fn = event_forwarder.lock().ok().and_then(|g| g.clone());
+
             // Inject prior episodes if specified
             if let Some(prior_section) = orchestrator.format_prior_episodes(&episode_aliases) {
                 system_prompt.push_str("\n\n");
                 system_prompt.push_str(&prior_section);
+
+                // Emit EpisodeInject event
+                if let Some(ref fwd) = forward_fn {
+                    fwd(AgentEvent::EpisodeInject {
+                        source_aliases: episode_aliases.clone(),
+                        target_alias: alias.clone(),
+                        target_thread_id: thread_id.clone(),
+                    });
+                }
             }
 
             // Get or create thread state
@@ -253,7 +265,10 @@ impl AgentTool for ThreadTool {
             thread_tools.push(CompleteTool::arc(outcome_signal.clone()));
             thread_tools.push(AbortTool::arc(outcome_signal.clone()));
             thread_tools.push(EscalateTool::arc(outcome_signal));
-            thread_tools.push(tools::DocumentTool::arc(orchestrator.clone()));
+            thread_tools.push(tools::DocumentTool::arc(
+                orchestrator.clone(),
+                event_forwarder.clone(),
+            ));
             thread_tools.push(tools::LogTool::arc(orchestrator.clone()));
             thread_tools.push(tools::FromIdTool::arc(orchestrator.clone()));
 
@@ -299,7 +314,6 @@ impl AgentTool for ThreadTool {
             }
 
             // Subscribe to inner agent events and forward to parent
-            let forward_fn = event_forwarder.lock().ok().and_then(|g| g.clone());
             if let Some(ref fwd) = forward_fn {
                 let fwd = fwd.clone();
                 let tid = thread_id.clone();
@@ -359,6 +373,19 @@ impl AgentTool for ThreadTool {
                     Err(_) => ThreadOutcome::TimedOut, // loop ended without completion tool
                 }
             };
+
+            // Emit EvidenceCite if thread completed with evidence
+            if let ThreadOutcome::Completed { ref evidence, .. } = outcome {
+                if !evidence.is_empty() {
+                    if let Some(ref fwd) = forward_fn {
+                        fwd(AgentEvent::EvidenceCite {
+                            thread_alias: alias.clone(),
+                            thread_id: thread_id.clone(),
+                            tool_call_ids: evidence.clone(),
+                        });
+                    }
+                }
+            }
 
             // Emit ThreadEnd
             if let Some(ref fwd) = forward_fn {
