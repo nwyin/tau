@@ -113,8 +113,8 @@ pub struct TauModel {
     is_busy: bool,
     should_quit: bool,
     ctrl_c_count: u8,
-    #[allow(dead_code)]
     active_thread_count: usize,
+    active_thread_aliases: Vec<String>,
     startup_messages: Vec<String>,
     debug: bool,
 }
@@ -177,6 +177,7 @@ impl TauModel {
             should_quit: false,
             ctrl_c_count: 0,
             active_thread_count: 0,
+            active_thread_aliases: Vec::new(),
             startup_messages: config.startup_messages,
             debug: false,
         }
@@ -635,9 +636,26 @@ impl TauModel {
             AgentEvent::ToolExecutionStart {
                 tool_name, args, ..
             } => {
+                // Skip "thread" tool — ThreadStart handles it with richer info
+                if tool_name == "thread" {
+                    return None;
+                }
+
                 let header = extract_tool_detail(tool_name, args);
+                // Prefix with thread alias if inside a thread
+                let display_name = if !self.active_thread_aliases.is_empty() {
+                    // Use the most recent thread alias as context
+                    if let Some(alias) = self.active_thread_aliases.last() {
+                        format!("[{}] {}", alias, tool_name)
+                    } else {
+                        tool_name.clone()
+                    }
+                } else {
+                    tool_name.clone()
+                };
+
                 self.messages.push(ChatMessage::ToolCall(ToolCallMessage {
-                    tool_name: tool_name.clone(),
+                    tool_name: display_name,
                     header,
                     body: String::new(),
                     status: ToolStatus::Pending,
@@ -654,6 +672,11 @@ impl TauModel {
                 is_error,
                 ..
             } => {
+                // Skip "thread" tool — ThreadEnd handles it
+                if tool_name == "thread" {
+                    return None;
+                }
+
                 let body_text = result
                     .content
                     .iter()
@@ -695,6 +718,7 @@ impl TauModel {
 
             AgentEvent::ThreadStart { alias, task, .. } => {
                 self.active_thread_count += 1;
+                self.active_thread_aliases.push(alias.clone());
                 let header = format!("{}: {}", alias, task.chars().take(60).collect::<String>());
                 self.messages.push(ChatMessage::ToolCall(ToolCallMessage {
                     tool_name: "thread".to_string(),
@@ -703,12 +727,16 @@ impl TauModel {
                     status: ToolStatus::Pending,
                     expanded: false,
                 }));
+                self.active_tools.push(format!("thread:{}", alias));
                 self.refresh_chat_content();
                 None
             }
 
             AgentEvent::ThreadEnd { alias, outcome, .. } => {
                 self.active_thread_count = self.active_thread_count.saturating_sub(1);
+                self.active_thread_aliases.retain(|a| a != alias);
+                self.active_tools
+                    .retain(|t| t != &format!("thread:{}", alias));
                 for msg in self.messages.iter_mut().rev() {
                     if let ChatMessage::ToolCall(tc) = msg {
                         if tc.tool_name == "thread" && tc.header.starts_with(&format!("{}:", alias))

@@ -60,15 +60,45 @@ pub fn render_sidebar(s: &SidebarState) -> String {
     );
     lines.push(theme::half_muted_style().render(&[&ctx_cost]));
 
-    // Active tools
+    // Active tools — deduplicate and count, cap at max_tools lines
     if !s.active_tools.is_empty() {
         lines.push(String::new());
         lines.push(section_header("Active", inner_w));
+
+        // Count occurrences of each tool name
+        let mut tool_counts: Vec<(String, usize)> = Vec::new();
         for tool in s.active_tools {
+            if let Some(entry) = tool_counts.iter_mut().find(|(t, _)| t == tool) {
+                entry.1 += 1;
+            } else {
+                tool_counts.push((tool.clone(), 1));
+            }
+        }
+
+        let max_tools = 8;
+        for (i, (name, count)) in tool_counts.iter().enumerate() {
+            if i >= max_tools {
+                let remaining: usize = tool_counts[i..].iter().map(|(_, c)| c).sum();
+                let more_line =
+                    theme::half_muted_style().render(&[&format!("  +{} more", remaining)]);
+                lines.push(more_line);
+                break;
+            }
+            let label = if *count > 1 {
+                format!("{} x{}", name, count)
+            } else {
+                name.clone()
+            };
+            // Truncate to sidebar width
+            let display = if label.len() > inner_w {
+                format!("{}…", &label[..inner_w.saturating_sub(1)])
+            } else {
+                label
+            };
             let tool_line = format!(
                 "{} {}",
                 theme::green_dark_style().render(&[theme::TOOL_PENDING]),
-                theme::half_muted_style().render(&[tool.as_str()]),
+                theme::half_muted_style().render(&[&display]),
             );
             lines.push(tool_line);
         }
