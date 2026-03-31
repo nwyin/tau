@@ -979,6 +979,8 @@ impl Model for TauModel {
                     }
                     KeyCode::Tab => {
                         self.focus = FocusState::Editor;
+                        self.scroll_follow = true;
+                        self.chat_viewport.goto_bottom();
                         self.refresh_chat_content();
                         return self.input.focus();
                     }

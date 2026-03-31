@@ -89,21 +89,20 @@ fn render_assistant(msg: &AssistantMessage, width: usize, focused: bool) -> Stri
                     .render(&[&wrapped]);
                 parts.push(thinking_styled);
             } else {
-                // Collapsed summary
-                let line_count = thinking.lines().count();
-                let summary = theme::half_muted_style().render(&[&format!(
-                    "Thought ({} lines) {}",
-                    line_count,
-                    theme::SECTION_SEP
-                )]);
-                parts.push(summary);
+                // Show full thinking content, styled as muted italic
+                let wrapped = ruse::ansi::wordwrap(thinking, inner_w);
+                let thinking_styled = Style::new()
+                    .foreground(Color::parse(theme::FG_HALF_MUTED))
+                    .italic(true)
+                    .render(&[&wrapped]);
+                parts.push(thinking_styled);
             }
         }
     }
 
     // Main content — rendered markdown already handles wrapping via glamour
     let content = msg.rendered_content.as_deref().unwrap_or(&msg.content);
-    if !content.is_empty() {
+    if !content.trim().is_empty() {
         // Word-wrap raw streaming content (rendered markdown is already wrapped)
         if msg.rendered_content.is_some() {
             parts.push(content.to_string());
