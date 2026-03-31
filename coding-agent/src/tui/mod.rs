@@ -93,7 +93,10 @@ pub async fn run(agent: Arc<Agent>, config: TuiRunConfig) -> Result<()> {
     let shutdown = Arc::new(AtomicBool::new(false));
 
     // Set the permission prompt function that bridges sync agent thread -> async channel.
-    // Uses recv_timeout + shutdown flag to avoid hanging the tokio runtime on exit.
+    //
+    // CRITICAL: uses block_in_place so tokio can spawn replacement worker threads.
+    // Without this, parallel tool calls (each blocking on permission) would starve
+    // the tokio runtime and prevent the bridge task from forwarding permissions.
     let shutdown_for_perm = Arc::clone(&shutdown);
     let prompt_fn: crate::permissions::PromptFn = Arc::new(move |tool_name: &str, desc: &str| {
         if shutdown_for_perm.load(Ordering::Relaxed) {
@@ -106,12 +109,14 @@ pub async fn run(agent: Arc<Agent>, config: TuiRunConfig) -> Result<()> {
         {
             return PromptResult::Deny;
         }
-        // Poll with timeout so we detect shutdown and don't block forever.
-        loop {
+        let shutdown_ref = Arc::clone(&shutdown_for_perm);
+        // block_in_place tells tokio this thread will block, allowing it to
+        // compensate by spawning another worker thread for async tasks.
+        tokio::task::block_in_place(move || loop {
             match resp_rx.recv_timeout(std::time::Duration::from_millis(200)) {
                 Ok(result) => return result,
                 Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                    if shutdown_for_perm.load(Ordering::Relaxed) {
+                    if shutdown_ref.load(Ordering::Relaxed) {
                         return PromptResult::Deny;
                     }
                 }
@@ -119,7 +124,7 @@ pub async fn run(agent: Arc<Agent>, config: TuiRunConfig) -> Result<()> {
                     return PromptResult::Deny;
                 }
             }
-        }
+        })
     });
     permission_service.set_prompt_fn(prompt_fn);
 

@@ -99,9 +99,9 @@ pub struct TauModel {
     // Environment
     cwd: String,
 
-    // Permissions
+    // Permissions — queue handles parallel tool calls
     permission_service: Arc<PermissionService>,
-    perm_pending: Option<PendingPermission>,
+    perm_queue: std::collections::VecDeque<PendingPermission>,
 
     // Session
     session_manager: SessionManager,
@@ -169,7 +169,7 @@ impl TauModel {
                 .map(|p| p.display().to_string())
                 .unwrap_or_else(|_| ".".to_string()),
             permission_service: config.permission_service,
-            perm_pending: None,
+            perm_queue: std::collections::VecDeque::new(),
             session_manager: config.session_manager,
             session_file: config.session_file,
             skills: config.skills,
@@ -544,7 +544,7 @@ impl TauModel {
                 description,
                 resp_tx,
             } => {
-                self.perm_pending = Some(PendingPermission {
+                self.perm_queue.push_back(PendingPermission {
                     tool_name: tool_name.clone(),
                     description: description.clone(),
                     resp_tx: resp_tx.clone(),
@@ -815,28 +815,41 @@ impl Model for TauModel {
             return self.handle_tau_msg(tau_msg);
         }
 
-        // Handle permission input — intercepts all keys while active
-        if self.perm_pending.is_some() {
+        // Handle permission input — intercepts all keys while queue is non-empty
+        if !self.perm_queue.is_empty() {
             if let Msg::KeyPress(key) = &msg {
                 match key.code {
                     KeyCode::Char('a') | KeyCode::Char('y') => {
-                        if let Some(perm) = self.perm_pending.take() {
+                        if let Some(perm) = self.perm_queue.pop_front() {
                             let _ = perm.resp_tx.send(PromptResult::Allow);
                         }
                     }
                     KeyCode::Char('s') => {
-                        if let Some(perm) = self.perm_pending.take() {
+                        // Always allow: approve this one AND auto-approve remaining
+                        // queued permissions for the same tool
+                        if let Some(perm) = self.perm_queue.pop_front() {
+                            let tool = perm.tool_name.clone();
                             let _ = perm.resp_tx.send(PromptResult::AlwaysAllow);
+                            // Auto-approve queued permissions for the same tool
+                            let mut remaining = std::collections::VecDeque::new();
+                            for p in self.perm_queue.drain(..) {
+                                if p.tool_name == tool {
+                                    let _ = p.resp_tx.send(PromptResult::Allow);
+                                } else {
+                                    remaining.push_back(p);
+                                }
+                            }
+                            self.perm_queue = remaining;
                         }
                     }
                     KeyCode::Char('d') | KeyCode::Char('n') | KeyCode::Escape => {
-                        if let Some(perm) = self.perm_pending.take() {
+                        if let Some(perm) = self.perm_queue.pop_front() {
                             let _ = perm.resp_tx.send(PromptResult::Deny);
                         }
                     }
                     KeyCode::Char('c') if key.modifiers.contains(Modifiers::CTRL) => {
-                        // Ctrl-C during permission: deny and abort
-                        if let Some(perm) = self.perm_pending.take() {
+                        // Ctrl-C during permission: deny ALL and abort
+                        for perm in self.perm_queue.drain(..) {
                             let _ = perm.resp_tx.send(PromptResult::Deny);
                         }
                         self.agent.abort();
@@ -1081,13 +1094,19 @@ impl TauModel {
         let chat = self.chat_viewport.view();
 
         // Input area
-        let input_area = if let Some(ref perm) = self.perm_pending {
-            // Permission modal
+        let input_area = if let Some(perm) = self.perm_queue.front() {
+            // Permission modal — show front of queue with count
+            let count_hint = if self.perm_queue.len() > 1 {
+                format!(" (+{})", self.perm_queue.len() - 1)
+            } else {
+                String::new()
+            };
             let header = format!(
-                "{}  {} {}",
+                "{}  {} {}{}",
                 theme::green_dark_style().render(&[theme::TOOL_PENDING]),
                 theme::subtle_style().render(&[&perm.tool_name]),
                 theme::half_muted_style().render(&[&perm.description]),
+                theme::half_muted_style().render(&[&count_hint]),
             );
             let options = theme::half_muted_style().render(&["[a]llow  [s]ession  [d]eny"]);
             let box_content = format!("{}\n{}", header, options);
@@ -1107,7 +1126,7 @@ impl TauModel {
         };
 
         // Status bar
-        let focus_hint = if self.perm_pending.is_some() {
+        let focus_hint = if !self.perm_queue.is_empty() {
             FocusHint::Permission
         } else {
             match self.focus {
