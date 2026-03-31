@@ -8,7 +8,19 @@ pub enum FocusHint {
     Permission,
 }
 
-pub fn render_status_bar(width: usize, hint: FocusHint) -> String {
+pub fn render_status_bar(width: usize, hint: FocusHint, warning: Option<&str>) -> String {
+    if let Some(msg) = warning {
+        let warn = Style::new()
+            .foreground(Color::parse(theme::YELLOW))
+            .render(&[msg]);
+        return format!(
+            "  {}",
+            Style::new()
+                .width(width.saturating_sub(2) as u16)
+                .render(&[&warn])
+        );
+    }
+
     let help = match hint {
         FocusHint::Editor => "enter send | shift+enter newline | ctrl+p cmds | tab chat",
         FocusHint::Chat => "j/k scroll | J/K messages | space expand | tab editor",

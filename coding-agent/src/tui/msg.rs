@@ -16,4 +16,8 @@ pub enum TauMsg {
     },
     /// Tick for spinner/streaming animation.
     SpinnerTick,
+    /// A warning/error message to display in the status bar.
+    Warning(String),
+    /// Clear the warning after a timeout.
+    ClearWarning,
 }

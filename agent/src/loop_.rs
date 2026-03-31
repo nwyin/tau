@@ -131,6 +131,16 @@ async fn run_loop(
         let mut steering_after_tools: Option<Vec<AgentMessage>> = None;
 
         while has_tool_calls || !pending.is_empty() {
+            // Check cancellation between turns
+            if let Some(ref ct) = cancel {
+                if ct.is_cancelled() {
+                    tx.push(AgentEvent::AgentEnd {
+                        messages: new_messages.clone(),
+                    });
+                    return;
+                }
+            }
+
             if let Some(max) = config.max_turns {
                 if turn_count >= max {
                     tx.push(AgentEvent::AgentEnd {
@@ -243,7 +253,7 @@ async fn run_loop(
 async fn stream_assistant_response(
     context: &mut AgentContext,
     config: &AgentLoopConfig,
-    _cancel: Option<CancellationToken>,
+    cancel: Option<CancellationToken>,
     tx: &mut AgentEventSender,
 ) -> AssistantMessage {
     // Transform context (optional)
@@ -330,11 +340,41 @@ async fn stream_assistant_response(
         }
     };
 
-    // Drive the event stream
+    // Drive the event stream, checking for cancellation
     let mut partial: Option<AssistantMessage> = None;
     let mut pinned = Box::pin(event_stream);
 
-    while let Some(event) = pinned.next().await {
+    loop {
+        let event = if let Some(ct) = &cancel {
+            tokio::select! {
+                biased;
+                _ = ct.cancelled() => {
+                    // Cancelled — return partial with Aborted stop reason
+                    let mut msg = partial.unwrap_or_else(|| {
+                        AssistantMessage::zero_usage(
+                            &config.model.api,
+                            &config.model.provider,
+                            &config.model.id,
+                            StopReason::Aborted,
+                        )
+                    });
+                    msg.stop_reason = StopReason::Aborted;
+                    if let Some(last) = context.messages.last_mut() {
+                        *last = AgentMessage::Llm(Message::Assistant(msg.clone()));
+                    }
+                    tx.push(AgentEvent::MessageEnd {
+                        message: AgentMessage::Llm(Message::Assistant(msg.clone())),
+                    });
+                    return msg;
+                }
+                event = pinned.next() => event,
+            }
+        } else {
+            pinned.next().await
+        };
+
+        let Some(event) = event else { break };
+
         match &event {
             ai::types::AssistantMessageEvent::Start { partial: p } => {
                 partial = Some(p.clone());

@@ -117,6 +117,7 @@ pub struct TauModel {
     active_thread_aliases: Vec<String>,
     startup_messages: Vec<String>,
     debug: bool,
+    warning: Option<String>,
 }
 
 struct PendingPermission {
@@ -180,6 +181,7 @@ impl TauModel {
             active_thread_aliases: Vec::new(),
             startup_messages: config.startup_messages,
             debug: false,
+            warning: None,
         }
     }
 
@@ -565,6 +567,19 @@ impl TauModel {
                     None
                 }
             }
+            TauMsg::Warning(msg) => {
+                self.warning = Some(msg.clone());
+                self.is_busy = false;
+                // Auto-clear after 5 seconds
+                Some(ruse::runtime::CmdInner::Async(Box::pin(async {
+                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                    Msg::custom(TauMsg::ClearWarning)
+                })))
+            }
+            TauMsg::ClearWarning => {
+                self.warning = None;
+                None
+            }
         }
     }
 
@@ -839,7 +854,7 @@ impl TauModel {
         let agent = Arc::clone(&self.agent);
         let prompt_cmd: Cmd = Some(ruse::runtime::CmdInner::Async(Box::pin(async move {
             if let Err(e) = agent.prompt(prompt_text).await {
-                eprintln!("Agent error: {}", e);
+                return Msg::custom(TauMsg::Warning(format!("{}", e)));
             }
             // AgentEnd event will arrive via the bridge — this is a fallback
             Msg::custom(TauMsg::AgentEvent(AgentEvent::AgentEnd {
@@ -1072,12 +1087,10 @@ impl Model for TauModel {
     }
 
     fn view(&self) -> View {
-        let content = match self.screen {
-            Screen::Landing => self.view_landing(),
+        match self.screen {
+            Screen::Landing => View::new(self.view_landing()).with_alt_screen(),
             Screen::Chat => self.view_chat(),
-        };
-
-        View::new(content).with_alt_screen()
+        }
     }
 }
 
@@ -1139,8 +1152,11 @@ impl TauModel {
         lines.join("\n")
     }
 
-    fn view_chat(&self) -> String {
+    fn view_chat(&self) -> View {
         let lo = layout::compute_layout(self.width, self.height, self.is_compact, 3);
+        let w = self.width as u16;
+        let h = self.height as u16;
+        let chat_h = lo.chat_h as u16;
 
         // Chat viewport
         let chat = self.chat_viewport.view();
@@ -1186,10 +1202,12 @@ impl TauModel {
                 FocusState::Chat => FocusHint::Chat,
             }
         };
-        let status_bar = status::render_status_bar(self.width, focus_hint);
+        let status_bar = status::render_status_bar(self.width, focus_hint, self.warning.as_deref());
+
+        let bottom = format!("{}\n{}", input_area, status_bar);
 
         if self.is_compact {
-            format!("{}\n{}\n{}", chat, input_area, status_bar)
+            View::new(format!("{}\n{}", chat, bottom)).with_alt_screen()
         } else {
             let thinking_str = match self.thinking_level {
                 ThinkingLevel::Off => "off",
@@ -1212,33 +1230,15 @@ impl TauModel {
                 cwd: &self.cwd,
             });
 
-            // Compose chat + sidebar side-by-side using CHA (Cursor
-            // Horizontal Absolute) to position the sidebar at a fixed
-            // column.  This bypasses all ANSI string-width calculations
-            // — the cell buffer moves the cursor to the exact column
-            // regardless of how wide the chat content actually renders.
-            let chat_lines: Vec<&str> = chat.split('\n').collect();
-            let sb_lines: Vec<&str> = sb.split('\n').collect();
-            let row_count = chat_lines.len().max(sb_lines.len());
-            // CHA escape: \x1b[{col}G  (1-based column)
-            let cha = format!("\x1b[{}G", lo.chat_w + 1);
-            let mut combined = String::with_capacity(row_count * (lo.chat_w + lo.sidebar_w + 16));
-            for i in 0..row_count {
-                if i > 0 {
-                    combined.push('\n');
-                }
-                // Chat line (may be wider/narrower than chat_w — doesn't matter)
-                let cl = chat_lines.get(i).copied().unwrap_or("");
-                combined.push_str(cl);
-                // Reset ANSI state, then jump to sidebar column
-                combined.push_str("\x1b[0m");
-                combined.push_str(&cha);
-                // Sidebar line
-                let sl = sb_lines.get(i).copied().unwrap_or("");
-                combined.push_str(sl);
-            }
+            let chat_w = lo.chat_w as u16;
+            let sidebar_w = lo.sidebar_w as u16;
+            let bottom_h = h.saturating_sub(chat_h);
 
-            format!("{}\n{}\n{}", combined, input_area, status_bar)
+            View::new("")
+                .with_region(Rect::new(0, 0, chat_w, chat_h), chat)
+                .with_region(Rect::new(chat_w, 0, sidebar_w, chat_h), sb)
+                .with_region(Rect::new(0, chat_h, w, bottom_h), bottom)
+                .with_alt_screen()
         }
     }
 }

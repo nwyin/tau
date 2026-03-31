@@ -43,6 +43,7 @@ pub const SECONDARY: &str = "#96d34a"; // Bok - cursor, secondary
 pub const GREEN_DARK: &str = "#84be42"; // Guac - assistant focus, success
 pub const GREEN: &str = "#6ec47f"; // Julep - success indicators
 pub const BLUE: &str = "#4db8ff"; // Malibu - links, headings
+pub const YELLOW: &str = "#e5c07b"; // Saffron - warnings
 pub const RED: &str = "#ff6b57"; // Coral - errors
 pub const RED_DARK: &str = "#d24545"; // Sriracha - dark errors
 
