@@ -1193,11 +1193,12 @@ impl TauModel {
 
             // Line-by-line composition: fit each chat line to exactly chat_w
             // (truncate if wider, pad if narrower), then append the sidebar.
-            // Use split('\n') instead of .lines() to preserve trailing empties.
+            //
+            // CRITICAL: insert \x1b[0m (ANSI reset) between chat and sidebar
+            // on every line. Without this, unclosed ANSI codes from truncated
+            // chat content leak into the sidebar, making text invisible.
             let chat_parts: Vec<&str> = chat.split('\n').collect();
             let sb_parts: Vec<&str> = sb.split('\n').collect();
-            // Use the sidebar height as the authoritative line count since
-            // it's explicitly padded to lo.chat_h.
             let row_count = sb_parts.len().max(chat_parts.len());
             let empty_chat = " ".repeat(lo.chat_w);
             let mut combined = String::new();
@@ -1207,13 +1208,19 @@ impl TauModel {
                 }
                 let sl = sb_parts.get(i).copied().unwrap_or("");
                 if let Some(cl) = chat_parts.get(i) {
-                    // Truncate to chat_w (no-op if already fits), then pad
                     let fitted = ruse::ansi::truncate(cl, lo.chat_w, "");
-                    let fitted = ruse::ansi::pad_right(&fitted, lo.chat_w);
+                    let w = ruse::ansi::string_width(&fitted);
                     combined.push_str(&fitted);
+                    if w < lo.chat_w {
+                        for _ in 0..(lo.chat_w - w) {
+                            combined.push(' ');
+                        }
+                    }
                 } else {
                     combined.push_str(&empty_chat);
                 }
+                // Reset ANSI state before sidebar to prevent color leaking
+                combined.push_str("\x1b[0m");
                 combined.push_str(sl);
             }
 
