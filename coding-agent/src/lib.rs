@@ -11,7 +11,7 @@ pub mod tools;
 pub mod trace;
 pub mod tui;
 
-pub use tools::all_tools;
+pub use tools::default_tools;
 
 /// Resolve the prompt text from the CLI argument.
 /// If `prompt_arg` is "-", reads all of `reader` (stdin in production).

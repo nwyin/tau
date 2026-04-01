@@ -12,7 +12,7 @@ use clap::Parser;
 use coding_agent::agent_builder::{build_agent, AgentBuildConfig};
 use coding_agent::cli::{Cli, Command};
 use coding_agent::session::{SessionFile, SessionManager};
-use coding_agent::tools::tools_for_edit_mode;
+use coding_agent::tools::default_tools;
 use coding_agent::trace::{sha256_prefix, TraceConfig, TraceSubscriber};
 
 fn print_models(filter_provider: Option<&str>) {
@@ -196,7 +196,7 @@ async fn main() -> Result<()> {
     };
 
     // Set up trace output (always-on; explicit --trace-output overrides default path)
-    let tool_names: Vec<String> = tools_for_edit_mode(&config.edit_mode)
+    let tool_names: Vec<String> = default_tools()
         .iter()
         .map(|t| t.name().to_string())
         .collect();
@@ -220,7 +220,7 @@ async fn main() -> Result<()> {
             model_id: model_id.clone(),
             provider: model_provider.clone(),
             tool_names,
-            edit_mode: config.edit_mode.clone(),
+            edit_mode: "replace".to_string(),
             system_prompt_hash,
             max_turns,
         },

@@ -141,24 +141,24 @@ async fn test_empty_api_key_returns_error() {
 // web_search is in both default tools and all_known_tools
 #[test]
 fn test_web_search_in_default_tools() {
-    use coding_agent::tools::{all_known_tools, tools_for_edit_mode};
+    use coding_agent::tools::{all_known_tools, default_tools};
 
-    let default_tools = tools_for_edit_mode("replace");
-    let default_names: Vec<&str> = default_tools.iter().map(|t| t.name()).collect();
+    let tools = default_tools();
+    let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
     assert!(
-        default_names.contains(&"web_search"),
+        names.contains(&"web_search"),
         "web_search should be in default tools, got: {:?}",
-        default_names
+        names
     );
     assert!(
-        default_names.contains(&"web_fetch"),
+        names.contains(&"web_fetch"),
         "web_fetch should be in default tools, got: {:?}",
-        default_names
+        names
     );
 
-    let all_tools = all_known_tools("replace");
+    let all = all_known_tools();
     assert!(
-        all_tools.contains_key("web_search"),
+        all.contains_key("web_search"),
         "web_search must be in all_known_tools"
     );
 }

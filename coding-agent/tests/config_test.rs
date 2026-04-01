@@ -9,7 +9,6 @@ fn config_invalid_toml_returns_defaults() {
     let config = load_config_from(&path);
     // Just verify it doesn't panic and returns a valid config
     assert!(!config.model.is_empty());
-    assert_eq!(config.edit_mode, "replace");
 }
 
 #[test]

@@ -168,12 +168,12 @@ pub async fn build_agent(build_config: AgentBuildConfig) -> Result<BuiltAgent> {
     // Build tools
     let mut tool_list: Vec<Arc<dyn AgentTool>> = if let Some(ref tool_names) = build_config.tools {
         startup_messages.push(format!("[tools] enabled: {}", tool_names.join(", ")));
-        tools::tools_from_allowlist(tool_names, &config.edit_mode)
+        tools::tools_from_allowlist(tool_names)
     } else if let Some(ref tool_names) = config.tools {
         startup_messages.push(format!("[tools] enabled: {}", tool_names.join(", ")));
-        tools::tools_from_allowlist(tool_names, &config.edit_mode)
+        tools::tools_from_allowlist(tool_names)
     } else {
-        tools::tools_for_edit_mode(&config.edit_mode)
+        tools::default_tools()
     };
 
     // Add orchestration tools (thread + query)
@@ -181,7 +181,6 @@ pub async fn build_agent(build_config: AgentBuildConfig) -> Result<BuiltAgent> {
         orchestrator.clone(),
         Some(get_api_key.clone()),
         model.clone(),
-        &config.edit_mode,
         config.models.clone(),
     );
     tool_list.extend(orch_tools);

@@ -14,7 +14,7 @@ use crate::agent_builder::{build_agent, AgentBuildConfig};
 use crate::rpc::handler::{handle_request, usage_tracking_subscriber, ServerState, SessionStatus};
 use crate::rpc::transport::{spawn_stdin_reader, StdinMessage, StdoutWriter};
 use crate::rpc::types::*;
-use crate::tools::tools_for_edit_mode;
+use crate::tools::default_tools;
 use crate::trace::{sha256_prefix, TraceConfig, TraceSubscriber};
 
 /// Run the JSON-RPC serve loop.
@@ -52,7 +52,7 @@ pub async fn run_serve(
         .subscribe(usage_tracking_subscriber(Arc::clone(&cumulative_usage)));
 
     // Set up trace output if requested
-    let tool_names: Vec<String> = tools_for_edit_mode(&built.config.edit_mode)
+    let tool_names: Vec<String> = default_tools()
         .iter()
         .map(|t| t.name().to_string())
         .collect();
@@ -82,7 +82,7 @@ pub async fn run_serve(
             model_id: built.model_id.clone(),
             provider: built.model_provider.clone(),
             tool_names,
-            edit_mode: built.config.edit_mode.clone(),
+            edit_mode: "replace".to_string(),
             system_prompt_hash,
             max_turns,
         },

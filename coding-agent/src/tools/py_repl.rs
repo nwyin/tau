@@ -40,7 +40,6 @@ impl Drop for KernelProcess {
 }
 
 pub struct PyReplTool {
-    edit_mode: String,
     // Pre-built tool instances for reverse RPC dispatch
     thread_tool: Arc<dyn AgentTool>,
     query_tool: Arc<dyn AgentTool>,
@@ -53,13 +52,11 @@ pub struct PyReplTool {
 
 impl PyReplTool {
     pub fn new(
-        edit_mode: String,
         thread_tool: Arc<dyn AgentTool>,
         query_tool: Arc<dyn AgentTool>,
         document_tool: Arc<dyn AgentTool>,
     ) -> Self {
         Self {
-            edit_mode,
             thread_tool,
             query_tool,
             document_tool,
@@ -69,12 +66,11 @@ impl PyReplTool {
     }
 
     pub fn arc(
-        edit_mode: String,
         thread_tool: Arc<dyn AgentTool>,
         query_tool: Arc<dyn AgentTool>,
         document_tool: Arc<dyn AgentTool>,
     ) -> Arc<dyn AgentTool> {
-        Arc::new(Self::new(edit_mode, thread_tool, query_tool, document_tool))
+        Arc::new(Self::new(thread_tool, query_tool, document_tool))
     }
 
     /// Start the Python kernel subprocess. Returns a KernelProcess.
@@ -159,7 +155,6 @@ impl AgentTool for PyReplTool {
         );
 
         // Clone self references for the async block
-        let this_edit_mode = self.edit_mode.clone();
         let this_thread_tool = self.thread_tool.clone();
         let this_query_tool = self.query_tool.clone();
         let this_document_tool = self.document_tool.clone();
@@ -177,7 +172,6 @@ impl AgentTool for PyReplTool {
 
             // Build a temporary self-like struct for RPC dispatch
             let dispatcher = RpcDispatcher {
-                edit_mode: this_edit_mode,
                 thread_tool: this_thread_tool,
                 query_tool: this_query_tool,
                 document_tool: this_document_tool,
@@ -349,7 +343,6 @@ impl AgentTool for PyReplTool {
 
 /// Helper struct for dispatching RPCs from inside the execute future.
 struct RpcDispatcher {
-    edit_mode: String,
     thread_tool: Arc<dyn AgentTool>,
     query_tool: Arc<dyn AgentTool>,
     document_tool: Arc<dyn AgentTool>,
@@ -381,7 +374,7 @@ impl RpcDispatcher {
             .ok_or("missing 'name' in tool RPC")?;
         let args = params.get("args").cloned().unwrap_or(json!({}));
 
-        let registry = tools::all_known_tools(&self.edit_mode);
+        let registry = tools::all_known_tools();
         let tool = registry
             .get(name)
             .ok_or_else(|| format!("unknown tool: {}", name))?;
@@ -430,8 +423,6 @@ impl RpcDispatcher {
             let thread_tool = self.thread_tool.clone();
             let query_tool = self.query_tool.clone();
             let document_tool = self.document_tool.clone();
-            let edit_mode = self.edit_mode.clone();
-
             handles.push(tokio::spawn(async move {
                 match method.as_str() {
                     "thread" => dispatch_single(&thread_tool, &spec).await,
@@ -443,7 +434,7 @@ impl RpcDispatcher {
                             .and_then(|v| v.as_str())
                             .unwrap_or("unknown");
                         let args = spec.get("args").cloned().unwrap_or(json!({}));
-                        let registry = tools::all_known_tools(&edit_mode);
+                        let registry = tools::all_known_tools();
                         let tool = registry
                             .get(name)
                             .ok_or_else(|| format!("unknown tool: {}", name))?;

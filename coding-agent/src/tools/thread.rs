@@ -36,7 +36,6 @@ pub struct ThreadTool {
     orchestrator: Arc<OrchestratorState>,
     get_api_key: Option<GetApiKeyFn>,
     default_model: Model,
-    edit_mode: String,
     event_forwarder: EventForwarderCell,
     model_slots: ModelSlots,
 }
@@ -46,7 +45,6 @@ impl ThreadTool {
         orchestrator: Arc<OrchestratorState>,
         get_api_key: Option<GetApiKeyFn>,
         default_model: Model,
-        edit_mode: String,
         event_forwarder: EventForwarderCell,
         model_slots: ModelSlots,
     ) -> Self {
@@ -54,7 +52,6 @@ impl ThreadTool {
             orchestrator,
             get_api_key,
             default_model,
-            edit_mode,
             event_forwarder,
             model_slots,
         }
@@ -64,7 +61,6 @@ impl ThreadTool {
         orchestrator: Arc<OrchestratorState>,
         get_api_key: Option<GetApiKeyFn>,
         default_model: Model,
-        edit_mode: String,
         event_forwarder: EventForwarderCell,
         model_slots: ModelSlots,
     ) -> Arc<dyn AgentTool> {
@@ -72,7 +68,6 @@ impl ThreadTool {
             orchestrator,
             get_api_key,
             default_model,
-            edit_mode,
             event_forwarder,
             model_slots,
         ))
@@ -144,7 +139,6 @@ impl AgentTool for ThreadTool {
         let orchestrator = self.orchestrator.clone();
         let get_api_key = self.get_api_key.clone();
         let default_model = self.default_model.clone();
-        let edit_mode = self.edit_mode.clone();
         let event_forwarder = self.event_forwarder.clone();
         let model_slots = self.model_slots.clone();
 
@@ -261,7 +255,7 @@ impl AgentTool for ThreadTool {
             // Build tool list: requested tools + completion tools
             let (outcome_signal, mut outcome_rx) = completion_tools::outcome_channel();
             let mut thread_tools: Vec<Arc<dyn AgentTool>> =
-                tools::tools_from_allowlist(&tool_names, &edit_mode);
+                tools::tools_from_allowlist(&tool_names);
             thread_tools.push(CompleteTool::arc(outcome_signal.clone()));
             thread_tools.push(AbortTool::arc(outcome_signal.clone()));
             thread_tools.push(EscalateTool::arc(outcome_signal));

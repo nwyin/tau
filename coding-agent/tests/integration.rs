@@ -6,7 +6,7 @@ use agent::types::{AgentEvent, StreamAssistantFn};
 use agent::{Agent, AgentOptions, AgentStateInit};
 use ai::stream::{assistant_message_event_stream, AssistantMessageEventStream};
 use ai::types::{AssistantMessage, ContentBlock, StopReason, Usage};
-use coding_agent::tools::all_tools;
+use coding_agent::tools::default_tools;
 use serde_json::json;
 
 fn mock_model() -> ai::types::Model {
@@ -105,7 +105,7 @@ fn text_message(text: &str) -> AssistantMessage {
 /// Verify that a bash tool call is executed and its result is collected.
 #[tokio::test]
 async fn test_bash_tool_round_trip() {
-    let tools = all_tools();
+    let tools = default_tools();
 
     // First call: assistant requests bash "echo test"
     // Second call: assistant gives final answer after seeing tool result
@@ -172,7 +172,7 @@ async fn test_bash_tool_round_trip() {
 /// Verify that tool definitions are sent to LLM context (tools field is Some with 3 entries).
 #[tokio::test]
 async fn test_tools_sent_to_llm_context() {
-    let tools = all_tools();
+    let tools = default_tools();
 
     let captured_context: Arc<Mutex<Option<ai::types::Context>>> = Arc::new(Mutex::new(None));
     let captured_clone = Arc::clone(&captured_context);

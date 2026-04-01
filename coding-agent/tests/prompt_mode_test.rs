@@ -6,7 +6,7 @@ use agent::types::{AgentEvent, StreamAssistantFn};
 use agent::{Agent, AgentOptions, AgentStateInit};
 use ai::stream::assistant_message_event_stream;
 use ai::types::{AssistantMessage, ContentBlock, StopReason, Usage};
-use coding_agent::tools::all_tools;
+use coding_agent::tools::default_tools;
 use serde_json::json;
 
 // ---------------------------------------------------------------------------
@@ -166,7 +166,7 @@ async fn test_prompt_mode_runs_to_completion() {
         initial_state: Some(AgentStateInit {
             model: Some(mock_model()),
             system_prompt: Some("Be helpful.".into()),
-            tools: Some(all_tools()),
+            tools: Some(default_tools()),
             thinking_level: None,
         }),
         convert_to_llm: None,
@@ -213,7 +213,7 @@ async fn test_prompt_mode_no_tool_calls() {
         initial_state: Some(AgentStateInit {
             model: Some(mock_model()),
             system_prompt: Some("Be helpful.".into()),
-            tools: Some(all_tools()),
+            tools: Some(default_tools()),
             thinking_level: None,
         }),
         convert_to_llm: None,

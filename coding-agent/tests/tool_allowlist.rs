@@ -1,4 +1,4 @@
-use coding_agent::tools::{tools_for_edit_mode, tools_from_allowlist};
+use coding_agent::tools::{default_tools, tools_from_allowlist};
 
 // INV-1: tools_from_allowlist with valid names returns exactly those tools, in order
 #[test]
@@ -8,7 +8,7 @@ fn test_allowlist_valid_names_returns_in_order() {
         "file_read".to_string(),
         "glob".to_string(),
     ];
-    let tools = tools_from_allowlist(&names, "replace");
+    let tools = tools_from_allowlist(&names);
     assert_eq!(tools.len(), 3);
     assert_eq!(tools[0].name(), "bash");
     assert_eq!(tools[1].name(), "file_read");
@@ -23,53 +23,27 @@ fn test_allowlist_unknown_names_omitted() {
         "nonexistent_tool".to_string(),
         "glob".to_string(),
     ];
-    let tools = tools_from_allowlist(&names, "replace");
-    // Only bash and glob should be returned; nonexistent_tool is silently dropped
+    let tools = tools_from_allowlist(&names);
     assert_eq!(tools.len(), 2);
     assert_eq!(tools[0].name(), "bash");
     assert_eq!(tools[1].name(), "glob");
 }
 
-// INV-3: Edit mode substitution — both modes return canonical names
+// INV-3: Default path returns same tools as allowlist with all names
 #[test]
-fn test_allowlist_hashline_edit_mode_substitution() {
-    let names: Vec<String> = vec!["file_read".to_string(), "file_edit".to_string()];
-
-    let replace_tools = tools_from_allowlist(&names, "replace");
-    assert_eq!(replace_tools.len(), 2);
-    assert_eq!(replace_tools[0].name(), "file_read");
-    assert_eq!(replace_tools[1].name(), "file_edit");
-
-    let hashline_tools = tools_from_allowlist(&names, "hashline");
-    assert_eq!(hashline_tools.len(), 2);
-    // Both modes now report the same canonical names
-    assert_eq!(hashline_tools[0].name(), "file_read");
-    assert_eq!(hashline_tools[1].name(), "file_edit");
-}
-
-// INV-5: Default path (no allowlist) returns same tools as tools_for_edit_mode
-#[test]
-fn test_default_path_matches_tools_for_edit_mode() {
-    for mode in &["replace", "hashline"] {
-        let default = tools_for_edit_mode(mode);
-        // All tools now use canonical names regardless of mode
-        let names: Vec<String> = default.iter().map(|t| t.name().to_string()).collect();
-        let from_allowlist = tools_from_allowlist(&names, mode);
-        assert_eq!(
-            default.len(),
-            from_allowlist.len(),
-            "tool count mismatch for mode '{}'",
-            mode
-        );
-        for (d, a) in default.iter().zip(from_allowlist.iter()) {
-            assert_eq!(d.name(), a.name(), "tool name mismatch for mode '{}'", mode);
-        }
+fn test_default_path_matches_allowlist() {
+    let default = default_tools();
+    let names: Vec<String> = default.iter().map(|t| t.name().to_string()).collect();
+    let from_allowlist = tools_from_allowlist(&names);
+    assert_eq!(default.len(), from_allowlist.len());
+    for (d, a) in default.iter().zip(from_allowlist.iter()) {
+        assert_eq!(d.name(), a.name());
     }
 }
 
 // Critical path: allowlist with all valid names returns correct tool count and names
 #[test]
-fn test_allowlist_all_valid_names_replace_mode() {
+fn test_allowlist_all_valid_names() {
     let names: Vec<String> = vec![
         "bash".to_string(),
         "file_read".to_string(),
@@ -78,7 +52,7 @@ fn test_allowlist_all_valid_names_replace_mode() {
         "glob".to_string(),
         "grep".to_string(),
     ];
-    let tools = tools_from_allowlist(&names, "replace");
+    let tools = tools_from_allowlist(&names);
     assert_eq!(tools.len(), 6);
     let tool_names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
     assert!(tool_names.contains(&"bash"));
@@ -99,7 +73,7 @@ fn test_allowlist_mixed_valid_invalid() {
         "also_unknown".to_string(),
         "file_write".to_string(),
     ];
-    let tools = tools_from_allowlist(&names, "replace");
+    let tools = tools_from_allowlist(&names);
     assert_eq!(tools.len(), 3);
     assert_eq!(tools[0].name(), "bash");
     assert_eq!(tools[1].name(), "grep");
