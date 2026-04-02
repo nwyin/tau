@@ -24,7 +24,7 @@ pub fn render_status_bar(width: usize, hint: FocusHint, warning: Option<&str>) -
     }
 
     let help = match hint {
-        FocusHint::Editor => "enter send | shift+enter newline | ctrl+p cmds | tab chat",
+        FocusHint::Editor => "enter send | alt+enter newline | ctrl+p cmds | tab chat",
         FocusHint::Chat => "j/k scroll | J/K messages | space expand | tab sidebar",
         FocusHint::Sidebar => "j/k navigate | enter inspect | esc editor | tab editor",
         FocusHint::ThreadModal => "j/k scroll | esc close | g/G top/bottom",
