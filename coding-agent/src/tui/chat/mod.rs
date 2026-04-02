@@ -1,3 +1,4 @@
+pub mod diff;
 pub mod messages;
 pub mod tools;
 

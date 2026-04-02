@@ -32,6 +32,8 @@ pub struct ToolCallMessage {
     pub body: String,
     pub status: ToolStatus,
     pub expanded: bool,
+    /// Pre-styled diff content (shown below header, not wrapped in muted style).
+    pub diff_body: Option<String>,
 }
 
 pub enum ChatMessage {
@@ -160,7 +162,12 @@ fn render_tool(msg: &ToolCallMessage, _width: usize, focused: bool) -> String {
 
     let mut output = line;
 
-    // Show body when expanded, or always show a truncated preview for pending tools
+    // Diff view (always shown, not toggleable)
+    if let Some(ref diff) = msg.diff_body {
+        output = format!("{}\n{}", output, diff);
+    }
+
+    // Show body when expanded
     if msg.expanded && !msg.body.is_empty() {
         let body_lines: Vec<&str> = msg.body.lines().collect();
         let truncated = if body_lines.len() > 20 {

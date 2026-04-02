@@ -267,6 +267,7 @@ impl TauModel {
             body: String::new(),
             status: ToolStatus::Success,
             expanded: false,
+            diff_body: None,
         }));
         self.refresh_chat_content();
     }
@@ -894,6 +895,7 @@ impl TauModel {
                     body: String::new(),
                     status: ToolStatus::Pending,
                     expanded: false,
+                    diff_body: None,
                 }));
                 self.active_tools.push(tool_name.clone());
                 self.refresh_chat_content();
@@ -923,6 +925,26 @@ impl TauModel {
                     })
                     .collect::<Vec<_>>()
                     .join("\n");
+                // Render diff view for file edits / new file creation
+                let diff_view = if !*is_error {
+                    let chat_w = self
+                        .width
+                        .saturating_sub(if self.is_compact { 0 } else { 30 });
+                    match tool_name.as_str() {
+                        "file_edit" => result
+                            .details
+                            .as_ref()
+                            .and_then(|d| super::chat::diff::render_edit_diff(d, chat_w)),
+                        "file_write" => result
+                            .details
+                            .as_ref()
+                            .and_then(|d| super::chat::diff::render_create_diff(d, chat_w)),
+                        _ => None,
+                    }
+                } else {
+                    None
+                };
+
                 for msg in self.messages.iter_mut().rev() {
                     if let ChatMessage::ToolCall(tc) = msg {
                         if tc.tool_call_id.as_deref() == Some(tool_call_id)
@@ -934,6 +956,7 @@ impl TauModel {
                                 ToolStatus::Success
                             };
                             tc.body = body_text.clone();
+                            tc.diff_body = diff_view.clone();
                             break;
                         }
                     }
@@ -987,6 +1010,7 @@ impl TauModel {
                     body: String::new(),
                     status: ToolStatus::Pending,
                     expanded: false,
+                    diff_body: None,
                 }));
                 self.active_tools.push(format!("thread:{}", alias));
                 self.thread_entries.push(ThreadEntry {
@@ -1165,11 +1189,13 @@ impl TauModel {
                     body: String::new(),
                     status: ToolStatus::Pending,
                     expanded: false,
+                    diff_body: None,
                 }));
             }
 
             AgentEvent::ToolExecutionEnd {
                 tool_call_id,
+                tool_name,
                 result,
                 is_error,
                 ..
@@ -1186,6 +1212,24 @@ impl TauModel {
                     })
                     .collect::<Vec<_>>()
                     .join("\n");
+                let diff_view = if !*is_error {
+                    let chat_w = self
+                        .width
+                        .saturating_sub(if self.is_compact { 0 } else { 30 });
+                    match tool_name.as_str() {
+                        "file_edit" => result
+                            .details
+                            .as_ref()
+                            .and_then(|d| super::chat::diff::render_edit_diff(d, chat_w)),
+                        "file_write" => result
+                            .details
+                            .as_ref()
+                            .and_then(|d| super::chat::diff::render_create_diff(d, chat_w)),
+                        _ => None,
+                    }
+                } else {
+                    None
+                };
                 for msg in msgs.iter_mut().rev() {
                     if let ChatMessage::ToolCall(tc) = msg {
                         if tc.tool_call_id.as_deref() == Some(tool_call_id)
@@ -1197,6 +1241,7 @@ impl TauModel {
                                 ToolStatus::Success
                             };
                             tc.body = body_text;
+                            tc.diff_body = diff_view;
                             break;
                         }
                     }

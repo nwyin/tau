@@ -72,16 +72,28 @@ impl AgentTool for FileWriteTool {
             }
 
             match std::fs::write(&path, content) {
-                Ok(()) => Ok(AgentToolResult {
-                    content: vec![UserBlock::Text {
-                        text: format!("Wrote {} bytes to {}", content.len(), path.display()),
-                    }],
-                    details: Some(json!({
+                Ok(()) => {
+                    let created = !path_existed_before;
+                    let mut details = json!({
                         "path": path.display().to_string(),
                         "bytes_written": content.len(),
-                        "created": !path_existed_before,
-                    })),
-                }),
+                        "created": created,
+                    });
+                    // Include file content for new-file diff rendering (truncated)
+                    if created {
+                        let lines: Vec<&str> = content.lines().collect();
+                        let total = lines.len();
+                        let preview: Vec<&str> = lines.into_iter().take(50).collect();
+                        details["new_content"] = json!(preview.join("\n"));
+                        details["total_lines"] = json!(total);
+                    }
+                    Ok(AgentToolResult {
+                        content: vec![UserBlock::Text {
+                            text: format!("Wrote {} bytes to {}", content.len(), path.display()),
+                        }],
+                        details: Some(details),
+                    })
+                }
                 Err(e) => Ok(AgentToolResult {
                     content: vec![UserBlock::Text {
                         text: e.to_string(),

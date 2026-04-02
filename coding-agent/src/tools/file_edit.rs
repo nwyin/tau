@@ -120,6 +120,7 @@ impl AgentTool for FileEditTool {
                 match fuzzy_find_unique(&content, old_string) {
                     Some(fuzzy) => {
                         let old_bytes = content.len();
+                        let matched_old = &content[fuzzy.offset..fuzzy.offset + fuzzy.length];
                         let new_content = format!(
                             "{}{}{}",
                             &content[..fuzzy.offset],
@@ -129,23 +130,39 @@ impl AgentTool for FileEditTool {
                         let new_bytes = new_content.len();
 
                         return match std::fs::write(&path, &new_content) {
-                            Ok(()) => Ok(AgentToolResult {
-                                content: vec![UserBlock::Text {
-                                    text: format!(
-                                        "Replaced 1 occurrence in {} (matched via {}). {} → {} bytes",
-                                        path.display(),
-                                        fuzzy.strategy,
-                                        old_bytes,
-                                        new_bytes
-                                    ),
-                                }],
-                                details: Some(json!({
+                            Ok(()) => {
+                                let mut details = json!({
                                     "path": path.display().to_string(),
                                     "success": true,
                                     "replacements": 1,
                                     "match_strategy": fuzzy.strategy,
-                                })),
-                            }),
+                                });
+                                let diff = build_diff_details(
+                                    &content,
+                                    &new_content,
+                                    matched_old,
+                                    new_string,
+                                    fuzzy.offset,
+                                );
+                                details.as_object_mut().unwrap().extend(
+                                    diff.as_object()
+                                        .unwrap()
+                                        .iter()
+                                        .map(|(k, v)| (k.clone(), v.clone())),
+                                );
+                                Ok(AgentToolResult {
+                                    content: vec![UserBlock::Text {
+                                        text: format!(
+                                            "Replaced 1 occurrence in {} (matched via {}). {} → {} bytes",
+                                            path.display(),
+                                            fuzzy.strategy,
+                                            old_bytes,
+                                            new_bytes
+                                        ),
+                                    }],
+                                    details: Some(details),
+                                })
+                            }
                             Err(e) => Ok(AgentToolResult {
                                 content: vec![UserBlock::Text {
                                     text: e.to_string(),
@@ -196,25 +213,42 @@ impl AgentTool for FileEditTool {
 
             // Exactly one exact match — perform the replacement
             let old_bytes = content.len();
+            let byte_offset = content.find(old_string).unwrap_or(0);
             let new_content = content.replacen(old_string, new_string, 1);
             let new_bytes = new_content.len();
 
             match std::fs::write(&path, &new_content) {
-                Ok(()) => Ok(AgentToolResult {
-                    content: vec![UserBlock::Text {
-                        text: format!(
-                            "Replaced 1 occurrence in {}. {} → {} bytes",
-                            path.display(),
-                            old_bytes,
-                            new_bytes
-                        ),
-                    }],
-                    details: Some(json!({
+                Ok(()) => {
+                    let mut details = json!({
                         "path": path.display().to_string(),
                         "success": true,
                         "replacements": 1,
-                    })),
-                }),
+                    });
+                    let diff = build_diff_details(
+                        &content,
+                        &new_content,
+                        old_string,
+                        new_string,
+                        byte_offset,
+                    );
+                    details.as_object_mut().unwrap().extend(
+                        diff.as_object()
+                            .unwrap()
+                            .iter()
+                            .map(|(k, v)| (k.clone(), v.clone())),
+                    );
+                    Ok(AgentToolResult {
+                        content: vec![UserBlock::Text {
+                            text: format!(
+                                "Replaced 1 occurrence in {}. {} → {} bytes",
+                                path.display(),
+                                old_bytes,
+                                new_bytes
+                            ),
+                        }],
+                        details: Some(details),
+                    })
+                }
                 Err(e) => Ok(AgentToolResult {
                     content: vec![UserBlock::Text {
                         text: e.to_string(),
@@ -349,6 +383,48 @@ fn resolve_path(path_str: &str) -> std::path::PathBuf {
 fn read_utf8(path: &std::path::Path) -> std::result::Result<String, String> {
     let raw = std::fs::read(path).map_err(|e| e.to_string())?;
     String::from_utf8(raw).map_err(|_| "File appears to be binary".to_string())
+}
+
+/// Build diff details for the TUI diff renderer.
+///
+/// Returns a JSON value with old_string, new_string, start_line (1-based),
+/// and context lines from before/after the edit point.
+fn build_diff_details(
+    original: &str,
+    new_content: &str,
+    old_string: &str,
+    new_string: &str,
+    byte_offset: usize,
+) -> Value {
+    let start_line = original[..byte_offset].matches('\n').count();
+    let old_line_count = old_string.lines().count().max(1);
+    let new_lines: Vec<&str> = new_content.lines().collect();
+
+    // Context: 3 lines before/after from the NEW file
+    let ctx = 3;
+    let ctx_before: Vec<&str> = if start_line >= ctx {
+        new_lines[start_line - ctx..start_line].to_vec()
+    } else {
+        new_lines[..start_line].to_vec()
+    };
+
+    let new_line_count = new_string.lines().count().max(1);
+    let after_start = start_line + new_line_count;
+    let ctx_after: Vec<&str> = if after_start < new_lines.len() {
+        let end = (after_start + ctx).min(new_lines.len());
+        new_lines[after_start..end].to_vec()
+    } else {
+        Vec::new()
+    };
+
+    json!({
+        "old_string": old_string,
+        "new_string": new_string,
+        "start_line": start_line + 1,  // 1-based for display
+        "old_line_count": old_line_count,
+        "context_before": ctx_before,
+        "context_after": ctx_after,
+    })
 }
 
 /// Build a short context snippet from the beginning of the file for error messages.
