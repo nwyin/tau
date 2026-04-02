@@ -28,6 +28,154 @@ _real_stdin = sys.stdin
 _real_stdout = sys.stdout
 
 
+class ThreadResult:
+    """Structured result from tau.thread()."""
+
+    def __init__(self, data):
+        if isinstance(data, str):
+            self.status = "completed"
+            self.output = data
+            self.trace = data
+            self.alias = None
+            self.duration_ms = None
+            self.turns = None
+        else:
+            self.status = data.get("status", "completed")
+            self.output = data.get("output", "")
+            self.trace = data.get("trace", "")
+            self.alias = data.get("alias")
+            self.duration_ms = data.get("duration_ms")
+            self.turns = data.get("turns")
+
+    @property
+    def completed(self):
+        return self.status == "completed"
+
+    @property
+    def aborted(self):
+        return self.status == "aborted"
+
+    @property
+    def escalated(self):
+        return self.status == "escalated"
+
+    @property
+    def timed_out(self):
+        return self.status == "timed_out"
+
+    @property
+    def reason(self):
+        return self.output
+
+    def __str__(self):
+        return self.trace
+
+    def __repr__(self):
+        return f"ThreadResult(status={self.status!r}, output={self.output[:60]!r})"
+
+    def __bool__(self):
+        return self.completed
+
+    def __contains__(self, item):
+        return item in self.trace
+
+
+class WorkflowHandle:
+    def __init__(self, name, module, path, tau):
+        self.name = name
+        self._module = module
+        self._tau = tau
+        self.path = path
+        self.description = (module.__doc__ or "").strip().split("\n")[0]
+
+    def run(self, **params):
+        if not hasattr(self._module, "run"):
+            raise RuntimeError(f"Workflow '{self.name}' has no run() function")
+        return self._module.run(self._tau, **params)
+
+    def info(self):
+        import inspect
+
+        sig = inspect.signature(self._module.run)
+        params = [p for p in sig.parameters if p != "tau"]
+        return {"name": self.name, "description": self.description, "parameters": params, "path": self.path}
+
+
+class WorkflowRegistry:
+    def __init__(self, tau_proxy):
+        self._tau = tau_proxy
+        self._cache = None
+        self._modules = {}
+
+    def _scan(self):
+        if self._cache is not None:
+            return
+        self._cache = {}
+        for d in self._workflow_dirs():
+            if not os.path.isdir(d):
+                continue
+            for fname in sorted(os.listdir(d)):
+                if fname.endswith(".py") and fname[:-3] not in self._cache:
+                    self._cache[fname[:-3]] = os.path.join(d, fname)
+
+    def _workflow_dirs(self):
+        dirs = []
+        current = self._tau.cwd
+        while True:
+            candidate = os.path.join(current, ".tau", "workflows")
+            if os.path.isdir(candidate):
+                dirs.append(candidate)
+            if os.path.isdir(os.path.join(current, ".git")):
+                break
+            parent = os.path.dirname(current)
+            if parent == current:
+                break
+            current = parent
+        dirs.append(os.path.join(self._tau.home_dir, ".tau", "workflows"))
+        return dirs
+
+    def get(self, name):
+        self._scan()
+        if name not in self._cache:
+            raise RuntimeError(f"Unknown workflow: '{name}'. Use tau.workflows() to list.")
+        if name not in self._modules:
+            import importlib.util
+
+            spec = importlib.util.spec_from_file_location(f"tau_workflow_{name}", self._cache[name])
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            self._modules[name] = mod
+        return WorkflowHandle(name, self._modules[name], self._cache[name], self._tau)
+
+    def list_all(self):
+        self._scan()
+        result = []
+        for name in sorted(self._cache):
+            try:
+                handle = self.get(name)
+                import inspect
+
+                params = [p for p in inspect.signature(handle._module.run).parameters if p != "tau"]
+                result.append({"name": name, "description": handle.description, "parameters": params})
+            except Exception as e:
+                result.append({"name": name, "description": f"(error: {e})", "parameters": []})
+        return result
+
+    def save(self, name, code):
+        d = os.path.join(self._tau.home_dir, ".tau", "workflows")
+        os.makedirs(d, exist_ok=True)
+        path = os.path.join(d, f"{name}.py")
+        with open(path, "w") as f:
+            f.write(code)
+        self._cache = None
+        self._modules.pop(name, None)
+        return path
+
+    def refresh(self):
+        self._cache = None
+        self._modules.clear()
+
+
 class TauProxy:
     """The `tau` object available in the kernel namespace.
 
@@ -64,7 +212,7 @@ class TauProxy:
         return self._rpc("tool", {"name": name, "args": kwargs})
 
     def thread(self, alias, task, tools=None, model=None, episodes=None, timeout=None):
-        """Spawn a thread. Blocks until complete. Returns episode text."""
+        """Spawn a thread. Blocks until complete. Returns a ThreadResult."""
         params = {"alias": alias, "task": task}
         if tools is not None:
             params["tools"] = tools
@@ -74,7 +222,7 @@ class TauProxy:
             params["episodes"] = episodes
         if timeout is not None:
             params["timeout"] = timeout
-        return self._rpc("thread", params)
+        return ThreadResult(self._rpc("thread", params))
 
     def query(self, prompt, alias=None, model=None):
         """Single-shot LLM query. Returns response text."""
@@ -91,7 +239,15 @@ class TauProxy:
         Each spec should be created via tau.Thread(...), tau.Query(...), or tau.Tool(...).
         Returns a list of results in the same order as the specs.
         """
-        return self._rpc("parallel", {"specs": list(specs)})
+        raw = self._rpc("parallel", {"specs": list(specs)})
+        specs_list = list(specs)
+        wrapped = []
+        for i, val in enumerate(raw):
+            if i < len(specs_list) and specs_list[i].get("method") == "thread":
+                wrapped.append(ThreadResult(val))
+            else:
+                wrapped.append(val)
+        return wrapped
 
     def document(self, operation, name=None, content=None):
         """Access shared virtual documents.
@@ -108,6 +264,26 @@ class TauProxy:
     def log(self, message):
         """Record a message in the orchestration trace."""
         self._rpc("log", {"message": str(message)})
+
+    # --- Workflow template API ---
+
+    @property
+    def _workflows(self):
+        if not hasattr(self, "_workflow_registry") or self._workflow_registry is None:
+            self._workflow_registry = WorkflowRegistry(self)
+        return self._workflow_registry
+
+    def workflow(self, name):
+        """Load a workflow template by name. Returns a WorkflowHandle."""
+        return self._workflows.get(name)
+
+    def workflows(self):
+        """List all available workflow templates."""
+        return self._workflows.list_all()
+
+    def save_workflow(self, name, code):
+        """Save a workflow template to ~/.tau/workflows/."""
+        return self._workflows.save(name, code)
 
     # --- Spec factories for tau.parallel() ---
 
@@ -164,7 +340,7 @@ def exec_cell(code, namespace):
 
 
 def main():
-    namespace = {"tau": TauProxy(), "__name__": "__main__"}
+    namespace = {"tau": TauProxy(), "ThreadResult": ThreadResult, "__name__": "__main__"}
 
     for line in sys.stdin:
         line = line.strip()
