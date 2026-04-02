@@ -1013,7 +1013,12 @@ impl TauModel {
                 None
             }
 
-            AgentEvent::ThreadEnd { alias, outcome, .. } => {
+            AgentEvent::ThreadEnd {
+                thread_id,
+                alias,
+                outcome,
+                ..
+            } => {
                 self.active_thread_count = self.active_thread_count.saturating_sub(1);
                 self.active_tools
                     .retain(|t| t != &format!("thread:{}", alias));
@@ -1038,6 +1043,25 @@ impl TauModel {
                 if let Some(entry) = self.thread_entries.iter_mut().find(|e| e.alias == *alias) {
                     entry.status = new_status;
                 }
+
+                // Append outcome summary to thread message buffer for the modal
+                let outcome_text = format!("[{}] {}", outcome.status_str(), outcome.result_text());
+                let outcome_status = match outcome {
+                    agent::thread::ThreadOutcome::Completed { .. } => ToolStatus::Success,
+                    _ => ToolStatus::Error,
+                };
+                if let Some(thread_msgs) = self.thread_messages.get_mut(thread_id) {
+                    thread_msgs.push(ChatMessage::ToolCall(ToolCallMessage {
+                        tool_call_id: None,
+                        tool_name: String::new(),
+                        header: outcome_text,
+                        body: String::new(),
+                        status: outcome_status,
+                        expanded: false,
+                        diff_body: None,
+                    }));
+                }
+
                 // Update thread modal status if it's showing this thread
                 if self.scene.contains("thread_modal") {
                     if let Some(modal) = self.scene.pane_as_mut::<ThreadModalPane>("thread_modal") {
@@ -1046,6 +1070,7 @@ impl TauModel {
                 }
                 self.refresh_chat_content();
                 self.sync_sidebar();
+                self.sync_thread_modal();
                 None
             }
 
