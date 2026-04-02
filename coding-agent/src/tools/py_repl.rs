@@ -351,7 +351,7 @@ impl RpcDispatcher {
     async fn dispatch(&self, method: &str, params: &Value) -> Result<Value, String> {
         let result = match method {
             "tool" => self.dispatch_tool(params).await,
-            "thread" => self.dispatch_to_tool(&self.thread_tool, params).await,
+            "thread" => self.dispatch_thread(params).await,
             "query" => self.dispatch_to_tool(&self.query_tool, params).await,
             "document" => self.dispatch_to_tool(&self.document_tool, params).await,
             "parallel" => self.dispatch_parallel(params).await,
@@ -384,6 +384,19 @@ impl RpcDispatcher {
             .map_err(|e| e.to_string())?;
 
         Ok(Value::String(extract_text(&result)))
+    }
+
+    async fn dispatch_thread(&self, params: &Value) -> Result<Value, String> {
+        let result = self
+            .thread_tool
+            .execute(
+                format!("py-rpc-{}", self.thread_tool.name()),
+                params.clone(),
+                None,
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(build_thread_result(&result))
     }
 
     async fn dispatch_to_tool(
@@ -423,7 +436,7 @@ impl RpcDispatcher {
             let document_tool = self.document_tool.clone();
             handles.push(tokio::spawn(async move {
                 match method.as_str() {
-                    "thread" => dispatch_single(&thread_tool, &spec).await,
+                    "thread" => dispatch_single_thread(&thread_tool, &spec).await,
                     "query" => dispatch_single(&query_tool, &spec).await,
                     "document" => dispatch_single(&document_tool, &spec).await,
                     "tool" => {
@@ -461,6 +474,22 @@ impl RpcDispatcher {
     }
 }
 
+/// Helper: dispatch a single thread spec, returning structured ThreadResult.
+async fn dispatch_single_thread(
+    tool: &Arc<dyn AgentTool>,
+    params: &Value,
+) -> Result<Value, String> {
+    let result = tool
+        .execute(
+            format!("py-parallel-{}", tool.name()),
+            params.clone(),
+            None,
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(build_thread_result(&result))
+}
+
 /// Helper: dispatch a single spec to a tool.
 async fn dispatch_single(tool: &Arc<dyn AgentTool>, params: &Value) -> Result<Value, String> {
     let result = tool
@@ -472,6 +501,25 @@ async fn dispatch_single(tool: &Arc<dyn AgentTool>, params: &Value) -> Result<Va
         .await
         .map_err(|e| e.to_string())?;
     Ok(Value::String(extract_text(&result)))
+}
+
+/// Build a structured result from a thread's AgentToolResult.
+/// Flattens outcome.kind → status, outcome.text → output, and includes the full trace.
+fn build_thread_result(result: &AgentToolResult) -> Value {
+    let text = extract_text(result);
+    let mut structured = result.details.clone().unwrap_or(json!({}));
+    if let Value::Object(ref mut map) = structured {
+        map.insert("trace".to_string(), Value::String(text));
+        if let Some(outcome) = map.remove("outcome") {
+            if let Some(kind) = outcome.get("kind") {
+                map.insert("status".to_string(), kind.clone());
+            }
+            if let Some(text) = outcome.get("text") {
+                map.insert("output".to_string(), text.clone());
+            }
+        }
+    }
+    structured
 }
 
 /// Extract text content from an AgentToolResult.

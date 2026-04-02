@@ -19,6 +19,13 @@ const ORCH_PIPELINE: &str = include_str!("../prompts/orchestration/patterns/pipe
 const ORCH_ADVERSARIAL: &str = include_str!("../prompts/orchestration/patterns/adversarial.md");
 const ORCH_REUSE: &str = include_str!("../prompts/orchestration/patterns/reuse.md");
 const ORCH_PROGRAMMATIC: &str = include_str!("../prompts/orchestration/patterns/programmatic.md");
+const ORCH_WF_FEATURE: &str = include_str!("../prompts/orchestration/workflows/feature.md");
+const ORCH_WF_BUGFIX: &str = include_str!("../prompts/orchestration/workflows/bugfix.md");
+const ORCH_WF_REFACTOR: &str = include_str!("../prompts/orchestration/workflows/refactor.md");
+const ORCH_WF_RESEARCH: &str = include_str!("../prompts/orchestration/workflows/research.md");
+const ORCH_WF_SUPERVISED: &str = include_str!("../prompts/orchestration/workflows/supervised.md");
+const ORCH_WF_SESSION_INIT: &str =
+    include_str!("../prompts/orchestration/workflows/session_init.md");
 
 /// Truncate a description to the first sentence (up to the first '.').
 fn first_sentence(desc: &str) -> &str {
@@ -174,6 +181,12 @@ pub fn build_system_prompt(tools: &[Arc<dyn AgentTool>], skills: &[Skill], cwd: 
                 ORCH_ADVERSARIAL,
                 ORCH_REUSE,
                 ORCH_PROGRAMMATIC,
+                ORCH_WF_FEATURE,
+                ORCH_WF_BUGFIX,
+                ORCH_WF_REFACTOR,
+                ORCH_WF_RESEARCH,
+                ORCH_WF_SUPERVISED,
+                ORCH_WF_SESSION_INIT,
             ]
             .join("\n\n"),
         );

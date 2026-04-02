@@ -26,6 +26,14 @@ results = tau.parallel(
 )
 # results[0], results[1], results[2] match spec order
 
+# Thread results are structured — use for conditional branching
+result = tau.thread("tests", "Run the test suite", tools=["full"])
+result.status      # "completed", "aborted", "escalated", "timed_out"
+result.output      # result text / abort reason / escalation problem
+result.completed   # True if status == "completed"
+if not result:     # __bool__ returns completed
+    tau.thread("fix", f"Fix: {result.reason}", episodes=["tests"], tools=["full"])
+
 # Logging
 tau.log("Processing complete, found 5 issues")
 

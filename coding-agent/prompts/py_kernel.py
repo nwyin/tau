@@ -28,6 +28,59 @@ _real_stdin = sys.stdin
 _real_stdout = sys.stdout
 
 
+class ThreadResult:
+    """Structured result from tau.thread(). Provides attribute access to outcome
+    fields while remaining string-compatible via __str__ and __contains__."""
+
+    def __init__(self, data):
+        if isinstance(data, str):
+            self.status = "completed"
+            self.output = data
+            self.trace = data
+            self.alias = None
+            self.duration_ms = None
+            self.turns = None
+        else:
+            self.status = data.get("status", "completed")
+            self.output = data.get("output", "")
+            self.trace = data.get("trace", "")
+            self.alias = data.get("alias")
+            self.duration_ms = data.get("duration_ms")
+            self.turns = data.get("turns")
+
+    @property
+    def completed(self):
+        return self.status == "completed"
+
+    @property
+    def aborted(self):
+        return self.status == "aborted"
+
+    @property
+    def escalated(self):
+        return self.status == "escalated"
+
+    @property
+    def timed_out(self):
+        return self.status == "timed_out"
+
+    @property
+    def reason(self):
+        return self.output
+
+    def __str__(self):
+        return self.trace
+
+    def __repr__(self):
+        return f"ThreadResult(status={self.status!r}, output={self.output[:60]!r})"
+
+    def __bool__(self):
+        return self.completed
+
+    def __contains__(self, item):
+        return item in self.trace
+
+
 class TauProxy:
     """The `tau` object available in the kernel namespace.
 
@@ -64,7 +117,7 @@ class TauProxy:
         return self._rpc("tool", {"name": name, "args": kwargs})
 
     def thread(self, alias, task, tools=None, model=None, episodes=None, timeout=None):
-        """Spawn a thread. Blocks until complete. Returns episode text."""
+        """Spawn a thread. Blocks until complete. Returns a ThreadResult."""
         params = {"alias": alias, "task": task}
         if tools is not None:
             params["tools"] = tools
@@ -74,7 +127,7 @@ class TauProxy:
             params["episodes"] = episodes
         if timeout is not None:
             params["timeout"] = timeout
-        return self._rpc("thread", params)
+        return ThreadResult(self._rpc("thread", params))
 
     def query(self, prompt, alias=None, model=None):
         """Single-shot LLM query. Returns response text."""
@@ -90,8 +143,17 @@ class TauProxy:
 
         Each spec should be created via tau.Thread(...), tau.Query(...), or tau.Tool(...).
         Returns a list of results in the same order as the specs.
+        Thread results are wrapped in ThreadResult for structured access.
         """
-        return self._rpc("parallel", {"specs": list(specs)})
+        raw = self._rpc("parallel", {"specs": list(specs)})
+        specs_list = list(specs)
+        wrapped = []
+        for i, val in enumerate(raw):
+            if i < len(specs_list) and specs_list[i].get("method") == "thread":
+                wrapped.append(ThreadResult(val))
+            else:
+                wrapped.append(val)
+        return wrapped
 
     def document(self, operation, name=None, content=None):
         """Access shared virtual documents.
@@ -164,7 +226,7 @@ def exec_cell(code, namespace):
 
 
 def main():
-    namespace = {"tau": TauProxy(), "__name__": "__main__"}
+    namespace = {"tau": TauProxy(), "ThreadResult": ThreadResult, "__name__": "__main__"}
 
     for line in sys.stdin:
         line = line.strip()
