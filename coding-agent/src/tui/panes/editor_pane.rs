@@ -121,6 +121,14 @@ impl Pane for EditorPane {
                 // Reset tab state on non-tab keys
                 self.tab_state = None;
                 match key.code {
+                    KeyCode::Enter if key.modifiers.contains(Modifiers::SHIFT) => {
+                        // Shift+Enter: insert a newline into the value
+                        let mut val = self.input.value();
+                        let pos = self.input.position();
+                        val.insert(pos, '\n');
+                        self.input.set_value(&val);
+                        self.input.set_cursor(pos + 1);
+                    }
                     KeyCode::Enter => {
                         let text = self.input.value().trim().to_string();
                         if !text.is_empty() {
