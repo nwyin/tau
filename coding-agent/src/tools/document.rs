@@ -17,6 +17,7 @@ use super::thread::EventForwarderCell;
 pub struct DocumentTool {
     orchestrator: Arc<OrchestratorState>,
     event_forwarder: EventForwarderCell,
+    thread_alias: Option<String>,
 }
 
 impl DocumentTool {
@@ -24,6 +25,7 @@ impl DocumentTool {
         Self {
             orchestrator,
             event_forwarder,
+            thread_alias: None,
         }
     }
 
@@ -32,6 +34,18 @@ impl DocumentTool {
         event_forwarder: EventForwarderCell,
     ) -> Arc<dyn AgentTool> {
         Arc::new(Self::new(orchestrator, event_forwarder))
+    }
+
+    pub fn arc_for_thread(
+        orchestrator: Arc<OrchestratorState>,
+        event_forwarder: EventForwarderCell,
+        alias: String,
+    ) -> Arc<dyn AgentTool> {
+        Arc::new(Self {
+            orchestrator,
+            event_forwarder,
+            thread_alias: Some(alias),
+        })
     }
 }
 
@@ -83,6 +97,7 @@ impl AgentTool for DocumentTool {
     ) -> BoxFuture<anyhow::Result<AgentToolResult>> {
         let orchestrator = self.orchestrator.clone();
         let event_forwarder = self.event_forwarder.clone();
+        let thread_alias = self.thread_alias.clone();
 
         Box::pin(async move {
             let operation = params
@@ -96,7 +111,7 @@ impl AgentTool for DocumentTool {
             let emit = |op: &str, name: &str, content: &str| {
                 if let Some(fwd) = event_forwarder.lock().ok().and_then(|g| g.clone()) {
                     fwd(AgentEvent::DocumentOp {
-                        thread_alias: None,
+                        thread_alias: thread_alias.clone(),
                         op: op.to_string(),
                         name: name.to_string(),
                         content: content.to_string(),

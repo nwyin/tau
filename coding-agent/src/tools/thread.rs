@@ -259,9 +259,10 @@ impl AgentTool for ThreadTool {
             thread_tools.push(CompleteTool::arc(outcome_signal.clone()));
             thread_tools.push(AbortTool::arc(outcome_signal.clone()));
             thread_tools.push(EscalateTool::arc(outcome_signal));
-            thread_tools.push(tools::DocumentTool::arc(
+            thread_tools.push(tools::DocumentTool::arc_for_thread(
                 orchestrator.clone(),
                 event_forwarder.clone(),
+                alias.clone(),
             ));
             thread_tools.push(tools::LogTool::arc(orchestrator.clone()));
             thread_tools.push(tools::FromIdTool::arc(orchestrator.clone()));

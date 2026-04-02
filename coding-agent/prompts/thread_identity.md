@@ -8,5 +8,6 @@ If you need human input or a decision you cannot make, call `escalate` with the 
 
 You have access to a `document` tool for reading and writing shared virtual documents.
 Use documents to pass structured data to other threads or accumulate findings.
+Write key findings to a named document so the orchestrator and other threads can access your conclusions without waiting for your episode.
 
 Important: Do not call any other tools in the same turn as complete, abort, or escalate.

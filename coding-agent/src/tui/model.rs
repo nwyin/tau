@@ -7,7 +7,7 @@ use ai::types::AssistantMessageEvent;
 use ruse::prelude::*;
 
 use super::anim::GradientSpinner;
-use super::chat::tools::extract_tool_detail;
+use super::chat::tools::{extract_tool_body, extract_tool_detail};
 use super::chat::{AssistantMessage, ChatMessage, ToolCallMessage, ToolStatus, UserMessage};
 use super::layout;
 use super::msg::TauMsg;
@@ -324,17 +324,17 @@ impl TauModel {
                                         serde_json::to_value(arguments).unwrap_or_default(),
                                     ),
                                 );
-                                let header = extract_tool_detail(
-                                    name,
-                                    &serde_json::to_value(arguments).unwrap_or_default(),
-                                );
+                                let args_val = serde_json::to_value(arguments).unwrap_or_default();
+                                let header = extract_tool_detail(name, &args_val);
+                                let body = extract_tool_body(name, &args_val);
+                                let expanded = body.is_some();
                                 self.messages.push(ChatMessage::ToolCall(ToolCallMessage {
                                     tool_call_id: Some(id.clone()),
                                     tool_name: name.clone(),
                                     header,
-                                    body: String::new(),
+                                    body: body.unwrap_or_default(),
                                     status: ToolStatus::Pending,
-                                    expanded: false,
+                                    expanded,
                                     diff_body: None,
                                 }));
                             }
@@ -1037,6 +1037,8 @@ impl TauModel {
                     return None;
                 }
                 let header = extract_tool_detail(tool_name, args);
+                let body = extract_tool_body(tool_name, args);
+                let expanded = body.is_some();
                 let display_name = if let Some(alias) = thread_alias {
                     format!("[{}] {}", alias, tool_name)
                 } else {
@@ -1046,9 +1048,9 @@ impl TauModel {
                     tool_call_id: Some(tool_call_id.clone()),
                     tool_name: display_name,
                     header,
-                    body: String::new(),
+                    body: body.unwrap_or_default(),
                     status: ToolStatus::Pending,
-                    expanded: false,
+                    expanded,
                     diff_body: None,
                 }));
                 self.active_tools.push(tool_name.clone());
@@ -1361,13 +1363,15 @@ impl TauModel {
                 ..
             } => {
                 let header = extract_tool_detail(tool_name, args);
+                let body = extract_tool_body(tool_name, args);
+                let expanded = body.is_some();
                 msgs.push(ChatMessage::ToolCall(ToolCallMessage {
                     tool_call_id: Some(tool_call_id.clone()),
                     tool_name: tool_name.clone(),
                     header,
-                    body: String::new(),
+                    body: body.unwrap_or_default(),
                     status: ToolStatus::Pending,
-                    expanded: false,
+                    expanded,
                     diff_body: None,
                 }));
             }
@@ -1583,7 +1587,9 @@ impl Model for TauModel {
     fn update(&mut self, msg: Msg) -> Cmd {
         // 1. Intercept TauMsg (Custom) before Scene
         if let Some(tau_msg) = msg.downcast_ref::<TauMsg>() {
-            return self.handle_tau_msg(tau_msg);
+            let cmd = self.handle_tau_msg(tau_msg);
+            let action_cmd = self.process_pane_actions();
+            return ruse::runtime::batch(vec![cmd, action_cmd]);
         }
 
         // 2. Permission interception — handles ALL keys while queue non-empty
