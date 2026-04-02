@@ -5,13 +5,14 @@
 use std::collections::HashMap;
 
 use anyhow::Result;
-use futures::StreamExt;
 use serde_json::{json, Value};
 
 use crate::models::{calculate_cost, supports_xhigh};
+use crate::providers::sse::{self, SseStop};
 use crate::providers::ApiProvider;
 use crate::stream::{
-    assistant_message_event_stream, AssistantMessageEventSender, AssistantMessageEventStream,
+    assistant_message_event_stream, error_stream, AssistantMessageEventSender,
+    AssistantMessageEventStream,
 };
 use crate::types::{
     AssistantMessage, AssistantMessageEvent, ContentBlock, Context, Cost, Message, Model,
@@ -662,54 +663,6 @@ pub async fn process_anthropic_events(
 }
 
 // =============================================================================
-// SSE collection (Anthropic terminates with message_stop, no [DONE])
-// =============================================================================
-
-async fn collect_anthropic_sse_events(response: reqwest::Response) -> Result<Vec<Value>> {
-    let mut stream = response.bytes_stream();
-    let mut buffer = String::new();
-    let mut events: Vec<Value> = Vec::new();
-
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk?;
-        buffer.push_str(&String::from_utf8_lossy(&chunk));
-
-        loop {
-            match buffer.find('\n') {
-                None => break,
-                Some(pos) => {
-                    let line = buffer[..pos].trim_end_matches('\r').to_string();
-                    buffer = buffer[pos + 1..].to_string();
-
-                    if let Some(data) = line.strip_prefix("data: ") {
-                        match serde_json::from_str::<Value>(data) {
-                            Ok(v) => {
-                                let is_stop =
-                                    v.get("type").and_then(|t| t.as_str()) == Some("message_stop");
-                                events.push(v);
-                                if is_stop {
-                                    return Ok(events);
-                                }
-                            }
-                            Err(_) => {
-                                // Malformed JSON line — skip gracefully
-                            }
-                        }
-                    }
-                    // event:, ping, and empty lines are ignored
-                }
-            }
-        }
-    }
-
-    if events.is_empty() {
-        return Err(anyhow::anyhow!("Empty response stream"));
-    }
-
-    Ok(events)
-}
-
-// =============================================================================
 // Core streaming function
 // =============================================================================
 
@@ -769,50 +722,22 @@ fn stream_anthropic_messages(
             }
         }
 
-        let mut attempt = 0u32;
-        let response = loop {
-            let req = client.post(&url).headers(headers.clone()).json(&body);
-            match req.send().await {
-                Ok(resp)
-                    if crate::retry::is_retryable(resp.status().as_u16())
-                        && attempt < crate::retry::MAX_RETRIES =>
-                {
-                    let retry_after = resp
-                        .headers()
-                        .get("retry-after")
-                        .and_then(|v| v.to_str().ok())
-                        .and_then(|v| v.parse::<u64>().ok());
-                    tokio::time::sleep(crate::retry::delay(attempt, retry_after)).await;
-                    attempt += 1;
-                    continue;
-                }
-                Ok(resp) => break resp,
-                Err(e) if attempt < crate::retry::MAX_RETRIES => {
-                    tokio::time::sleep(crate::retry::delay(attempt, None)).await;
-                    attempt += 1;
-                    continue;
-                }
-                Err(e) => {
-                    output.stop_reason = StopReason::Error;
-                    output.error_message = Some(e.to_string());
-                    tx.push(AssistantMessageEvent::Error {
-                        reason: StopReason::Error,
-                        error: output,
-                    });
-                    return;
-                }
+        let response = match crate::retry::retry_request(|| {
+            client.post(&url).headers(headers.clone()).json(&body).send()
+        })
+        .await
+        {
+            Ok(resp) => resp,
+            Err(e) => {
+                emit_error(&mut output, &mut tx, e.to_string());
+                return;
             }
         };
 
         if !response.status().is_success() {
             let status = response.status();
             let body_text = response.text().await.unwrap_or_default();
-            output.stop_reason = StopReason::Error;
-            output.error_message = Some(format!("HTTP {}: {}", status, body_text));
-            tx.push(AssistantMessageEvent::Error {
-                reason: StopReason::Error,
-                error: output,
-            });
+            emit_error(&mut output, &mut tx, format!("HTTP {}: {}", status, body_text));
             return;
         }
 
@@ -820,26 +745,18 @@ fn stream_anthropic_messages(
             partial: output.clone(),
         });
 
-        let events = match collect_anthropic_sse_events(response).await {
+        let events = match sse::collect_sse_events(response, SseStop::JsonType("message_stop"))
+            .await
+        {
             Ok(events) => events,
             Err(e) => {
-                output.stop_reason = StopReason::Error;
-                output.error_message = Some(e.to_string());
-                tx.push(AssistantMessageEvent::Error {
-                    reason: StopReason::Error,
-                    error: output,
-                });
+                emit_error(&mut output, &mut tx, e.to_string());
                 return;
             }
         };
 
         if let Err(e) = process_anthropic_events(events, &mut output, &mut tx, &model).await {
-            output.stop_reason = StopReason::Error;
-            output.error_message = Some(e.to_string());
-            tx.push(AssistantMessageEvent::Error {
-                reason: StopReason::Error,
-                error: output,
-            });
+            emit_error(&mut output, &mut tx, e.to_string());
             return;
         }
 
@@ -857,6 +774,20 @@ fn stream_anthropic_messages(
     });
 
     stream
+}
+
+/// Set error state on output and push an Error event.
+fn emit_error(
+    output: &mut AssistantMessage,
+    tx: &mut crate::stream::AssistantMessageEventSender,
+    msg: String,
+) {
+    output.stop_reason = StopReason::Error;
+    output.error_message = Some(msg);
+    tx.push(AssistantMessageEvent::Error {
+        reason: StopReason::Error,
+        error: output.clone(),
+    });
 }
 
 // =============================================================================
@@ -907,25 +838,7 @@ impl ApiProvider for AnthropicProvider {
 
         let api_key = match self.resolve_api_key(model, base.api_key.as_deref()) {
             Ok(k) => k,
-            Err(e) => {
-                let (mut tx, stream) = assistant_message_event_stream();
-                let err_msg = AssistantMessage {
-                    role: "assistant".into(),
-                    content: Vec::new(),
-                    api: model.api.clone(),
-                    provider: model.provider.clone(),
-                    model: model.id.clone(),
-                    usage: Usage::default(),
-                    stop_reason: StopReason::Error,
-                    error_message: Some(e.to_string()),
-                    timestamp: chrono::Utc::now().timestamp_millis(),
-                };
-                tx.push(AssistantMessageEvent::Error {
-                    reason: StopReason::Error,
-                    error: err_msg,
-                });
-                return stream;
-            }
+            Err(e) => return error_stream(model, e),
         };
 
         let opts = AnthropicRequestOptions {
@@ -956,25 +869,7 @@ impl ApiProvider for AnthropicProvider {
 
         let api_key = match self.resolve_api_key(model, base.api_key.as_deref()) {
             Ok(k) => k,
-            Err(e) => {
-                let (mut tx, stream) = assistant_message_event_stream();
-                let err_msg = AssistantMessage {
-                    role: "assistant".into(),
-                    content: Vec::new(),
-                    api: model.api.clone(),
-                    provider: model.provider.clone(),
-                    model: model.id.clone(),
-                    usage: Usage::default(),
-                    stop_reason: StopReason::Error,
-                    error_message: Some(e.to_string()),
-                    timestamp: chrono::Utc::now().timestamp_millis(),
-                };
-                tx.push(AssistantMessageEvent::Error {
-                    reason: StopReason::Error,
-                    error: err_msg,
-                });
-                return stream;
-            }
+            Err(e) => return error_stream(model, e),
         };
 
         let thinking_config = opts

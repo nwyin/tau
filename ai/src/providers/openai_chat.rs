@@ -4,15 +4,14 @@
 //! and any OpenAI-compatible endpoint (Groq, Together, Ollama, etc.).
 
 use anyhow::Result;
-use futures::StreamExt;
-use serde_json::Value;
 
 use crate::providers::openai_chat_shared::{
     build_chat_request_body, process_chat_sse_events, ChatRequestOptions,
 };
 use crate::providers::openai_responses_shared::clamp_reasoning_effort;
+use crate::providers::sse::{self, SseStop};
 use crate::providers::ApiProvider;
-use crate::stream::{assistant_message_event_stream, AssistantMessageEventStream};
+use crate::stream::{assistant_message_event_stream, error_stream, AssistantMessageEventStream};
 use crate::types::{
     AssistantMessage, AssistantMessageEvent, Context, Cost, Model, SimpleStreamOptions, StopReason,
     StreamOptions, ThinkingLevel, Usage,
@@ -109,7 +108,6 @@ fn stream_openai_chat(
             headers.insert("X-Title", "tau".parse().unwrap());
         }
 
-        // Model-level headers
         if let Some(model_headers) = &model.headers {
             for (k, v) in model_headers {
                 if let (Ok(name), Ok(val)) = (
@@ -120,7 +118,6 @@ fn stream_openai_chat(
                 }
             }
         }
-        // Option-level headers
         if let Some(extra_headers) = &opts.extra_headers {
             for (k, v) in extra_headers {
                 if let (Ok(name), Ok(val)) = (
@@ -132,84 +129,45 @@ fn stream_openai_chat(
             }
         }
 
-        let mut attempt = 0u32;
-        let response = loop {
-            let req = client
+        let response = match crate::retry::retry_request(|| {
+            client
                 .post(&url)
                 .bearer_auth(&api_key)
                 .headers(headers.clone())
-                .json(&body);
-            match req.send().await {
-                Ok(resp)
-                    if crate::retry::is_retryable(resp.status().as_u16())
-                        && attempt < crate::retry::MAX_RETRIES =>
-                {
-                    let retry_after = resp
-                        .headers()
-                        .get("retry-after")
-                        .and_then(|v| v.to_str().ok())
-                        .and_then(|v| v.parse::<u64>().ok());
-                    tokio::time::sleep(crate::retry::delay(attempt, retry_after)).await;
-                    attempt += 1;
-                    continue;
-                }
-                Ok(resp) => break resp,
-                Err(e) if attempt < crate::retry::MAX_RETRIES => {
-                    tokio::time::sleep(crate::retry::delay(attempt, None)).await;
-                    attempt += 1;
-                    continue;
-                }
-                Err(e) => {
-                    output.stop_reason = StopReason::Error;
-                    output.error_message = Some(e.to_string());
-                    tx.push(AssistantMessageEvent::Error {
-                        reason: StopReason::Error,
-                        error: output,
-                    });
-                    return;
-                }
+                .json(&body)
+                .send()
+        })
+        .await
+        {
+            Ok(resp) => resp,
+            Err(e) => {
+                emit_error(&mut output, &mut tx, e.to_string());
+                return;
             }
         };
 
         if !response.status().is_success() {
             let status = response.status();
             let body_text = response.text().await.unwrap_or_default();
-            output.stop_reason = StopReason::Error;
-            output.error_message = Some(format!("HTTP {}: {}", status, body_text));
-            tx.push(AssistantMessageEvent::Error {
-                reason: StopReason::Error,
-                error: output,
-            });
+            emit_error(&mut output, &mut tx, format!("HTTP {}: {}", status, body_text));
             return;
         }
 
-        // Emit Start event
         tx.push(AssistantMessageEvent::Start {
             partial: output.clone(),
         });
 
-        // Collect SSE events
-        let sse_events = match collect_sse_events(response).await {
-            Ok(events) => events,
-            Err(e) => {
-                output.stop_reason = StopReason::Error;
-                output.error_message = Some(e.to_string());
-                tx.push(AssistantMessageEvent::Error {
-                    reason: StopReason::Error,
-                    error: output,
-                });
-                return;
-            }
-        };
+        let sse_events =
+            match sse::collect_sse_events(response, SseStop::RawMarker("[DONE]")).await {
+                Ok(events) => events,
+                Err(e) => {
+                    emit_error(&mut output, &mut tx, e.to_string());
+                    return;
+                }
+            };
 
-        // Process events
         if let Err(e) = process_chat_sse_events(sse_events, &mut output, &mut tx, &model).await {
-            output.stop_reason = StopReason::Error;
-            output.error_message = Some(e.to_string());
-            tx.push(AssistantMessageEvent::Error {
-                reason: StopReason::Error,
-                error: output,
-            });
+            emit_error(&mut output, &mut tx, e.to_string());
             return;
         }
 
@@ -229,44 +187,18 @@ fn stream_openai_chat(
     stream
 }
 
-/// Collect SSE data lines from a streaming HTTP response.
-///
-/// Reads bytes, splits on newlines, and parses `data: {...}` lines.
-/// Stops on `data: [DONE]`.
-async fn collect_sse_events(response: reqwest::Response) -> Result<Vec<Value>> {
-    let mut stream = response.bytes_stream();
-    let mut buffer = String::new();
-    let mut events: Vec<Value> = Vec::new();
-
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk?;
-        buffer.push_str(&String::from_utf8_lossy(&chunk));
-
-        loop {
-            match buffer.find('\n') {
-                None => break,
-                Some(pos) => {
-                    let line = buffer[..pos].trim_end_matches('\r').to_string();
-                    buffer = buffer[pos + 1..].to_string();
-
-                    if let Some(data) = line.strip_prefix("data: ") {
-                        if data == "[DONE]" {
-                            return Ok(events);
-                        }
-                        if let Ok(v) = serde_json::from_str::<Value>(data) {
-                            events.push(v);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    if events.is_empty() {
-        return Err(anyhow::anyhow!("Empty response stream"));
-    }
-
-    Ok(events)
+/// Set error state on output and push an Error event.
+fn emit_error(
+    output: &mut AssistantMessage,
+    tx: &mut crate::stream::AssistantMessageEventSender,
+    msg: String,
+) {
+    output.stop_reason = StopReason::Error;
+    output.error_message = Some(msg);
+    tx.push(AssistantMessageEvent::Error {
+        reason: StopReason::Error,
+        error: output.clone(),
+    });
 }
 
 // =============================================================================
@@ -289,25 +221,7 @@ impl ApiProvider for OpenAIChatProvider {
 
         let api_key = match self.resolve_api_key(model, base.api_key.as_deref()) {
             Ok(k) => k,
-            Err(e) => {
-                let (mut tx, stream) = assistant_message_event_stream();
-                let err_msg = AssistantMessage {
-                    role: "assistant".into(),
-                    content: Vec::new(),
-                    api: model.api.clone(),
-                    provider: model.provider.clone(),
-                    model: model.id.clone(),
-                    usage: Usage::default(),
-                    stop_reason: StopReason::Error,
-                    error_message: Some(e.to_string()),
-                    timestamp: chrono::Utc::now().timestamp_millis(),
-                };
-                tx.push(AssistantMessageEvent::Error {
-                    reason: StopReason::Error,
-                    error: err_msg,
-                });
-                return stream;
-            }
+            Err(e) => return error_stream(model, e),
         };
 
         let reasoning_effort = base
@@ -345,25 +259,7 @@ impl ApiProvider for OpenAIChatProvider {
 
         let api_key = match self.resolve_api_key(model, base.api_key.as_deref()) {
             Ok(k) => k,
-            Err(e) => {
-                let (mut tx, stream) = assistant_message_event_stream();
-                let err_msg = AssistantMessage {
-                    role: "assistant".into(),
-                    content: Vec::new(),
-                    api: model.api.clone(),
-                    provider: model.provider.clone(),
-                    model: model.id.clone(),
-                    usage: Usage::default(),
-                    stop_reason: StopReason::Error,
-                    error_message: Some(e.to_string()),
-                    timestamp: chrono::Utc::now().timestamp_millis(),
-                };
-                tx.push(AssistantMessageEvent::Error {
-                    reason: StopReason::Error,
-                    error: err_msg,
-                });
-                return stream;
-            }
+            Err(e) => return error_stream(model, e),
         };
 
         let reasoning_effort = opts.reasoning.as_ref().map(|level| {

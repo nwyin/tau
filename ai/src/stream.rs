@@ -103,6 +103,30 @@ pub fn assistant_message_event_stream() -> (AssistantMessageEventSender, Assista
     (sender, AssistantMessageEventStream { inner: stream })
 }
 
+/// Create a stream that immediately emits a single Error event.
+///
+/// Used by provider implementations when setup fails before streaming starts
+/// (e.g. missing API key, request build error).
+pub fn error_stream(model: &crate::types::Model, error: impl std::fmt::Display) -> AssistantMessageEventStream {
+    let (mut tx, stream) = assistant_message_event_stream();
+    let err_msg = AssistantMessage {
+        role: "assistant".into(),
+        content: Vec::new(),
+        api: model.api.clone(),
+        provider: model.provider.clone(),
+        model: model.id.clone(),
+        usage: crate::types::Usage::default(),
+        stop_reason: crate::types::StopReason::Error,
+        error_message: Some(error.to_string()),
+        timestamp: chrono::Utc::now().timestamp_millis(),
+    };
+    tx.push(AssistantMessageEvent::Error {
+        reason: crate::types::StopReason::Error,
+        error: err_msg,
+    });
+    stream
+}
+
 // ---------------------------------------------------------------------------
 // StreamFn type alias — what provider implementations return
 // ---------------------------------------------------------------------------

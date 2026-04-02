@@ -3,6 +3,7 @@ pub mod openai_chat;
 pub mod openai_chat_shared;
 pub mod openai_responses;
 pub mod openai_responses_shared;
+pub mod sse;
 
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};

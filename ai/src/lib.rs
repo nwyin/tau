@@ -12,7 +12,8 @@ pub use providers::{
     complete, complete_simple, register_builtin_providers, stream as stream_fn, stream_simple,
 };
 pub use stream::{
-    assistant_message_event_stream, AssistantMessageEventSender, AssistantMessageEventStream,
+    assistant_message_event_stream, error_stream, AssistantMessageEventSender,
+    AssistantMessageEventStream,
 };
 pub use types::{
     AssistantMessage, AssistantMessageEvent, ContentBlock, Context, Cost, Message, Model,

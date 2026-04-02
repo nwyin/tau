@@ -5,14 +5,14 @@
 use std::collections::HashMap;
 
 use anyhow::Result;
-use futures::StreamExt;
 use serde_json::{json, Value};
 
 use crate::providers::openai_responses_shared::{
     clamp_reasoning_effort, convert_responses_messages, convert_responses_tools, process_sse_events,
 };
+use crate::providers::sse::{self, SseStop};
 use crate::providers::ApiProvider;
-use crate::stream::{assistant_message_event_stream, AssistantMessageEventStream};
+use crate::stream::{assistant_message_event_stream, error_stream, AssistantMessageEventStream};
 use crate::types::{
     AssistantMessage, AssistantMessageEvent, CacheRetention, Context, Cost, Model,
     SimpleStreamOptions, StopReason, StreamOptions, ThinkingLevel, Usage,
@@ -189,7 +189,6 @@ fn stream_openai_responses(
             timestamp: chrono::Utc::now().timestamp_millis(),
         };
 
-        // Build request
         let body = build_request_body(&model, &context, &opts);
         let url = format!("{}/responses", model.base_url);
 
@@ -197,7 +196,6 @@ fn stream_openai_responses(
         headers.insert("Content-Type", "application/json".parse().unwrap());
         headers.insert("Accept", "text/event-stream".parse().unwrap());
 
-        // Model-level headers
         if let Some(model_headers) = &model.headers {
             for (k, v) in model_headers {
                 if let (Ok(name), Ok(val)) = (
@@ -208,7 +206,6 @@ fn stream_openai_responses(
                 }
             }
         }
-        // Option-level headers override model headers
         if let Some(extra_headers) = &opts.extra_headers {
             for (k, v) in extra_headers {
                 if let (Ok(name), Ok(val)) = (
@@ -220,89 +217,50 @@ fn stream_openai_responses(
             }
         }
 
-        let mut attempt = 0u32;
-        let response = loop {
-            let req = client
+        let response = match crate::retry::retry_request(|| {
+            client
                 .post(&url)
                 .bearer_auth(&api_key)
                 .headers(headers.clone())
-                .json(&body);
-            match req.send().await {
-                Ok(resp)
-                    if crate::retry::is_retryable(resp.status().as_u16())
-                        && attempt < crate::retry::MAX_RETRIES =>
-                {
-                    let retry_after = resp
-                        .headers()
-                        .get("retry-after")
-                        .and_then(|v| v.to_str().ok())
-                        .and_then(|v| v.parse::<u64>().ok());
-                    tokio::time::sleep(crate::retry::delay(attempt, retry_after)).await;
-                    attempt += 1;
-                    continue;
-                }
-                Ok(resp) => break resp,
-                Err(e) if attempt < crate::retry::MAX_RETRIES => {
-                    tokio::time::sleep(crate::retry::delay(attempt, None)).await;
-                    attempt += 1;
-                    continue;
-                }
-                Err(e) => {
-                    output.stop_reason = StopReason::Error;
-                    output.error_message = Some(e.to_string());
-                    tx.push(AssistantMessageEvent::Error {
-                        reason: StopReason::Error,
-                        error: output,
-                    });
-                    return;
-                }
+                .json(&body)
+                .send()
+        })
+        .await
+        {
+            Ok(resp) => resp,
+            Err(e) => {
+                emit_error(&mut output, &mut tx, e.to_string());
+                return;
             }
         };
 
         if !response.status().is_success() {
             let status = response.status();
             let body_text = response.text().await.unwrap_or_default();
-            output.stop_reason = StopReason::Error;
-            output.error_message = Some(format!("HTTP {}: {}", status, body_text));
-            tx.push(AssistantMessageEvent::Error {
-                reason: StopReason::Error,
-                error: output,
-            });
+            emit_error(&mut output, &mut tx, format!("HTTP {}: {}", status, body_text));
             return;
         }
 
-        // Emit Start event
         tx.push(AssistantMessageEvent::Start {
             partial: output.clone(),
         });
 
-        // Parse SSE stream
         let service_tier_str = opts.service_tier.clone();
         let service_tier = service_tier_str.as_deref();
 
-        let sse_events = match collect_sse_events(response).await {
-            Ok(events) => events,
-            Err(e) => {
-                output.stop_reason = StopReason::Error;
-                output.error_message = Some(e.to_string());
-                tx.push(AssistantMessageEvent::Error {
-                    reason: StopReason::Error,
-                    error: output,
-                });
-                return;
-            }
-        };
+        let sse_events =
+            match sse::collect_sse_events(response, SseStop::RawMarker("[DONE]")).await {
+                Ok(events) => events,
+                Err(e) => {
+                    emit_error(&mut output, &mut tx, e.to_string());
+                    return;
+                }
+            };
 
-        // Process events through state machine
         if let Err(e) =
             process_sse_events(sse_events, &mut output, &mut tx, &model, service_tier).await
         {
-            output.stop_reason = StopReason::Error;
-            output.error_message = Some(e.to_string());
-            tx.push(AssistantMessageEvent::Error {
-                reason: StopReason::Error,
-                error: output,
-            });
+            emit_error(&mut output, &mut tx, e.to_string());
             return;
         }
 
@@ -322,12 +280,23 @@ fn stream_openai_responses(
     stream
 }
 
+/// Set error state on output and push an Error event.
+fn emit_error(
+    output: &mut AssistantMessage,
+    tx: &mut crate::stream::AssistantMessageEventSender,
+    msg: String,
+) {
+    output.stop_reason = StopReason::Error;
+    output.error_message = Some(msg);
+    tx.push(AssistantMessageEvent::Error {
+        reason: StopReason::Error,
+        error: output.clone(),
+    });
+}
+
 /// Parse SSE text into a list of JSON events.
 ///
 /// Pure function over raw SSE text, exposed for property-based testing.
-/// Lines not starting with `data: ` (comments, `event:`, empty) are silently
-/// skipped. Malformed JSON after `data: ` is also silently skipped. Stops at
-/// `data: [DONE]`.
 pub fn parse_sse_text(text: &str) -> Vec<Value> {
     let mut events = Vec::new();
     for raw_line in text.split('\n') {
@@ -340,55 +309,8 @@ pub fn parse_sse_text(text: &str) -> Vec<Value> {
                 events.push(v);
             }
         }
-        // Non-data lines (comment, event:, empty) are silently ignored.
     }
     events
-}
-
-/// Collect SSE data lines from a streaming HTTP response.
-///
-/// Reads bytes, splits on newlines, and parses `data: {...}` lines.
-/// Stops on `data: [DONE]`.
-async fn collect_sse_events(response: reqwest::Response) -> Result<Vec<Value>> {
-    let mut stream = response.bytes_stream();
-    let mut buffer = String::new();
-    let mut events: Vec<Value> = Vec::new();
-
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk?;
-        buffer.push_str(&String::from_utf8_lossy(&chunk));
-
-        // Process complete lines
-        loop {
-            match buffer.find('\n') {
-                None => break,
-                Some(pos) => {
-                    let line = buffer[..pos].trim_end_matches('\r').to_string();
-                    buffer = buffer[pos + 1..].to_string();
-
-                    if let Some(data) = line.strip_prefix("data: ") {
-                        if data == "[DONE]" {
-                            return Ok(events);
-                        }
-                        match serde_json::from_str::<Value>(data) {
-                            Ok(v) => events.push(v),
-                            Err(_) => {
-                                // Malformed SSE line — skip gracefully
-                            }
-                        }
-                    }
-                    // Lines with "event:", ":", or empty lines are ignored
-                }
-            }
-        }
-    }
-
-    // Stream ended without [DONE] — return what we have
-    if events.is_empty() {
-        return Err(anyhow::anyhow!("Empty response stream"));
-    }
-
-    Ok(events)
 }
 
 // =============================================================================
@@ -411,25 +333,7 @@ impl ApiProvider for OpenAIResponsesProvider {
 
         let api_key = match self.resolve_api_key(model, base.api_key.as_deref()) {
             Ok(k) => k,
-            Err(e) => {
-                let (mut tx, stream) = assistant_message_event_stream();
-                let err_msg = AssistantMessage {
-                    role: "assistant".into(),
-                    content: Vec::new(),
-                    api: model.api.clone(),
-                    provider: model.provider.clone(),
-                    model: model.id.clone(),
-                    usage: Usage::default(),
-                    stop_reason: StopReason::Error,
-                    error_message: Some(e.to_string()),
-                    timestamp: chrono::Utc::now().timestamp_millis(),
-                };
-                tx.push(AssistantMessageEvent::Error {
-                    reason: StopReason::Error,
-                    error: err_msg,
-                });
-                return stream;
-            }
+            Err(e) => return error_stream(model, e),
         };
 
         // Extract OpenAI-specific options from metadata
@@ -486,25 +390,7 @@ impl ApiProvider for OpenAIResponsesProvider {
 
         let api_key = match self.resolve_api_key(model, base.api_key.as_deref()) {
             Ok(k) => k,
-            Err(e) => {
-                let (mut tx, stream) = assistant_message_event_stream();
-                let err_msg = AssistantMessage {
-                    role: "assistant".into(),
-                    content: Vec::new(),
-                    api: model.api.clone(),
-                    provider: model.provider.clone(),
-                    model: model.id.clone(),
-                    usage: Usage::default(),
-                    stop_reason: StopReason::Error,
-                    error_message: Some(e.to_string()),
-                    timestamp: chrono::Utc::now().timestamp_millis(),
-                };
-                tx.push(AssistantMessageEvent::Error {
-                    reason: StopReason::Error,
-                    error: err_msg,
-                });
-                return stream;
-            }
+            Err(e) => return error_stream(model, e),
         };
 
         // Resolve reasoning effort with xhigh clamping
