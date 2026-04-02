@@ -150,8 +150,8 @@ pub struct TauModel {
     #[allow(dead_code)]
     should_quit: bool,
     ctrl_c_count: u8,
+    #[allow(dead_code)]
     active_thread_count: usize,
-    active_thread_aliases: Vec<String>,
     startup_messages: Vec<String>,
     debug: bool,
     warning: Option<String>,
@@ -220,7 +220,6 @@ impl TauModel {
             should_quit: false,
             ctrl_c_count: 0,
             active_thread_count: 0,
-            active_thread_aliases: Vec::new(),
             startup_messages: config.startup_messages,
             debug: false,
             warning: None,
@@ -876,13 +875,14 @@ impl TauModel {
                 tool_call_id,
                 tool_name,
                 args,
+                thread_alias,
                 ..
             } => {
                 if tool_name == "thread" {
                     return None;
                 }
                 let header = extract_tool_detail(tool_name, args);
-                let display_name = if let Some(alias) = self.active_thread_aliases.last() {
+                let display_name = if let Some(alias) = thread_alias {
                     format!("[{}] {}", alias, tool_name)
                 } else {
                     tool_name.clone()
@@ -979,7 +979,6 @@ impl TauModel {
                 model,
             } => {
                 self.active_thread_count += 1;
-                self.active_thread_aliases.push(alias.clone());
                 let header = format!("{}: {}", alias, task.chars().take(60).collect::<String>());
                 self.messages.push(ChatMessage::ToolCall(ToolCallMessage {
                     tool_call_id: None,
@@ -1005,7 +1004,6 @@ impl TauModel {
 
             AgentEvent::ThreadEnd { alias, outcome, .. } => {
                 self.active_thread_count = self.active_thread_count.saturating_sub(1);
-                self.active_thread_aliases.retain(|a| a != alias);
                 self.active_tools
                     .retain(|t| t != &format!("thread:{}", alias));
                 for msg in self.messages.iter_mut().rev() {
