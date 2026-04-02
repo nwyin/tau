@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1775114365021,
+  "lastUpdate": 1775127351777,
   "repoUrl": "https://github.com/nwyin/tau",
   "entries": {
     "tau benchmarks": [
@@ -4913,6 +4913,132 @@ window.BENCHMARK_DATA = {
             "name": "sse_parsing/events/1000",
             "value": 361030,
             "range": "± 2272",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "tommynguyen0512@gmail.com",
+            "name": "Tommy Bui Nguyen",
+            "username": "nwyin"
+          },
+          "committer": {
+            "email": "tommynguyen0512@gmail.com",
+            "name": "Tommy Bui Nguyen",
+            "username": "nwyin"
+          },
+          "distinct": true,
+          "id": "f52338a91232ef806ceefa118e2ff26e242815e6",
+          "message": "feat: orchestration prompt patterns, tool hints, trace attribution\n\n- Fill pipeline and adversarial pattern prompts with concrete examples\n  showing phased execution via episodes and turn-boundary synchronization.\n  Add \"Before dispatching\" planning directive to overview.md. Strengthen\n  thread_identity.md to encourage proactive document writing.\n\n- Enrich tool detail hints in chat view for log, document, query, todo,\n  complete, abort, escalate, from_id, and py_repl. Thread hints now show\n  episode injection. py_repl shows full code as auto-expanded body.\n\n- Fix document_op trace attribution: DocumentTool now carries the thread\n  alias so trace events correctly attribute document reads/writes to the\n  originating thread instead of showing null.\n\n- Fix thread inspector modal not closing during agent execution: process\n  pane actions after TauMsg handling so Escape dismissal isn't blocked by\n  incoming agent events.",
+          "timestamp": "2026-04-02T19:50:06+09:00",
+          "tree_id": "c1fc9a39adfc53014181b8c73be731fe01f41a8f",
+          "url": "https://github.com/nwyin/tau/commit/f52338a91232ef806ceefa118e2ff26e242815e6"
+        },
+        "date": 1775127351489,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "agent_construction/new_agent",
+            "value": 2161,
+            "range": "± 15",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/10",
+            "value": 3651,
+            "range": "± 137",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/50",
+            "value": 13187,
+            "range": "± 180",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/100",
+            "value": 22550,
+            "range": "± 228",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/500",
+            "value": 94206,
+            "range": "± 1284",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/10",
+            "value": 3523,
+            "range": "± 136",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/50",
+            "value": 17644,
+            "range": "± 61",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/100",
+            "value": 35068,
+            "range": "± 102",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/10",
+            "value": 12769,
+            "range": "± 25",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/50",
+            "value": 73610,
+            "range": "± 285",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/100",
+            "value": 146352,
+            "range": "± 625",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/10",
+            "value": 17007,
+            "range": "± 94",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/50",
+            "value": 91666,
+            "range": "± 1603",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/100",
+            "value": 181551,
+            "range": "± 496",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/10",
+            "value": 3040,
+            "range": "± 12",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/100",
+            "value": 40331,
+            "range": "± 185",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/1000",
+            "value": 372210,
+            "range": "± 8925",
             "unit": "ns/iter"
           }
         ]
