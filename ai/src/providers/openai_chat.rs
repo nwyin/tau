@@ -76,6 +76,8 @@ fn stream_openai_chat(
     let (mut tx, stream) = assistant_message_event_stream();
 
     tokio::spawn(async move {
+        let _permit = crate::concurrency::acquire().await;
+
         let mut output = AssistantMessage {
             role: "assistant".into(),
             content: Vec::new(),
@@ -94,42 +96,78 @@ fn stream_openai_chat(
         let body = build_chat_request_body(&model, &context, &opts);
         let url = format!("{}/chat/completions", model.base_url);
 
-        let mut req = client
-            .post(&url)
-            .bearer_auth(&api_key)
-            .header("Content-Type", "application/json")
-            .header("Accept", "text/event-stream");
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert("Content-Type", "application/json".parse().unwrap());
+        headers.insert("Accept", "text/event-stream".parse().unwrap());
 
         // OpenRouter-specific headers
         if model.base_url.contains("openrouter.ai") {
-            req = req
-                .header("HTTP-Referer", "https://github.com/nwyin/tau")
-                .header("X-Title", "tau");
+            headers.insert(
+                "HTTP-Referer",
+                "https://github.com/nwyin/tau".parse().unwrap(),
+            );
+            headers.insert("X-Title", "tau".parse().unwrap());
         }
 
         // Model-level headers
-        if let Some(headers) = &model.headers {
-            for (k, v) in headers {
-                req = req.header(k, v);
+        if let Some(model_headers) = &model.headers {
+            for (k, v) in model_headers {
+                if let (Ok(name), Ok(val)) = (
+                    k.parse::<reqwest::header::HeaderName>(),
+                    v.parse::<reqwest::header::HeaderValue>(),
+                ) {
+                    headers.insert(name, val);
+                }
             }
         }
         // Option-level headers
-        if let Some(headers) = &opts.extra_headers {
-            for (k, v) in headers {
-                req = req.header(k, v);
+        if let Some(extra_headers) = &opts.extra_headers {
+            for (k, v) in extra_headers {
+                if let (Ok(name), Ok(val)) = (
+                    k.parse::<reqwest::header::HeaderName>(),
+                    v.parse::<reqwest::header::HeaderValue>(),
+                ) {
+                    headers.insert(name, val);
+                }
             }
         }
 
-        let response = match req.json(&body).send().await {
-            Ok(r) => r,
-            Err(e) => {
-                output.stop_reason = StopReason::Error;
-                output.error_message = Some(e.to_string());
-                tx.push(AssistantMessageEvent::Error {
-                    reason: StopReason::Error,
-                    error: output,
-                });
-                return;
+        let mut attempt = 0u32;
+        let response = loop {
+            let req = client
+                .post(&url)
+                .bearer_auth(&api_key)
+                .headers(headers.clone())
+                .json(&body);
+            match req.send().await {
+                Ok(resp)
+                    if crate::retry::is_retryable(resp.status().as_u16())
+                        && attempt < crate::retry::MAX_RETRIES =>
+                {
+                    let retry_after = resp
+                        .headers()
+                        .get("retry-after")
+                        .and_then(|v| v.to_str().ok())
+                        .and_then(|v| v.parse::<u64>().ok());
+                    tokio::time::sleep(crate::retry::delay(attempt, retry_after)).await;
+                    attempt += 1;
+                    continue;
+                }
+                Ok(resp) => break resp,
+                Err(e) if attempt < crate::retry::MAX_RETRIES => {
+                    tokio::time::sleep(crate::retry::delay(attempt, None)).await;
+                    attempt += 1;
+                    continue;
+                }
+                Err(e) => {
+                    output.stop_reason = StopReason::Error;
+                    output.error_message = Some(e.to_string());
+                    tx.push(AssistantMessageEvent::Error {
+                        reason: StopReason::Error,
+                        error: output,
+                    });
+                    return;
+                }
             }
         };
 

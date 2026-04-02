@@ -1,7 +1,9 @@
 pub mod catalog;
 pub mod codex_auth;
+pub mod concurrency;
 pub mod models;
 pub mod providers;
+pub mod retry;
 pub mod stream;
 pub mod types;
 
