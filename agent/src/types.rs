@@ -206,6 +206,10 @@ pub enum AgentEvent {
     },
 
     // Thread lifecycle
+    ThreadQueued {
+        thread_id: String,
+        alias: String,
+    },
     ThreadStart {
         thread_id: String,
         alias: String,

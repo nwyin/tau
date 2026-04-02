@@ -1,19 +1,58 @@
 //! Shared orchestrator state for thread-based orchestration.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 
 use serde::{Deserialize, Serialize};
+use tokio::sync::Semaphore;
 
 use crate::thread::{Episode, ThreadOutcome};
 use crate::types::AgentMessage;
+
+const MAX_THREADS: usize = 200;
+const MAX_EPISODES_PER_THREAD: usize = 20;
 
 /// A live thread's persistent state (conversation history for reuse).
 struct LiveThread {
     messages: Vec<AgentMessage>,
     system_prompt: String,
     episodes: Vec<Episode>,
+}
+
+/// Internal store managing per-thread episode storage with LRU eviction.
+struct ThreadStore {
+    threads: HashMap<String, LiveThread>,
+    access_order: VecDeque<String>,
+}
+
+impl ThreadStore {
+    fn new() -> Self {
+        Self {
+            threads: HashMap::new(),
+            access_order: VecDeque::new(),
+        }
+    }
+
+    fn touch(&mut self, alias: &str) {
+        if !self.threads.contains_key(alias) {
+            return;
+        }
+        if let Some(pos) = self.access_order.iter().position(|a| a == alias) {
+            self.access_order.remove(pos);
+        }
+        self.access_order.push_back(alias.to_string());
+    }
+
+    fn evict_if_needed(&mut self) {
+        while self.threads.len() > MAX_THREADS {
+            if let Some(oldest) = self.access_order.pop_front() {
+                self.threads.remove(&oldest);
+            } else {
+                break;
+            }
+        }
+    }
 }
 
 /// Result of looking up or creating a thread.
@@ -25,20 +64,35 @@ pub struct ThreadLookup {
 
 /// Shared orchestrator state, safe for concurrent access from multiple threads.
 pub struct OrchestratorState {
-    threads: Mutex<HashMap<String, LiveThread>>,
-    episode_log: Mutex<Vec<Episode>>,
-    documents: Mutex<HashMap<String, String>>,
+    store: RwLock<ThreadStore>,
+    documents: RwLock<HashMap<String, String>>,
     counter: AtomicU64,
+    thread_semaphore: Arc<Semaphore>,
 }
 
 impl OrchestratorState {
     pub fn new() -> Arc<Self> {
+        Self::with_max_threads(10)
+    }
+
+    pub fn with_max_threads(max: usize) -> Arc<Self> {
         Arc::new(Self {
-            threads: Mutex::new(HashMap::new()),
-            episode_log: Mutex::new(Vec::new()),
-            documents: Mutex::new(HashMap::new()),
+            store: RwLock::new(ThreadStore::new()),
+            documents: RwLock::new(HashMap::new()),
             counter: AtomicU64::new(0),
+            thread_semaphore: Arc::new(Semaphore::new(max)),
         })
+    }
+
+    pub async fn acquire_thread_permit(&self) -> tokio::sync::OwnedSemaphorePermit {
+        Arc::clone(&self.thread_semaphore)
+            .acquire_owned()
+            .await
+            .unwrap()
+    }
+
+    pub fn thread_semaphore_available(&self) -> usize {
+        self.thread_semaphore.available_permits()
     }
 
     /// Generate a unique thread ID.
@@ -49,15 +103,17 @@ impl OrchestratorState {
 
     /// Get or create a live thread. Returns existing messages if reusing.
     pub fn get_or_create_thread(&self, alias: &str, base_system_prompt: &str) -> ThreadLookup {
-        let mut threads = self.threads.lock().unwrap();
-        if let Some(thread) = threads.get(alias) {
-            ThreadLookup {
+        let mut store = self.store.write().unwrap();
+        if let Some(thread) = store.threads.get(alias) {
+            let lookup = ThreadLookup {
                 messages: thread.messages.clone(),
                 system_prompt: thread.system_prompt.clone(),
                 is_reuse: true,
-            }
+            };
+            store.touch(alias);
+            lookup
         } else {
-            threads.insert(
+            store.threads.insert(
                 alias.to_string(),
                 LiveThread {
                     messages: Vec::new(),
@@ -65,6 +121,8 @@ impl OrchestratorState {
                     episodes: Vec::new(),
                 },
             );
+            store.touch(alias);
+            store.evict_if_needed();
             ThreadLookup {
                 messages: Vec::new(),
                 system_prompt: base_system_prompt.to_string(),
@@ -76,61 +134,71 @@ impl OrchestratorState {
     /// Record a completed episode and update the live thread's message history.
     pub fn record_episode(&self, episode: Episode, final_messages: Vec<AgentMessage>) {
         let alias = episode.alias.clone();
-        {
-            let mut threads = self.threads.lock().unwrap();
-            if let Some(thread) = threads.get_mut(&alias) {
-                thread.messages = final_messages;
-                thread.episodes.push(episode.clone());
+        let mut store = self.store.write().unwrap();
+        if let Some(thread) = store.threads.get_mut(&alias) {
+            thread.messages = final_messages;
+            thread.episodes.push(episode);
+            if thread.episodes.len() > MAX_EPISODES_PER_THREAD {
+                let excess = thread.episodes.len() - MAX_EPISODES_PER_THREAD;
+                thread.episodes.drain(..excess);
             }
         }
-        let mut log = self.episode_log.lock().unwrap();
-        if log.len() >= 100 {
-            log.remove(0);
-        }
-        log.push(episode);
+        store.touch(&alias);
     }
 
     /// Retrieve the most recent episode for a given alias.
     pub fn get_episode(&self, alias: &str) -> Option<Episode> {
-        let threads = self.threads.lock().unwrap();
-        threads.get(alias).and_then(|t| t.episodes.last().cloned())
+        let store = self.store.read().unwrap();
+        store
+            .threads
+            .get(alias)
+            .and_then(|t| t.episodes.last().cloned())
     }
 
     /// Retrieve the most recent episodes for multiple aliases.
     pub fn get_episodes(&self, aliases: &[String]) -> Vec<Episode> {
-        let threads = self.threads.lock().unwrap();
+        let store = self.store.read().unwrap();
         aliases
             .iter()
             .filter_map(|alias| {
-                threads
+                store
+                    .threads
                     .get(alias.as_str())
                     .and_then(|t| t.episodes.last().cloned())
             })
             .collect()
     }
 
-    /// Get all episodes in sequence order.
+    /// Get all episodes in sequence order (iterates access_order collecting per-thread episodes).
     pub fn all_episodes(&self) -> Vec<Episode> {
-        self.episode_log.lock().unwrap().clone()
+        let store = self.store.read().unwrap();
+        let mut episodes = Vec::new();
+        for alias in &store.access_order {
+            if let Some(thread) = store.threads.get(alias) {
+                episodes.extend(thread.episodes.iter().cloned());
+            }
+        }
+        episodes
     }
 
     /// Update the system prompt for an existing thread (e.g., to inject new episodes on reuse).
     pub fn update_system_prompt(&self, alias: &str, new_prompt: String) {
-        let mut threads = self.threads.lock().unwrap();
-        if let Some(thread) = threads.get_mut(alias) {
+        let mut store = self.store.write().unwrap();
+        if let Some(thread) = store.threads.get_mut(alias) {
             thread.system_prompt = new_prompt;
         }
+        store.touch(alias);
     }
 
     /// Check if a thread alias exists.
     pub fn has_thread(&self, alias: &str) -> bool {
-        self.threads.lock().unwrap().contains_key(alias)
+        self.store.read().unwrap().threads.contains_key(alias)
     }
 
     /// Create a named virtual document for inter-thread data sharing.
     pub fn allocate_document(&self, name: &str) {
         self.documents
-            .lock()
+            .write()
             .unwrap()
             .entry(name.to_string())
             .or_default();
@@ -138,13 +206,13 @@ impl OrchestratorState {
 
     /// Read a virtual document.
     pub fn read_document(&self, name: &str) -> Option<String> {
-        self.documents.lock().unwrap().get(name).cloned()
+        self.documents.read().unwrap().get(name).cloned()
     }
 
     /// Write to a virtual document.
     pub fn write_document(&self, name: &str, content: String) {
         self.documents
-            .lock()
+            .write()
             .unwrap()
             .insert(name.to_string(), content);
     }
@@ -152,7 +220,7 @@ impl OrchestratorState {
     /// Append to a virtual document (creates it if it doesn't exist).
     pub fn append_document(&self, name: &str, content: &str) {
         self.documents
-            .lock()
+            .write()
             .unwrap()
             .entry(name.to_string())
             .or_default()
@@ -161,7 +229,7 @@ impl OrchestratorState {
 
     /// List all virtual document names.
     pub fn list_documents(&self) -> Vec<String> {
-        let docs = self.documents.lock().unwrap();
+        let docs = self.documents.read().unwrap();
         let mut names: Vec<String> = docs.keys().cloned().collect();
         names.sort();
         names
@@ -185,10 +253,11 @@ impl OrchestratorState {
 
     /// Generate a summary of all orchestration activity.
     pub fn summarize(&self) -> OrchestrationSummary {
-        let episodes = self.episode_log.lock().unwrap();
-        let docs = self.documents.lock().unwrap();
+        let store = self.store.read().unwrap();
+        let docs = self.documents.read().unwrap();
+
         let mut summary = OrchestrationSummary {
-            total_episodes: episodes.len(),
+            total_episodes: 0,
             completed: 0,
             aborted: 0,
             escalated: 0,
@@ -196,13 +265,17 @@ impl OrchestratorState {
             total_duration_ms: 0,
             document_count: docs.len(),
         };
-        for ep in episodes.iter() {
-            summary.total_duration_ms += ep.duration_ms;
-            match &ep.outcome {
-                ThreadOutcome::Completed { .. } => summary.completed += 1,
-                ThreadOutcome::Aborted { .. } => summary.aborted += 1,
-                ThreadOutcome::Escalated { .. } => summary.escalated += 1,
-                ThreadOutcome::TimedOut => summary.timed_out += 1,
+
+        for thread in store.threads.values() {
+            for ep in &thread.episodes {
+                summary.total_episodes += 1;
+                summary.total_duration_ms += ep.duration_ms;
+                match &ep.outcome {
+                    ThreadOutcome::Completed { .. } => summary.completed += 1,
+                    ThreadOutcome::Aborted { .. } => summary.aborted += 1,
+                    ThreadOutcome::Escalated { .. } => summary.escalated += 1,
+                    ThreadOutcome::TimedOut => summary.timed_out += 1,
+                }
             }
         }
         summary
@@ -224,10 +297,10 @@ pub struct OrchestrationSummary {
 impl Default for OrchestratorState {
     fn default() -> Self {
         Self {
-            threads: Mutex::new(HashMap::new()),
-            episode_log: Mutex::new(Vec::new()),
-            documents: Mutex::new(HashMap::new()),
+            store: RwLock::new(ThreadStore::new()),
+            documents: RwLock::new(HashMap::new()),
             counter: AtomicU64::new(0),
+            thread_semaphore: Arc::new(Semaphore::new(10)),
         }
     }
 }
