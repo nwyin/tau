@@ -1,0 +1,15 @@
+[project]
+name = "tau-trace"
+version = "0.1.0"
+description = "TUI trace viewer for tau agent orchestration"
+requires-python = ">=3.12"
+dependencies = [
+    "textual>=1.0.0",
+]
+
+[project.scripts]
+tau-trace = "tau_trace.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
