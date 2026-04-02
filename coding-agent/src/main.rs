@@ -227,7 +227,8 @@ async fn main() -> Result<()> {
     );
     let _trace_unsub = agent.subscribe(trace.handler());
 
-    // Load pre-existing messages into agent state
+    // Load pre-existing messages into agent state (clone for TUI display)
+    let initial_messages_for_tui = initial_messages.clone();
     if !initial_messages.is_empty() {
         agent.replace_messages(initial_messages);
     }
@@ -458,6 +459,7 @@ async fn main() -> Result<()> {
                 skills,
                 permission_service: built.permission_service,
                 startup_messages: built.startup_messages,
+                initial_messages: initial_messages_for_tui,
             },
         )
         .await?;

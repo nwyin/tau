@@ -85,6 +85,7 @@ pub struct TauConfig {
     pub skills: Vec<Skill>,
     pub permission_service: Arc<PermissionService>,
     pub startup_messages: Vec<String>,
+    pub initial_messages: Vec<AgentMessage>,
 }
 
 // ---------------------------------------------------------------------------
@@ -143,6 +144,9 @@ pub struct TauModel {
     startup_messages: Vec<String>,
     debug: bool,
     warning: Option<String>,
+
+    // Deferred init: messages to rebuild chat from on first frame
+    initial_messages: Vec<AgentMessage>,
 
     // Thread data
     thread_entries: Vec<ThreadEntry>,
@@ -210,6 +214,7 @@ impl TauModel {
             startup_messages: config.startup_messages,
             debug: false,
             warning: None,
+            initial_messages: config.initial_messages,
             thread_entries: Vec::new(),
             thread_messages: HashMap::new(),
             thread_streaming: HashMap::new(),
@@ -257,6 +262,141 @@ impl TauModel {
             diff_body: None,
         }));
         self.refresh_chat_content();
+    }
+
+    // -----------------------------------------------------------------------
+    // Rebuild chat display from agent message history (for session resume)
+    // -----------------------------------------------------------------------
+
+    fn rebuild_chat_from_history(&mut self, messages: &[AgentMessage]) {
+        // Track tool calls from assistant messages so we can match them with results
+        let mut pending_tools: HashMap<String, (String, serde_json::Value)> = HashMap::new();
+
+        for agent_msg in messages {
+            let msg = match agent_msg {
+                AgentMessage::Llm(m) => m,
+                AgentMessage::Custom { .. } => continue,
+            };
+
+            match msg {
+                ai::types::Message::User(user_msg) => {
+                    let text = match &user_msg.content {
+                        ai::types::UserContent::Text(s) => s.clone(),
+                        ai::types::UserContent::Blocks(blocks) => blocks
+                            .iter()
+                            .filter_map(|b| {
+                                if let ai::types::UserBlock::Text { text } = b {
+                                    Some(text.as_str())
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect::<Vec<_>>()
+                            .join("\n"),
+                    };
+                    if !text.is_empty() {
+                        self.messages.push(ChatMessage::User(UserMessage { text }));
+                    }
+                }
+                ai::types::Message::Assistant(asst_msg) => {
+                    let mut text_parts = Vec::new();
+                    let mut thinking = None;
+
+                    for block in &asst_msg.content {
+                        match block {
+                            ai::types::ContentBlock::Text { text, .. } => {
+                                text_parts.push(text.clone());
+                            }
+                            ai::types::ContentBlock::Thinking { thinking: t, .. } => {
+                                thinking = Some(t.clone());
+                            }
+                            ai::types::ContentBlock::ToolCall {
+                                id,
+                                name,
+                                arguments,
+                                ..
+                            } => {
+                                // Stash for matching with ToolResult
+                                pending_tools.insert(
+                                    id.clone(),
+                                    (
+                                        name.clone(),
+                                        serde_json::to_value(arguments).unwrap_or_default(),
+                                    ),
+                                );
+                                let header = extract_tool_detail(
+                                    name,
+                                    &serde_json::to_value(arguments).unwrap_or_default(),
+                                );
+                                self.messages.push(ChatMessage::ToolCall(ToolCallMessage {
+                                    tool_call_id: Some(id.clone()),
+                                    tool_name: name.clone(),
+                                    header,
+                                    body: String::new(),
+                                    status: ToolStatus::Pending,
+                                    expanded: false,
+                                    diff_body: None,
+                                }));
+                            }
+                            _ => {}
+                        }
+                    }
+
+                    let content = text_parts.join("\n");
+                    if !content.is_empty() || thinking.is_some() {
+                        let rendered = if !content.is_empty() {
+                            Some(ruse::glamour::render_dark(&content))
+                        } else {
+                            None
+                        };
+                        self.messages.push(ChatMessage::Assistant(AssistantMessage {
+                            thinking,
+                            thinking_expanded: false,
+                            content,
+                            rendered_content: rendered,
+                            model_name: asst_msg.model.clone(),
+                            is_streaming: false,
+                        }));
+                    }
+
+                    // Accumulate token usage
+                    self.tokens_in += asst_msg.usage.input;
+                    self.tokens_out += asst_msg.usage.output;
+                    self.total_cost += asst_msg.usage.cost.total;
+                }
+                ai::types::Message::ToolResult(tool_result) => {
+                    let body_text = tool_result
+                        .content
+                        .iter()
+                        .filter_map(|b| {
+                            if let ai::types::UserBlock::Text { text } = b {
+                                Some(text.as_str())
+                            } else {
+                                None
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n");
+
+                    // Find and update the matching pending tool call
+                    for msg in self.messages.iter_mut().rev() {
+                        if let ChatMessage::ToolCall(tc) = msg {
+                            if tc.tool_call_id.as_deref() == Some(&tool_result.tool_call_id)
+                                && tc.status == ToolStatus::Pending
+                            {
+                                tc.status = ToolStatus::Success;
+                                tc.body = body_text;
+                                break;
+                            }
+                        }
+                    }
+                    pending_tools.remove(&tool_result.tool_call_id);
+                }
+            }
+        }
+
+        self.refresh_chat_content();
+        self.sync_sidebar();
     }
 
     // -----------------------------------------------------------------------
@@ -673,6 +813,9 @@ impl TauModel {
                 match self.session_manager.load(&session_id) {
                     Ok(messages) => {
                         let count = messages.len();
+                        // Clear current chat and rebuild from history
+                        self.messages.clear();
+                        self.rebuild_chat_from_history(&messages);
                         self.agent.replace_messages(messages);
                         self.push_system_msg(&format!(
                             "[resumed session {} ({} messages)]",
@@ -1402,6 +1545,13 @@ impl Model for TauModel {
         if let Some(editor) = self.scene.pane_as_mut::<EditorPane>("editor") {
             editor.set_slash_commands(cmds);
         }
+
+        // Rebuild chat display from resumed session history
+        let history = std::mem::take(&mut self.initial_messages);
+        if !history.is_empty() {
+            self.rebuild_chat_from_history(&history);
+        }
+
         self.sync_sidebar();
         self.scene.set_focus("editor")
     }

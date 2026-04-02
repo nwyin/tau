@@ -14,7 +14,7 @@ mod theme;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use agent::types::AgentEvent;
+use agent::types::{AgentEvent, AgentMessage};
 use agent::Agent;
 use anyhow::Result;
 use ruse::prelude::*;
@@ -34,6 +34,7 @@ pub struct TuiRunConfig {
     pub skills: Vec<Skill>,
     pub permission_service: Arc<PermissionService>,
     pub startup_messages: Vec<String>,
+    pub initial_messages: Vec<AgentMessage>,
 }
 
 /// Run the interactive TUI.
@@ -51,6 +52,7 @@ pub async fn run(agent: Arc<Agent>, config: TuiRunConfig) -> Result<()> {
             skills: config.skills,
             permission_service: Arc::clone(&config.permission_service),
             startup_messages: config.startup_messages,
+            initial_messages: config.initial_messages,
         },
     );
 
