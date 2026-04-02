@@ -10,7 +10,15 @@ const SYSTEM: &str = include_str!("../prompts/system.md");
 const DOING_TASKS: &str = include_str!("../prompts/doing_tasks.md");
 const EXECUTING_WITH_CARE: &str = include_str!("../prompts/executing_with_care.md");
 const TONE_AND_OUTPUT: &str = include_str!("../prompts/tone_and_output.md");
-const ORCHESTRATION: &str = include_str!("../prompts/orchestration.md");
+// Orchestration prompt — split across multiple files for pattern-level iteration.
+const ORCH_OVERVIEW: &str = include_str!("../prompts/orchestration/overview.md");
+const ORCH_TOOLS: &str = include_str!("../prompts/orchestration/tools.md");
+const ORCH_DOCUMENTS: &str = include_str!("../prompts/orchestration/documents.md");
+const ORCH_FANOUT: &str = include_str!("../prompts/orchestration/patterns/fanout.md");
+const ORCH_PIPELINE: &str = include_str!("../prompts/orchestration/patterns/pipeline.md");
+const ORCH_ADVERSARIAL: &str = include_str!("../prompts/orchestration/patterns/adversarial.md");
+const ORCH_REUSE: &str = include_str!("../prompts/orchestration/patterns/reuse.md");
+const ORCH_PROGRAMMATIC: &str = include_str!("../prompts/orchestration/patterns/programmatic.md");
 
 /// Truncate a description to the first sentence (up to the first '.').
 fn first_sentence(desc: &str) -> &str {
@@ -156,7 +164,19 @@ pub fn build_system_prompt(tools: &[Arc<dyn AgentTool>], skills: &[Skill], cwd: 
 
     // ── 7. Orchestration (conditional on thread tool) ──
     if has("thread") {
-        parts.push(ORCHESTRATION.to_string());
+        parts.push(
+            [
+                ORCH_OVERVIEW,
+                ORCH_TOOLS,
+                ORCH_DOCUMENTS,
+                ORCH_FANOUT,
+                ORCH_PIPELINE,
+                ORCH_ADVERSARIAL,
+                ORCH_REUSE,
+                ORCH_PROGRAMMATIC,
+            ]
+            .join("\n\n"),
+        );
     }
 
     // ── 8. Tone and output (static) ──

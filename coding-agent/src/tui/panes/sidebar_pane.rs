@@ -14,6 +14,7 @@ pub struct SidebarThreadData {
 }
 
 pub struct SidebarData {
+    pub session_id: Option<String>,
     pub model_id: String,
     pub tokens_in: u64,
     pub tokens_out: u64,
@@ -44,6 +45,7 @@ impl SidebarPane {
             width,
             height,
             data: SidebarData {
+                session_id: None,
                 model_id: String::new(),
                 tokens_in: 0,
                 tokens_out: 0,
@@ -134,6 +136,7 @@ impl Pane for SidebarPane {
         sidebar::render_sidebar(&SidebarState {
             width: self.width,
             height: self.height,
+            session_id: self.data.session_id.as_deref(),
             model_id: &self.data.model_id,
             tokens_in: self.data.tokens_in,
             tokens_out: self.data.tokens_out,

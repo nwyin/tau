@@ -12,6 +12,7 @@ struct TabState {
 
 pub struct EditorPane {
     input: TextInput,
+    width: usize,
     tab_state: Option<TabState>,
     spinner: GradientSpinner,
     is_busy: bool,
@@ -25,6 +26,7 @@ impl EditorPane {
             input: TextInput::new()
                 .with_placeholder("Ready for instructions")
                 .with_width(80),
+            width: 80,
             tab_state: None,
             spinner: GradientSpinner::new("Thinking"),
             is_busy: false,
@@ -53,6 +55,7 @@ impl EditorPane {
     }
 
     pub fn set_width(&mut self, w: usize) {
+        self.width = w;
         self.input.set_width(w);
     }
 
@@ -64,6 +67,29 @@ impl EditorPane {
 
     pub fn value(&self) -> String {
         self.input.value()
+    }
+
+    /// Number of visual lines the editor content occupies (for layout).
+    pub fn visual_lines(&self) -> usize {
+        if self.is_busy {
+            return 1;
+        }
+        let text = self.input.value();
+        if text.is_empty() {
+            return 1;
+        }
+        let w = self.width.max(1);
+        // Split by explicit newlines, then count wrapped lines per segment
+        text.split('\n')
+            .map(|seg| {
+                let chars = seg.chars().count();
+                if chars == 0 {
+                    1
+                } else {
+                    chars.div_ceil(w)
+                }
+            })
+            .sum()
     }
 
     pub fn tick_spinner(&mut self) {
@@ -108,6 +134,121 @@ impl EditorPane {
         });
         self.input.set_value(&format!("{} ", first));
     }
+
+    /// Render the editor content with soft-wrapping and cursor.
+    fn render_wrapped(&self) -> String {
+        let text = self.input.value();
+        let cursor_pos = self.input.position();
+        let focused = self.input.focused();
+        let w = self.width.max(1);
+
+        let prompt = format!("  {} ", theme::primary_style().render(&[">"]));
+        let continuation = "    "; // same width as prompt for alignment
+
+        if text.is_empty() {
+            // Show placeholder or cursor
+            if focused {
+                let cursor_char = Style::new().reverse(true).render(&[" "]);
+                return format!("{}{}", prompt, cursor_char);
+            } else {
+                let placeholder = theme::half_muted_style().render(&["Ready for instructions"]);
+                return format!("{}{}", prompt, placeholder);
+            }
+        }
+
+        // Build visual lines by splitting on newlines, then wrapping each segment
+        let chars: Vec<char> = text.chars().collect();
+        let mut visual_lines: Vec<Vec<char>> = Vec::new();
+
+        let mut seg_start = 0;
+        for (i, &ch) in chars.iter().enumerate() {
+            if ch == '\n' {
+                // Push the segment before the newline (may be empty)
+                let segment = &chars[seg_start..i];
+                if segment.is_empty() {
+                    visual_lines.push(Vec::new());
+                } else {
+                    for chunk in segment.chunks(w) {
+                        visual_lines.push(chunk.to_vec());
+                    }
+                }
+                seg_start = i + 1;
+            }
+        }
+        // Push the last segment
+        let segment = &chars[seg_start..];
+        if segment.is_empty() {
+            visual_lines.push(Vec::new());
+        } else {
+            for chunk in segment.chunks(w) {
+                visual_lines.push(chunk.to_vec());
+            }
+        }
+
+        // Find cursor position in the visual grid by walking through
+        // visual_lines and mapping char index to (row, col).
+        let (cursor_row, cursor_col) = {
+            let mut char_idx = 0;
+            let mut found = (0, 0);
+            'outer: for (row_idx, line_chars) in visual_lines.iter().enumerate() {
+                // Check if cursor is within this visual line
+                if cursor_pos >= char_idx && cursor_pos <= char_idx + line_chars.len() {
+                    // Could be at end of this line or start of next.
+                    // It's on this line if cursor_pos < char_idx + len,
+                    // OR if this is the last visual line of a segment (before a newline
+                    // or at end of text).
+                    if cursor_pos < char_idx + line_chars.len()
+                        || cursor_pos == chars.len()
+                        || (cursor_pos == char_idx + line_chars.len() && line_chars.len() < w)
+                    {
+                        found = (row_idx, cursor_pos - char_idx);
+                        break 'outer;
+                    }
+                }
+                char_idx += line_chars.len();
+                // Account for the newline character between segments
+                if char_idx < chars.len() && chars[char_idx] == '\n' {
+                    char_idx += 1; // skip the newline char
+                }
+            }
+            found
+        };
+
+        // Render each visual line
+        let mut output = String::new();
+        for (row_idx, line_chars) in visual_lines.iter().enumerate() {
+            if row_idx > 0 {
+                output.push('\n');
+            }
+            // Prefix: prompt for first line, continuation indent for rest
+            if row_idx == 0 {
+                output.push_str(&prompt);
+            } else {
+                output.push_str(continuation);
+            }
+
+            if focused && row_idx == cursor_row {
+                // Render with cursor
+                for (col_idx, &ch) in line_chars.iter().enumerate() {
+                    if col_idx == cursor_col {
+                        output.push_str(&Style::new().reverse(true).render(&[&ch.to_string()]));
+                    } else {
+                        output.push(ch);
+                    }
+                }
+                // Cursor at end of this line
+                if cursor_col >= line_chars.len() {
+                    output.push_str(&Style::new().reverse(true).render(&[" "]));
+                }
+            } else {
+                for &ch in line_chars {
+                    output.push(ch);
+                }
+            }
+        }
+
+        output
+    }
 }
 
 impl Pane for EditorPane {
@@ -147,9 +288,7 @@ impl Pane for EditorPane {
                 }
             }
             Msg::Paste(text) => {
-                // Collapse newlines to spaces for single-line input
-                let cleaned = text.replace('\n', " ").replace('\r', "");
-                self.input.update(&Msg::Paste(cleaned));
+                self.input.update(&Msg::Paste(text.clone()));
                 self.tab_state = None;
             }
             _ => {}
@@ -161,8 +300,7 @@ impl Pane for EditorPane {
         if self.is_busy {
             format!("  {}", self.spinner.view())
         } else {
-            let prompt = format!("  {} ", theme::primary_style().render(&[">"]));
-            format!("{}{}", prompt, self.input.view())
+            self.render_wrapped()
         }
     }
 

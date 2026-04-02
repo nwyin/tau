@@ -421,6 +421,7 @@ impl TauModel {
             })
             .collect();
         let data = SidebarData {
+            session_id: self.session_file.as_ref().map(|sf| sf.id.clone()),
             model_id: self.model_id.clone(),
             tokens_in: self.tokens_in,
             tokens_out: self.tokens_out,
@@ -450,7 +451,12 @@ impl TauModel {
             .pane_as::<ThreadModalPane>("thread_modal")
             .map(|p| p.thread_id.clone());
         if let Some(thread_id) = thread_id {
-            let lo = layout::compute_layout(self.width, self.height, self.is_compact, 3);
+            let lo = layout::compute_layout(
+                self.width,
+                self.height,
+                self.is_compact,
+                self.editor_lines(),
+            );
             let modal_w = (lo.chat_w * 80 / 100).max(40);
             let inner_w = modal_w.saturating_sub(4);
 
@@ -472,7 +478,12 @@ impl TauModel {
 
     fn open_thread_modal(&mut self, thread_idx: usize) -> Cmd {
         let entry = &self.thread_entries[thread_idx];
-        let lo = layout::compute_layout(self.width, self.height, self.is_compact, 3);
+        let lo = layout::compute_layout(
+            self.width,
+            self.height,
+            self.is_compact,
+            self.editor_lines(),
+        );
         let modal_w = (lo.chat_w * 80 / 100).max(40);
         let modal_h = (lo.chat_h * 80 / 100).max(10);
         let modal_x = (lo.chat_w.saturating_sub(modal_w)) / 2;
@@ -512,8 +523,20 @@ impl TauModel {
     // Layout recomputation
     // -----------------------------------------------------------------------
 
+    fn editor_lines(&self) -> usize {
+        self.scene
+            .pane_as::<EditorPane>("editor")
+            .map(|e| e.visual_lines())
+            .unwrap_or(1)
+    }
+
     fn recompute_layout(&mut self) {
-        let lo = layout::compute_layout(self.width, self.height, self.is_compact, 3);
+        let lo = layout::compute_layout(
+            self.width,
+            self.height,
+            self.is_compact,
+            self.editor_lines(),
+        );
         let chat_h = lo.chat_h as u16;
         let chat_w = lo.chat_w as u16;
         let sidebar_w = lo.sidebar_w as u16;
@@ -539,8 +562,9 @@ impl TauModel {
         }
 
         // Editor pane (invisible — rendered manually, but needs width for TextInput)
+        // Subtract 4 for the "  > " prompt prefix so TextInput wraps correctly
         if let Some(editor) = self.scene.pane_as_mut::<EditorPane>("editor") {
-            editor.set_width(self.width);
+            editor.set_width(lo.chat_w.saturating_sub(4));
         }
 
         // Thread modal (if open)
@@ -1681,6 +1705,12 @@ impl Model for TauModel {
         // 5. Route to Scene — sends to focused pane (or broadcasts)
         let cmd = self.scene.update(&msg);
 
+        // 5b. Recompute layout after editor input changes (content may wrap differently)
+        if matches!(msg, Msg::KeyPress(_) | Msg::Paste(_)) && self.scene.focused() == Some("editor")
+        {
+            self.recompute_layout();
+        }
+
         // 6. Process pane actions
         let action_cmd = self.process_pane_actions();
 
@@ -1698,7 +1728,12 @@ impl Model for TauModel {
 
 impl TauModel {
     fn view_chat(&self) -> View {
-        let lo = layout::compute_layout(self.width, self.height, self.is_compact, 3);
+        let lo = layout::compute_layout(
+            self.width,
+            self.height,
+            self.is_compact,
+            self.editor_lines(),
+        );
         let h = self.height as u16;
         let chat_h = lo.chat_h as u16;
         let w = self.width as u16;

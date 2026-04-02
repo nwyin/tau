@@ -181,9 +181,15 @@ async fn main() -> Result<()> {
                 (vec![], None)
             }
         }
-    } else {
-        // no_session or default: ephemeral (no persistence)
+    } else if cli.no_session {
+        // Explicitly ephemeral — no persistence
         (vec![], None)
+    } else {
+        // Default: auto-create a new session for persistence
+        let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        let sf = session_mgr.create(&cwd)?;
+        eprintln!("[session] {}", sf.id);
+        (vec![], Some(sf))
     };
 
     // Set up stats collection if requested

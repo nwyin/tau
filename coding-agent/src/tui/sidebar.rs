@@ -19,6 +19,7 @@ pub enum SidebarThreadStatus {
 pub struct SidebarState<'a> {
     pub width: usize,
     pub height: usize,
+    pub session_id: Option<&'a str>,
     pub model_id: &'a str,
     pub tokens_in: u64,
     pub tokens_out: u64,
@@ -38,8 +39,12 @@ pub fn render_sidebar(s: &SidebarState) -> String {
     let inner_w = s.width.saturating_sub(3); // left border + padding
     let mut lines = Vec::new();
 
-    // Session name (placeholder)
-    lines.push(theme::subtle_style().render(&["New Session"]));
+    // Session identifier
+    let session_label = match s.session_id {
+        Some(id) => format!("Session {}", id),
+        None => "Ephemeral".to_string(),
+    };
+    lines.push(theme::subtle_style().render(&[&session_label]));
     lines.push(String::new());
 
     // CWD — truncate from the left if too long, show with ~ for home
@@ -108,9 +113,10 @@ pub fn render_sidebar(s: &SidebarState) -> String {
             } else {
                 name.clone()
             };
-            // Truncate to sidebar width
-            let display = if label.len() > inner_w {
-                format!("{}…", &label[..inner_w.saturating_sub(1)])
+            // Truncate to sidebar width (account for "● " prefix)
+            let max_label = inner_w.saturating_sub(2);
+            let display = if label.len() > max_label {
+                format!("{}…", &label[..max_label.saturating_sub(1)])
             } else {
                 label
             };
