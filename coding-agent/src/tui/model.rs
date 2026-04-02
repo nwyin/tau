@@ -23,16 +23,6 @@ use crate::session::{SessionFile, SessionManager};
 use crate::skills::{self, Skill};
 
 // ---------------------------------------------------------------------------
-// Screen state
-// ---------------------------------------------------------------------------
-
-#[derive(Clone, Copy, PartialEq)]
-enum Screen {
-    Landing,
-    Chat,
-}
-
-// ---------------------------------------------------------------------------
 // Streaming state
 // ---------------------------------------------------------------------------
 
@@ -110,9 +100,6 @@ pub struct TauModel {
     height: usize,
     is_compact: bool,
 
-    // Screen
-    screen: Screen,
-
     // Chat data (canonical source — pushed to ChatPane after mutations)
     messages: Vec<ChatMessage>,
     streaming: Option<StreamingState>,
@@ -152,6 +139,7 @@ pub struct TauModel {
     ctrl_c_count: u8,
     #[allow(dead_code)]
     active_thread_count: usize,
+    #[allow(dead_code)]
     startup_messages: Vec<String>,
     debug: bool,
     warning: Option<String>,
@@ -196,7 +184,6 @@ impl TauModel {
             width: 80,
             height: 24,
             is_compact: false,
-            screen: Screen::Landing,
             messages: Vec::new(),
             streaming: None,
             agent,
@@ -1267,16 +1254,6 @@ impl TauModel {
     // -----------------------------------------------------------------------
 
     fn submit_prompt(&mut self, raw_input: String) -> Cmd {
-        // Transition to chat screen
-        if self.screen == Screen::Landing {
-            self.screen = Screen::Chat;
-            // Push initial slash commands to editor pane
-            let cmds = self.all_slash_commands();
-            if let Some(editor) = self.scene.pane_as_mut::<EditorPane>("editor") {
-                editor.set_slash_commands(cmds);
-            }
-        }
-
         // Try slash command first
         let prompt_text = match self.handle_slash_command(&raw_input) {
             Some(None) => return None,        // handled locally
@@ -1536,10 +1513,7 @@ impl Model for TauModel {
     }
 
     fn view(&self) -> View {
-        match self.screen {
-            Screen::Landing => View::new(self.view_landing()).with_alt_screen(),
-            Screen::Chat => self.view_chat(),
-        }
+        self.view_chat()
     }
 }
 
@@ -1548,55 +1522,6 @@ impl Model for TauModel {
 // ---------------------------------------------------------------------------
 
 impl TauModel {
-    fn view_landing(&self) -> String {
-        let mut lines = Vec::new();
-
-        let logo = Style::new()
-            .foreground(Color::parse(theme::PRIMARY))
-            .bold(true)
-            .render(&["tau"]);
-        lines.push(logo);
-        lines.push(theme::half_muted_style().render(&["Terminal AI Assistant"]));
-        lines.push(String::new());
-
-        let cwd = std::env::current_dir()
-            .map(|p| p.display().to_string())
-            .unwrap_or_else(|_| ".".to_string());
-        lines.push(theme::half_muted_style().render(&[&cwd]));
-
-        let model_line = format!(
-            "{} {} ",
-            theme::primary_style().render(&[theme::MODEL_ICON]),
-            theme::subtle_style().render(&[&self.model_id]),
-        );
-        lines.push(model_line);
-        lines.push(String::new());
-
-        for msg in &self.startup_messages {
-            lines.push(theme::half_muted_style().render(&[msg.as_str()]));
-        }
-
-        let used = lines.len() + 3;
-        let spacer = self.height.saturating_sub(used);
-        for _ in 0..spacer {
-            lines.push(String::new());
-        }
-
-        // Input — use editor pane view
-        let editor_view = self
-            .scene
-            .pane_as::<EditorPane>("editor")
-            .map(|e| e.view())
-            .unwrap_or_default();
-        lines.push(editor_view);
-
-        lines.push(theme::separator(self.width));
-        lines
-            .push(theme::half_muted_style().render(&["enter send | ctrl+c quit | /help commands"]));
-
-        lines.join("\n")
-    }
-
     fn view_chat(&self) -> View {
         let lo = layout::compute_layout(self.width, self.height, self.is_compact, 3);
         let h = self.height as u16;
