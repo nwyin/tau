@@ -1887,6 +1887,7 @@ dependencies = [
 [[package]]
 name = "ruse"
 version = "0.1.0"
+source = "git+https://github.com/nwyin/ruse.sh#a01366f56804b9f320373e756cbac5315ba8861a"
 dependencies = [
  "ruse-ansi",
  "ruse-colorprofile",
@@ -1901,6 +1902,7 @@ dependencies = [
 [[package]]
 name = "ruse-ansi"
 version = "0.1.0"
+source = "git+https://github.com/nwyin/ruse.sh#a01366f56804b9f320373e756cbac5315ba8861a"
 dependencies = [
  "unicode-segmentation",
  "unicode-width",
@@ -1909,6 +1911,7 @@ dependencies = [
 [[package]]
 name = "ruse-colorprofile"
 version = "0.1.0"
+source = "git+https://github.com/nwyin/ruse.sh#a01366f56804b9f320373e756cbac5315ba8861a"
 dependencies = [
  "ruse-ansi",
 ]
@@ -1916,6 +1919,7 @@ dependencies = [
 [[package]]
 name = "ruse-components"
 version = "0.1.0"
+source = "git+https://github.com/nwyin/ruse.sh#a01366f56804b9f320373e756cbac5315ba8861a"
 dependencies = [
  "crossterm",
  "ruse-ansi",
@@ -1929,6 +1933,7 @@ dependencies = [
 [[package]]
 name = "ruse-glamour"
 version = "0.1.0"
+source = "git+https://github.com/nwyin/ruse.sh#a01366f56804b9f320373e756cbac5315ba8861a"
 dependencies = [
  "ammonia",
  "emojis",
@@ -1943,10 +1948,12 @@ dependencies = [
 [[package]]
 name = "ruse-harmonica"
 version = "0.1.0"
+source = "git+https://github.com/nwyin/ruse.sh#a01366f56804b9f320373e756cbac5315ba8861a"
 
 [[package]]
 name = "ruse-runtime"
 version = "0.1.0"
+source = "git+https://github.com/nwyin/ruse.sh#a01366f56804b9f320373e756cbac5315ba8861a"
 dependencies = [
  "bitflags",
  "crossterm",
@@ -1963,6 +1970,7 @@ dependencies = [
 [[package]]
 name = "ruse-style"
 version = "0.1.0"
+source = "git+https://github.com/nwyin/ruse.sh#a01366f56804b9f320373e756cbac5315ba8861a"
 dependencies = [
  "bitflags",
  "palette",
