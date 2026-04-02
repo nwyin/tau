@@ -11,7 +11,11 @@ use super::chat::tools::extract_tool_detail;
 use super::chat::{AssistantMessage, ChatMessage, ToolCallMessage, ToolStatus, UserMessage};
 use super::layout;
 use super::msg::TauMsg;
-use super::sidebar;
+use super::panes::{
+    ChatAction, ChatPane, EditorPane, SidebarAction, SidebarData, SidebarPane, SidebarThreadData,
+    ThreadModalPane,
+};
+use super::sidebar::SidebarThreadStatus;
 use super::status::{self, FocusHint};
 use super::theme;
 use crate::permissions::{PermissionService, PromptResult};
@@ -19,24 +23,13 @@ use crate::session::{SessionFile, SessionManager};
 use crate::skills::{self, Skill};
 
 // ---------------------------------------------------------------------------
-// Screen & focus state
+// Screen state
 // ---------------------------------------------------------------------------
 
 #[derive(Clone, Copy, PartialEq)]
 enum Screen {
     Landing,
     Chat,
-}
-
-#[derive(Clone, Copy, PartialEq)]
-enum FocusState {
-    Editor,
-    Chat,
-    Sidebar,
-    /// Thread inspector modal is open. `thread_idx` is the index into `thread_entries`.
-    ThreadModal {
-        thread_idx: usize,
-    },
 }
 
 // ---------------------------------------------------------------------------
@@ -52,105 +45,9 @@ struct StreamingState {
 }
 
 // ---------------------------------------------------------------------------
-// Tab completion
+// Thread entries
 // ---------------------------------------------------------------------------
 
-struct TabState {
-    #[allow(dead_code)]
-    prefix: String,
-    candidates: Vec<String>,
-    index: usize,
-}
-
-// ---------------------------------------------------------------------------
-// TauModel
-// ---------------------------------------------------------------------------
-
-pub struct TauModel {
-    // Dimensions
-    width: usize,
-    height: usize,
-    is_compact: bool,
-
-    // Screen
-    screen: Screen,
-    focus: FocusState,
-
-    // Chat
-    messages: Vec<ChatMessage>,
-    chat_viewport: Viewport,
-    selected_msg: usize,
-    scroll_follow: bool,
-
-    // Editor
-    input: TextInput,
-    tab_state: Option<TabState>,
-
-    // Streaming
-    streaming: Option<StreamingState>,
-    spinner: GradientSpinner,
-
-    // Agent
-    agent: Arc<Agent>,
-
-    // Metrics
-    model_id: String,
-    context_window: u64,
-    tokens_in: u64,
-    tokens_out: u64,
-    total_cost: f64,
-    thinking_level: ThinkingLevel,
-    active_tools: Vec<String>,
-
-    // Todos (latest state from todo tool)
-    todos: Vec<crate::tools::TodoItem>,
-
-    // Environment
-    cwd: String,
-
-    // Permissions — queue handles parallel tool calls
-    permission_service: Arc<PermissionService>,
-    perm_queue: std::collections::VecDeque<PendingPermission>,
-
-    // Session
-    session_manager: SessionManager,
-    #[allow(dead_code)]
-    session_file: Option<Arc<SessionFile>>,
-
-    // Skills + state
-    skills: Vec<Skill>,
-    is_busy: bool,
-    should_quit: bool,
-    ctrl_c_count: u8,
-    active_thread_count: usize,
-    active_thread_aliases: Vec<String>,
-    startup_messages: Vec<String>,
-    debug: bool,
-    warning: Option<String>,
-
-    // Thread inspector
-    thread_entries: Vec<ThreadEntry>,
-    sidebar_cursor: usize,
-    /// Per-thread message buffers for the inspector modal, keyed by thread_id.
-    thread_messages: HashMap<String, Vec<ChatMessage>>,
-    /// Per-thread streaming state, keyed by thread_id.
-    thread_streaming: HashMap<String, StreamingState>,
-    /// Viewport for the thread inspector modal.
-    thread_viewport: Viewport,
-}
-
-struct PendingPermission {
-    tool_name: String,
-    description: String,
-    resp_tx: std::sync::mpsc::Sender<PromptResult>,
-}
-
-// ---------------------------------------------------------------------------
-// Thread entries for sidebar navigation + inspector modal
-// ---------------------------------------------------------------------------
-
-/// A thread entry tracked in the sidebar for navigation and inspection.
-#[allow(dead_code)]
 struct ThreadEntry {
     thread_id: String,
     alias: String,
@@ -166,8 +63,28 @@ enum ThreadEntryStatus {
     Failed,
 }
 
+impl ThreadEntryStatus {
+    fn to_sidebar_status(self) -> SidebarThreadStatus {
+        match self {
+            Self::Running => SidebarThreadStatus::Running,
+            Self::Completed => SidebarThreadStatus::Completed,
+            Self::Failed => SidebarThreadStatus::Failed,
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
-// Configuration (matches TuiRunConfig)
+// Pending permission
+// ---------------------------------------------------------------------------
+
+struct PendingPermission {
+    tool_name: String,
+    description: String,
+    resp_tx: std::sync::mpsc::Sender<PromptResult>,
+}
+
+// ---------------------------------------------------------------------------
+// Configuration
 // ---------------------------------------------------------------------------
 
 pub struct TauConfig {
@@ -180,26 +97,108 @@ pub struct TauConfig {
     pub startup_messages: Vec<String>,
 }
 
+// ---------------------------------------------------------------------------
+// TauModel
+// ---------------------------------------------------------------------------
+
+pub struct TauModel {
+    // Scene compositor — manages chat, sidebar, editor, and thread modal panes
+    scene: Scene,
+
+    // Dimensions
+    width: usize,
+    height: usize,
+    is_compact: bool,
+
+    // Screen
+    screen: Screen,
+
+    // Chat data (canonical source — pushed to ChatPane after mutations)
+    messages: Vec<ChatMessage>,
+    streaming: Option<StreamingState>,
+
+    // Agent
+    agent: Arc<Agent>,
+
+    // Metrics
+    model_id: String,
+    context_window: u64,
+    tokens_in: u64,
+    tokens_out: u64,
+    total_cost: f64,
+    thinking_level: ThinkingLevel,
+    active_tools: Vec<String>,
+
+    // Todos
+    todos: Vec<crate::tools::TodoItem>,
+
+    // Environment
+    cwd: String,
+
+    // Permissions
+    permission_service: Arc<PermissionService>,
+    perm_queue: std::collections::VecDeque<PendingPermission>,
+
+    // Session
+    session_manager: SessionManager,
+    #[allow(dead_code)]
+    session_file: Option<Arc<SessionFile>>,
+
+    // Skills + state
+    skills: Vec<Skill>,
+    is_busy: bool,
+    #[allow(dead_code)]
+    should_quit: bool,
+    ctrl_c_count: u8,
+    active_thread_count: usize,
+    active_thread_aliases: Vec<String>,
+    startup_messages: Vec<String>,
+    debug: bool,
+    warning: Option<String>,
+
+    // Thread data
+    thread_entries: Vec<ThreadEntry>,
+    thread_messages: HashMap<String, Vec<ChatMessage>>,
+    thread_streaming: HashMap<String, StreamingState>,
+}
+
 impl TauModel {
     pub fn new(agent: Arc<Agent>, config: TauConfig) -> Self {
-        let input = TextInput::new()
-            .with_placeholder("Ready for instructions")
-            .with_width(80);
+        let mut scene = Scene::new();
+
+        // Chat pane (z=0, visible)
+        scene.add(
+            "chat",
+            ChatPane::new(80, 20),
+            PaneLayout::new(Rect::new(0, 0, 80, 20), 0),
+        );
+
+        // Sidebar pane (z=0, visible when not compact)
+        scene.add(
+            "sidebar",
+            SidebarPane::new(30, 20),
+            PaneLayout::new(Rect::new(50, 0, 30, 20), 0),
+        );
+
+        // Editor pane (invisible — rendered manually in view_chat)
+        scene.add(
+            "editor",
+            EditorPane::new(),
+            PaneLayout {
+                rect: Rect::new(0, 20, 80, 1),
+                z: 0,
+                visible: false,
+            },
+        );
 
         Self {
+            scene,
             width: 80,
             height: 24,
             is_compact: false,
             screen: Screen::Landing,
-            focus: FocusState::Editor,
             messages: Vec::new(),
-            chat_viewport: Viewport::new(80, 20),
-            selected_msg: 0,
-            scroll_follow: true,
-            input,
-            tab_state: None,
             streaming: None,
-            spinner: GradientSpinner::new("Thinking"),
             agent,
             model_id: config.model_id,
             context_window: config.context_window,
@@ -226,38 +225,41 @@ impl TauModel {
             debug: false,
             warning: None,
             thread_entries: Vec::new(),
-            sidebar_cursor: 0,
             thread_messages: HashMap::new(),
             thread_streaming: HashMap::new(),
-            thread_viewport: Viewport::new(80, 20),
         }
     }
 
     // -----------------------------------------------------------------------
-    // Chat content management
+    // Chat content management — renders messages and pushes to ChatPane
     // -----------------------------------------------------------------------
 
     fn refresh_chat_content(&mut self) {
         let w = self
             .width
             .saturating_sub(if self.is_compact { 0 } else { 30 });
-        let mut content = String::new();
+        let chat_focused = self.scene.focused() == Some("chat");
+        let selected_msg = self
+            .scene
+            .pane_as::<ChatPane>("chat")
+            .map(|p| p.selected_msg())
+            .unwrap_or(0);
+        let msg_count = self.messages.len();
 
+        let mut content = String::new();
         for (i, msg) in self.messages.iter().enumerate() {
             if i > 0 {
                 content.push('\n');
             }
-            let focused = i == self.selected_msg && self.focus == FocusState::Chat;
+            let focused = i == selected_msg && chat_focused;
             content.push_str(&msg.render(w, focused));
         }
 
-        self.chat_viewport.set_content(&content);
-        if self.scroll_follow {
-            self.chat_viewport.goto_bottom();
+        if let Some(chat) = self.scene.pane_as_mut::<ChatPane>("chat") {
+            chat.set_content(&content, msg_count);
         }
     }
 
-    /// Push a system/info message into the chat (styled as tool blurred).
     fn push_system_msg(&mut self, text: &str) {
         self.messages.push(ChatMessage::ToolCall(ToolCallMessage {
             tool_call_id: None,
@@ -268,6 +270,212 @@ impl TauModel {
             expanded: false,
         }));
         self.refresh_chat_content();
+    }
+
+    // -----------------------------------------------------------------------
+    // Sidebar data sync — pushes current state to SidebarPane
+    // -----------------------------------------------------------------------
+
+    fn sync_sidebar(&mut self) {
+        let thinking_str = match self.thinking_level {
+            ThinkingLevel::Off => "off",
+            ThinkingLevel::Minimal => "minimal",
+            ThinkingLevel::Low => "low",
+            ThinkingLevel::Medium => "medium",
+            ThinkingLevel::High => "high",
+            ThinkingLevel::XHigh => "xhigh",
+        };
+        let threads: Vec<SidebarThreadData> = self
+            .thread_entries
+            .iter()
+            .map(|e| SidebarThreadData {
+                alias: e.alias.clone(),
+                status: e.status.to_sidebar_status(),
+            })
+            .collect();
+        let data = SidebarData {
+            model_id: self.model_id.clone(),
+            tokens_in: self.tokens_in,
+            tokens_out: self.tokens_out,
+            context_window: self.context_window,
+            total_cost: self.total_cost,
+            thinking_level: thinking_str.to_string(),
+            active_tools: self.active_tools.clone(),
+            todos: self.todos.clone(),
+            cwd: self.cwd.clone(),
+            threads,
+        };
+        if let Some(sidebar) = self.scene.pane_as_mut::<SidebarPane>("sidebar") {
+            sidebar.set_data(data);
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Thread modal management
+    // -----------------------------------------------------------------------
+
+    fn sync_thread_modal(&mut self) {
+        if !self.scene.contains("thread_modal") {
+            return;
+        }
+        let thread_id = self
+            .scene
+            .pane_as::<ThreadModalPane>("thread_modal")
+            .map(|p| p.thread_id.clone());
+        if let Some(thread_id) = thread_id {
+            let lo = layout::compute_layout(self.width, self.height, self.is_compact, 3);
+            let modal_w = (lo.chat_w * 80 / 100).max(40);
+            let inner_w = modal_w.saturating_sub(4);
+
+            let mut content = String::new();
+            if let Some(msgs) = self.thread_messages.get(&thread_id) {
+                for (i, msg) in msgs.iter().enumerate() {
+                    if i > 0 {
+                        content.push('\n');
+                    }
+                    content.push_str(&msg.render(inner_w, false));
+                }
+            }
+
+            if let Some(modal) = self.scene.pane_as_mut::<ThreadModalPane>("thread_modal") {
+                modal.set_content(&content);
+            }
+        }
+    }
+
+    fn open_thread_modal(&mut self, thread_idx: usize) -> Cmd {
+        let entry = &self.thread_entries[thread_idx];
+        let lo = layout::compute_layout(self.width, self.height, self.is_compact, 3);
+        let modal_w = (lo.chat_w * 80 / 100).max(40);
+        let modal_h = (lo.chat_h * 80 / 100).max(10);
+        let modal_x = (lo.chat_w.saturating_sub(modal_w)) / 2;
+        let modal_y = (lo.chat_h.saturating_sub(modal_h)) / 2;
+
+        let pane = ThreadModalPane::new(
+            entry.thread_id.clone(),
+            entry.alias.clone(),
+            entry.task.clone(),
+            entry.model.clone(),
+            entry.status.to_sidebar_status(),
+            modal_w,
+            modal_h,
+        );
+
+        let layout = PaneLayout::new(
+            Rect::new(
+                modal_x as u16,
+                modal_y as u16,
+                modal_w as u16,
+                modal_h as u16,
+            ),
+            1,
+        );
+
+        self.scene.add("thread_modal", pane, layout);
+        self.sync_thread_modal();
+        self.scene.set_focus("thread_modal")
+    }
+
+    fn close_thread_modal(&mut self) -> Cmd {
+        self.scene.remove("thread_modal");
+        self.scene.set_focus("sidebar")
+    }
+
+    // -----------------------------------------------------------------------
+    // Layout recomputation
+    // -----------------------------------------------------------------------
+
+    fn recompute_layout(&mut self) {
+        let lo = layout::compute_layout(self.width, self.height, self.is_compact, 3);
+        let chat_h = lo.chat_h as u16;
+        let chat_w = lo.chat_w as u16;
+        let sidebar_w = lo.sidebar_w as u16;
+
+        // Chat pane
+        self.scene
+            .set_layout("chat", PaneLayout::new(Rect::new(0, 0, chat_w, chat_h), 0));
+        if let Some(chat) = self.scene.pane_as_mut::<ChatPane>("chat") {
+            chat.resize(lo.chat_w, lo.chat_h);
+        }
+
+        // Sidebar pane (hidden when compact)
+        self.scene.set_layout(
+            "sidebar",
+            PaneLayout {
+                rect: Rect::new(chat_w, 0, sidebar_w, chat_h),
+                z: 0,
+                visible: !self.is_compact,
+            },
+        );
+        if let Some(sidebar) = self.scene.pane_as_mut::<SidebarPane>("sidebar") {
+            sidebar.set_size(lo.sidebar_w, lo.chat_h);
+        }
+
+        // Editor pane (invisible — rendered manually, but needs width for TextInput)
+        if let Some(editor) = self.scene.pane_as_mut::<EditorPane>("editor") {
+            editor.set_width(self.width);
+        }
+
+        // Thread modal (if open)
+        if self.scene.contains("thread_modal") {
+            let modal_w = (lo.chat_w * 80 / 100).max(40);
+            let modal_h = (lo.chat_h * 80 / 100).max(10);
+            let modal_x = (lo.chat_w.saturating_sub(modal_w)) / 2;
+            let modal_y = (lo.chat_h.saturating_sub(modal_h)) / 2;
+            self.scene.set_layout(
+                "thread_modal",
+                PaneLayout::new(
+                    Rect::new(
+                        modal_x as u16,
+                        modal_y as u16,
+                        modal_w as u16,
+                        modal_h as u16,
+                    ),
+                    1,
+                ),
+            );
+            if let Some(modal) = self.scene.pane_as_mut::<ThreadModalPane>("thread_modal") {
+                modal.resize(modal_w, modal_h);
+            }
+        }
+
+        self.sync_sidebar();
+        self.refresh_chat_content();
+    }
+
+    // -----------------------------------------------------------------------
+    // Focus cycling
+    // -----------------------------------------------------------------------
+
+    fn cycle_focus(&mut self) -> Cmd {
+        let focused = self.scene.focused().map(|s| s.to_string());
+        match focused.as_deref() {
+            Some("editor") => {
+                // Editor → Chat
+                self.scene.set_focus("chat");
+                self.refresh_chat_content();
+                None
+            }
+            Some("chat") => {
+                // Chat → Sidebar (if not compact and threads exist)
+                if !self.is_compact && !self.thread_entries.is_empty() {
+                    self.scene.set_focus("sidebar")
+                } else {
+                    self.reset_to_editor()
+                }
+            }
+            Some("sidebar") => self.reset_to_editor(),
+            _ => self.reset_to_editor(),
+        }
+    }
+
+    fn reset_to_editor(&mut self) -> Cmd {
+        if let Some(chat) = self.scene.pane_as_mut::<ChatPane>("chat") {
+            chat.set_scroll_follow(true);
+            chat.goto_bottom();
+        }
+        self.refresh_chat_content();
+        self.scene.set_focus("editor")
     }
 
     // -----------------------------------------------------------------------
@@ -294,10 +502,6 @@ impl TauModel {
         cmds
     }
 
-    /// Handle slash command. Returns:
-    /// - Some(None) = handled locally
-    /// - Some(Some(text)) = expand to text, send to LLM
-    /// - None = not a slash command
     fn handle_slash_command(&mut self, input: &str) -> Option<Option<String>> {
         let input = input.trim();
         if !input.starts_with('/') {
@@ -348,8 +552,10 @@ impl TauModel {
             }
             "/clear" => {
                 self.messages.clear();
-                self.selected_msg = 0;
-                self.scroll_follow = true;
+                if let Some(chat) = self.scene.pane_as_mut::<ChatPane>("chat") {
+                    chat.set_selected_msg(0);
+                    chat.set_scroll_follow(true);
+                }
                 self.refresh_chat_content();
                 Some(None)
             }
@@ -369,6 +575,7 @@ impl TauModel {
                             self.model_id = new_id.clone();
                             self.context_window = ctx;
                             self.push_system_msg(&format!("[model: {}]", new_id));
+                            self.sync_sidebar();
                         }
                         None => {
                             self.push_system_msg(&format!("Unknown model '{}'", args));
@@ -393,6 +600,7 @@ impl TauModel {
                             self.thinking_level = l;
                             let label = format!("{:?}", self.thinking_level).to_lowercase();
                             self.push_system_msg(&format!("[thinking: {}]", label));
+                            self.sync_sidebar();
                         }
                         Err(_) => {
                             self.push_system_msg(&format!(
@@ -531,46 +739,6 @@ impl TauModel {
     }
 
     // -----------------------------------------------------------------------
-    // Tab completion
-    // -----------------------------------------------------------------------
-
-    fn tab_complete(&mut self) {
-        // If already cycling, advance
-        if let Some(ref mut state) = self.tab_state {
-            if state.candidates.is_empty() {
-                return;
-            }
-            state.index = (state.index + 1) % state.candidates.len();
-            let completed = format!("{} ", state.candidates[state.index]);
-            self.input.set_value(&completed);
-            return;
-        }
-
-        let value = self.input.value().to_string();
-        if !value.starts_with('/') || value.contains(' ') {
-            return;
-        }
-
-        let candidates: Vec<String> = self
-            .all_slash_commands()
-            .into_iter()
-            .filter(|c| c.starts_with(&value))
-            .collect();
-
-        if candidates.is_empty() {
-            return;
-        }
-
-        let first = candidates[0].clone();
-        self.tab_state = Some(TabState {
-            prefix: value,
-            candidates,
-            index: 0,
-        });
-        self.input.set_value(&format!("{} ", first));
-    }
-
-    // -----------------------------------------------------------------------
     // Thinking level cycling
     // -----------------------------------------------------------------------
 
@@ -584,10 +752,11 @@ impl TauModel {
         self.agent.set_thinking_level(self.thinking_level.clone());
         let label = format!("{:?}", self.thinking_level).to_lowercase();
         self.push_system_msg(&format!("[thinking: {}]", label));
+        self.sync_sidebar();
     }
 
     // -----------------------------------------------------------------------
-    // Agent event handling
+    // Agent event handling — mutates shared state, syncs panes
     // -----------------------------------------------------------------------
 
     fn handle_tau_msg(&mut self, tau_msg: &TauMsg) -> Cmd {
@@ -606,7 +775,9 @@ impl TauModel {
                 None
             }
             TauMsg::SpinnerTick => {
-                self.spinner.tick();
+                if let Some(editor) = self.scene.pane_as_mut::<EditorPane>("editor") {
+                    editor.tick_spinner();
+                }
                 if self.is_busy {
                     self.refresh_chat_content();
                     Some(ruse::runtime::CmdInner::Async(Box::pin(async {
@@ -620,7 +791,9 @@ impl TauModel {
             TauMsg::Warning(msg) => {
                 self.warning = Some(msg.clone());
                 self.is_busy = false;
-                // Auto-clear after 5 seconds
+                if let Some(editor) = self.scene.pane_as_mut::<EditorPane>("editor") {
+                    editor.set_busy(false);
+                }
                 Some(ruse::runtime::CmdInner::Async(Box::pin(async {
                     tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                     Msg::custom(TauMsg::ClearWarning)
@@ -705,24 +878,15 @@ impl TauModel {
                 args,
                 ..
             } => {
-                // Skip "thread" tool — ThreadStart handles it with richer info
                 if tool_name == "thread" {
                     return None;
                 }
-
                 let header = extract_tool_detail(tool_name, args);
-                // Prefix with thread alias if inside a thread
-                let display_name = if !self.active_thread_aliases.is_empty() {
-                    // Use the most recent thread alias as context
-                    if let Some(alias) = self.active_thread_aliases.last() {
-                        format!("[{}] {}", alias, tool_name)
-                    } else {
-                        tool_name.clone()
-                    }
+                let display_name = if let Some(alias) = self.active_thread_aliases.last() {
+                    format!("[{}] {}", alias, tool_name)
                 } else {
                     tool_name.clone()
                 };
-
                 self.messages.push(ChatMessage::ToolCall(ToolCallMessage {
                     tool_call_id: Some(tool_call_id.clone()),
                     tool_name: display_name,
@@ -733,6 +897,7 @@ impl TauModel {
                 }));
                 self.active_tools.push(tool_name.clone());
                 self.refresh_chat_content();
+                self.sync_sidebar();
                 None
             }
 
@@ -743,11 +908,9 @@ impl TauModel {
                 is_error,
                 ..
             } => {
-                // Skip "thread" tool — ThreadEnd handles it
                 if tool_name == "thread" {
                     return None;
                 }
-
                 let body_text = result
                     .content
                     .iter()
@@ -760,7 +923,6 @@ impl TauModel {
                     })
                     .collect::<Vec<_>>()
                     .join("\n");
-                // Match by tool_call_id for correctness (display name may be prefixed)
                 for msg in self.messages.iter_mut().rev() {
                     if let ChatMessage::ToolCall(tc) = msg {
                         if tc.tool_call_id.as_deref() == Some(tool_call_id)
@@ -776,7 +938,6 @@ impl TauModel {
                         }
                     }
                 }
-                // Extract structured todo state when available
                 if tool_name == "todo" {
                     if let Some(details) = &result.details {
                         if let Ok(items) = serde_json::from_value::<Vec<crate::tools::TodoItem>>(
@@ -788,6 +949,7 @@ impl TauModel {
                 }
                 self.active_tools.retain(|t| t != tool_name);
                 self.refresh_chat_content();
+                self.sync_sidebar();
                 None
             }
 
@@ -797,11 +959,6 @@ impl TauModel {
                     self.tokens_out += am.usage.output;
                     self.total_cost += am.usage.cost.total;
                 }
-                // Finalize the current streaming assistant message so that the
-                // next turn creates a fresh message *after* any tool calls that
-                // were appended between turns.  Without this, Turn 2's TextDelta
-                // would keep appending to Turn 1's message (above the tool calls),
-                // making tool calls appear after the final output.
                 if let Some(stream) = self.streaming.take() {
                     if let Some(ChatMessage::Assistant(a)) =
                         self.messages.get_mut(stream.assistant_msg_idx)
@@ -811,6 +968,7 @@ impl TauModel {
                     }
                     self.refresh_chat_content();
                 }
+                self.sync_sidebar();
                 None
             }
 
@@ -832,8 +990,6 @@ impl TauModel {
                     expanded: false,
                 }));
                 self.active_tools.push(format!("thread:{}", alias));
-
-                // Track thread entry for sidebar navigation
                 self.thread_entries.push(ThreadEntry {
                     thread_id: thread_id.clone(),
                     alias: alias.clone(),
@@ -841,10 +997,9 @@ impl TauModel {
                     model: model.clone(),
                     status: ThreadEntryStatus::Running,
                 });
-                // Initialize message buffer for this thread
                 self.thread_messages.entry(thread_id.clone()).or_default();
-
                 self.refresh_chat_content();
+                self.sync_sidebar();
                 None
             }
 
@@ -867,18 +1022,21 @@ impl TauModel {
                         }
                     }
                 }
-
-                // Update thread entry status
+                let new_status = match outcome {
+                    agent::thread::ThreadOutcome::Completed { .. } => ThreadEntryStatus::Completed,
+                    _ => ThreadEntryStatus::Failed,
+                };
                 if let Some(entry) = self.thread_entries.iter_mut().find(|e| e.alias == *alias) {
-                    entry.status = match outcome {
-                        agent::thread::ThreadOutcome::Completed { .. } => {
-                            ThreadEntryStatus::Completed
-                        }
-                        _ => ThreadEntryStatus::Failed,
-                    };
+                    entry.status = new_status;
                 }
-
+                // Update thread modal status if it's showing this thread
+                if self.scene.contains("thread_modal") {
+                    if let Some(modal) = self.scene.pane_as_mut::<ThreadModalPane>("thread_modal") {
+                        modal.set_status(new_status.to_sidebar_status());
+                    }
+                }
                 self.refresh_chat_content();
+                self.sync_sidebar();
                 None
             }
 
@@ -892,8 +1050,12 @@ impl TauModel {
                     }
                 }
                 self.is_busy = false;
+                if let Some(editor) = self.scene.pane_as_mut::<EditorPane>("editor") {
+                    editor.set_busy(false);
+                }
                 self.active_tools.clear();
                 self.refresh_chat_content();
+                self.sync_sidebar();
                 None
             }
 
@@ -903,14 +1065,7 @@ impl TauModel {
                 event,
             } => {
                 self.handle_thread_event(thread_id, event);
-                // Refresh modal viewport if we're viewing this thread
-                if let FocusState::ThreadModal { thread_idx } = self.focus {
-                    if let Some(entry) = self.thread_entries.get(thread_idx) {
-                        if entry.thread_id == *thread_id {
-                            self.refresh_thread_modal_content(thread_id);
-                        }
-                    }
-                }
+                self.sync_thread_modal();
                 None
             }
 
@@ -989,7 +1144,6 @@ impl TauModel {
             },
 
             AgentEvent::TurnEnd { .. } => {
-                // Finalize the current streaming message for this thread
                 if let Some(stream) = self.thread_streaming.remove(thread_id) {
                     if let Some(ChatMessage::Assistant(a)) = msgs.get_mut(stream.assistant_msg_idx)
                     {
@@ -1052,7 +1206,6 @@ impl TauModel {
             }
 
             AgentEvent::AgentEnd { .. } => {
-                // Finalize any leftover streaming state
                 if let Some(stream) = self.thread_streaming.remove(thread_id) {
                     if let Some(ChatMessage::Assistant(a)) = msgs.get_mut(stream.assistant_msg_idx)
                     {
@@ -1066,50 +1219,19 @@ impl TauModel {
         }
     }
 
-    fn refresh_thread_modal_content(&mut self, thread_id: &str) {
-        let lo = layout::compute_layout(self.width, self.height, self.is_compact, 3);
-        // Modal is 80% of viewport
-        let modal_w = (lo.chat_w * 80 / 100).max(40);
-        let modal_h = (lo.chat_h * 80 / 100).max(10);
-        // Inner width accounts for border + padding (2 border + 2 padding = 4)
-        let inner_w = modal_w.saturating_sub(4);
-        // Header takes 4 lines (title, task, status, separator), border takes 2
-        let viewport_h = modal_h.saturating_sub(6);
-
-        // Resize viewport to match modal
-        self.thread_viewport.set_width(inner_w);
-        self.thread_viewport.set_height(viewport_h);
-
-        let mut content = String::new();
-        if let Some(msgs) = self.thread_messages.get(thread_id) {
-            for (i, msg) in msgs.iter().enumerate() {
-                if i > 0 {
-                    content.push('\n');
-                }
-                content.push_str(&msg.render(inner_w, false));
-            }
-        }
-
-        self.thread_viewport.set_content(&content);
-        // Auto-scroll to bottom (follow mode)
-        self.thread_viewport.goto_bottom();
-    }
-
     // -----------------------------------------------------------------------
     // Submit prompt
     // -----------------------------------------------------------------------
 
-    fn submit_prompt(&mut self) -> Cmd {
-        let raw_input = self.input.value().trim().to_string();
-        if raw_input.is_empty() {
-            return None;
-        }
-        self.input.set_value("");
-        self.tab_state = None;
-
+    fn submit_prompt(&mut self, raw_input: String) -> Cmd {
         // Transition to chat screen
         if self.screen == Screen::Landing {
             self.screen = Screen::Chat;
+            // Push initial slash commands to editor pane
+            let cmds = self.all_slash_commands();
+            if let Some(editor) = self.scene.pane_as_mut::<EditorPane>("editor") {
+                editor.set_slash_commands(cmds);
+            }
         }
 
         // Try slash command first
@@ -1123,7 +1245,12 @@ impl TauModel {
         self.messages
             .push(ChatMessage::User(UserMessage { text: raw_input }));
         self.is_busy = true;
-        self.scroll_follow = true;
+        if let Some(editor) = self.scene.pane_as_mut::<EditorPane>("editor") {
+            editor.set_busy(true);
+        }
+        if let Some(chat) = self.scene.pane_as_mut::<ChatPane>("chat") {
+            chat.set_scroll_follow(true);
+        }
         self.refresh_chat_content();
 
         // Start spinner
@@ -1138,13 +1265,84 @@ impl TauModel {
             if let Err(e) = agent.prompt(prompt_text).await {
                 return Msg::custom(TauMsg::Warning(format!("{}", e)));
             }
-            // AgentEnd event will arrive via the bridge — this is a fallback
             Msg::custom(TauMsg::AgentEvent(AgentEvent::AgentEnd {
                 messages: Vec::new(),
             }))
         })));
 
         ruse::runtime::batch(vec![spinner_cmd, prompt_cmd])
+    }
+
+    // -----------------------------------------------------------------------
+    // Process pane actions after scene.update()
+    // -----------------------------------------------------------------------
+
+    fn process_pane_actions(&mut self) -> Cmd {
+        // EditorPane: submit
+        let submit_text = self
+            .scene
+            .pane_as_mut::<EditorPane>("editor")
+            .and_then(|e| e.take_submit());
+        if let Some(text) = submit_text {
+            return self.submit_prompt(text);
+        }
+
+        // ChatPane: message selection / expand toggle
+        let actions = self
+            .scene
+            .pane_as_mut::<ChatPane>("chat")
+            .map(|c| c.take_actions())
+            .unwrap_or_default();
+        let mut needs_refresh = false;
+        for action in actions {
+            match action {
+                ChatAction::SelectMsg => {
+                    needs_refresh = true;
+                }
+                ChatAction::ToggleExpand(idx) => {
+                    if let Some(ChatMessage::ToolCall(tc)) = self.messages.get_mut(idx) {
+                        tc.expanded = !tc.expanded;
+                        needs_refresh = true;
+                    } else if let Some(ChatMessage::Assistant(a)) = self.messages.get_mut(idx) {
+                        a.thinking_expanded = !a.thinking_expanded;
+                        needs_refresh = true;
+                    }
+                }
+            }
+        }
+        if needs_refresh {
+            self.refresh_chat_content();
+        }
+
+        // SidebarPane: open thread / back
+        let sidebar_action = self
+            .scene
+            .pane_as_mut::<SidebarPane>("sidebar")
+            .and_then(|s| s.take_action());
+        if let Some(action) = sidebar_action {
+            match action {
+                SidebarAction::OpenThread(idx) => {
+                    if idx < self.thread_entries.len() {
+                        return self.open_thread_modal(idx);
+                    }
+                }
+                SidebarAction::Back => {
+                    return self.reset_to_editor();
+                }
+            }
+        }
+
+        // ThreadModalPane: close
+        let should_close = self
+            .scene
+            .pane_as::<ThreadModalPane>("thread_modal")
+            .map(|m| m.should_close())
+            .unwrap_or(false);
+        if should_close {
+            return self.close_thread_modal();
+        }
+
+        None
     }
 }
 
@@ -1154,17 +1352,22 @@ impl TauModel {
 
 impl Model for TauModel {
     fn init(&mut self) -> Cmd {
-        // Focus the input so it accepts keystrokes and shows a cursor
-        self.input.focus()
+        // Push initial slash commands to editor pane
+        let cmds = self.all_slash_commands();
+        if let Some(editor) = self.scene.pane_as_mut::<EditorPane>("editor") {
+            editor.set_slash_commands(cmds);
+        }
+        self.sync_sidebar();
+        self.scene.set_focus("editor")
     }
 
     fn update(&mut self, msg: Msg) -> Cmd {
-        // Handle custom TauMsg
+        // 1. Intercept TauMsg (Custom) before Scene
         if let Some(tau_msg) = msg.downcast_ref::<TauMsg>() {
             return self.handle_tau_msg(tau_msg);
         }
 
-        // Handle permission input — intercepts all keys while queue is non-empty
+        // 2. Permission interception — handles ALL keys while queue non-empty
         if !self.perm_queue.is_empty() {
             if let Msg::KeyPress(key) = &msg {
                 match key.code {
@@ -1174,12 +1377,9 @@ impl Model for TauModel {
                         }
                     }
                     KeyCode::Char('s') => {
-                        // Always allow: approve this one AND auto-approve remaining
-                        // queued permissions for the same tool
                         if let Some(perm) = self.perm_queue.pop_front() {
                             let tool = perm.tool_name.clone();
                             let _ = perm.resp_tx.send(PromptResult::AlwaysAllow);
-                            // Auto-approve queued permissions for the same tool
                             let mut remaining = std::collections::VecDeque::new();
                             for p in self.perm_queue.drain(..) {
                                 if p.tool_name == tool {
@@ -1197,15 +1397,18 @@ impl Model for TauModel {
                         }
                     }
                     KeyCode::Char('c') if key.modifiers.contains(Modifiers::CTRL) => {
-                        // Ctrl-C during permission: deny ALL and abort
                         for perm in self.perm_queue.drain(..) {
                             let _ = perm.resp_tx.send(PromptResult::Deny);
                         }
                         self.agent.abort();
                         self.is_busy = false;
+                        if let Some(editor) = self.scene.pane_as_mut::<EditorPane>("editor") {
+                            editor.set_busy(false);
+                        }
                         self.streaming = None;
                         self.active_tools.clear();
                         self.push_system_msg("^C (aborted)");
+                        self.sync_sidebar();
                     }
                     _ => {}
                 }
@@ -1213,251 +1416,80 @@ impl Model for TauModel {
             return None;
         }
 
-        match msg {
-            Msg::KeyPress(key) => {
-                // Reset ctrl-c counter on any non-ctrl-c key
-                if !(key.code == KeyCode::Char('c') && key.modifiers.contains(Modifiers::CTRL)) {
-                    self.ctrl_c_count = 0;
-                }
+        // 3. Global keys — intercepted before Scene
+        if let Msg::KeyPress(key) = &msg {
+            // Reset ctrl-c counter on any non-ctrl-c key
+            if !(key.code == KeyCode::Char('c') && key.modifiers.contains(Modifiers::CTRL)) {
+                self.ctrl_c_count = 0;
+            }
 
-                // Global keys
-                match key.code {
-                    KeyCode::Char('c') if key.modifiers.contains(Modifiers::CTRL) => {
-                        if self.is_busy {
-                            self.agent.abort();
-                            self.is_busy = false;
-                            self.streaming = None;
-                            self.active_tools.clear();
-                            self.push_system_msg("^C (aborted)");
-                        } else {
-                            self.ctrl_c_count += 1;
-                            if self.ctrl_c_count >= 2 {
-                                self.should_quit = true;
-                                return ruse::runtime::quit();
-                            }
-                            self.push_system_msg("^C (press again to exit)");
+            match key.code {
+                KeyCode::Char('c') if key.modifiers.contains(Modifiers::CTRL) => {
+                    if self.is_busy {
+                        self.agent.abort();
+                        self.is_busy = false;
+                        if let Some(editor) = self.scene.pane_as_mut::<EditorPane>("editor") {
+                            editor.set_busy(false);
+                        }
+                        self.streaming = None;
+                        self.active_tools.clear();
+                        self.push_system_msg("^C (aborted)");
+                        self.sync_sidebar();
+                    } else {
+                        self.ctrl_c_count += 1;
+                        if self.ctrl_c_count >= 2 {
+                            self.should_quit = true;
+                            return ruse::runtime::quit();
+                        }
+                        self.push_system_msg("^C (press again to exit)");
+                    }
+                    return None;
+                }
+                KeyCode::Char('d') if key.modifiers.contains(Modifiers::CTRL) => {
+                    self.should_quit = true;
+                    return ruse::runtime::quit();
+                }
+                KeyCode::Char('t') if key.modifiers.contains(Modifiers::CTRL) => {
+                    self.cycle_thinking();
+                    return None;
+                }
+                KeyCode::Tab => {
+                    // Tab: slash completion (if editor focused + starts with '/') or focus cycling
+                    let should_complete = self.scene.focused() == Some("editor")
+                        && self
+                            .scene
+                            .pane_as::<EditorPane>("editor")
+                            .map(|e| !e.is_busy() && e.value().starts_with('/'))
+                            .unwrap_or(false);
+
+                    if should_complete {
+                        if let Some(editor) = self.scene.pane_as_mut::<EditorPane>("editor") {
+                            editor.tab_complete();
                         }
                         return None;
                     }
-                    KeyCode::Char('d') if key.modifiers.contains(Modifiers::CTRL) => {
-                        self.should_quit = true;
-                        return ruse::runtime::quit();
-                    }
-                    KeyCode::Char('t') if key.modifiers.contains(Modifiers::CTRL) => {
-                        self.cycle_thinking();
-                        return None;
-                    }
-                    KeyCode::Tab if self.focus == FocusState::Editor => {
-                        // Tab in editor: try slash command completion first
-                        let value = self.input.value().to_string();
-                        if value.starts_with('/') {
-                            self.tab_complete();
-                        } else {
-                            self.input.blur();
-                            self.focus = FocusState::Chat;
-                            self.refresh_chat_content();
-                        }
-                        return None;
-                    }
-                    KeyCode::Tab if self.focus == FocusState::Chat => {
-                        // Chat -> Sidebar (if not compact and threads exist)
-                        if !self.is_compact && !self.thread_entries.is_empty() {
-                            self.focus = FocusState::Sidebar;
-                        } else {
-                            self.focus = FocusState::Editor;
-                            self.scroll_follow = true;
-                            self.chat_viewport.goto_bottom();
-                            self.refresh_chat_content();
-                            return self.input.focus();
-                        }
-                        return None;
-                    }
-                    KeyCode::Tab if self.focus == FocusState::Sidebar => {
-                        // Sidebar -> Editor
-                        self.focus = FocusState::Editor;
-                        self.scroll_follow = true;
-                        self.chat_viewport.goto_bottom();
-                        self.refresh_chat_content();
-                        return self.input.focus();
-                    }
-                    KeyCode::Tab => {
-                        // ThreadModal or other -> Editor
-                        self.focus = FocusState::Editor;
-                        self.scroll_follow = true;
-                        self.chat_viewport.goto_bottom();
-                        self.refresh_chat_content();
-                        return self.input.focus();
-                    }
-                    _ => {}
+                    return self.cycle_focus();
                 }
-
-                // Focus-specific keys
-                match self.focus {
-                    FocusState::Editor => {
-                        if self.is_busy {
-                            return None;
-                        }
-                        // Reset tab state on non-tab keys
-                        self.tab_state = None;
-                        match key.code {
-                            KeyCode::Enter => return self.submit_prompt(),
-                            _ => {
-                                self.input.update(&Msg::KeyPress(key));
-                            }
-                        }
-                    }
-                    FocusState::Chat => match key.code {
-                        KeyCode::Char('j') | KeyCode::Down => {
-                            self.chat_viewport.line_down(1);
-                            self.scroll_follow = false;
-                        }
-                        KeyCode::Char('k') | KeyCode::Up => {
-                            self.chat_viewport.line_up(1);
-                            self.scroll_follow = false;
-                        }
-                        KeyCode::Char('d') => {
-                            self.chat_viewport.half_page_down();
-                            self.scroll_follow = false;
-                        }
-                        KeyCode::Char('u') => {
-                            self.chat_viewport.half_page_up();
-                            self.scroll_follow = false;
-                        }
-                        KeyCode::Char('G') => {
-                            self.chat_viewport.goto_bottom();
-                            self.scroll_follow = true;
-                        }
-                        KeyCode::Char('g') => {
-                            self.chat_viewport.goto_top();
-                            self.scroll_follow = false;
-                        }
-                        KeyCode::Char('J') => {
-                            if self.selected_msg + 1 < self.messages.len() {
-                                self.selected_msg += 1;
-                                self.refresh_chat_content();
-                            }
-                        }
-                        KeyCode::Char('K') => {
-                            if self.selected_msg > 0 {
-                                self.selected_msg -= 1;
-                                self.refresh_chat_content();
-                            }
-                        }
-                        KeyCode::Char(' ') => {
-                            if let Some(ChatMessage::ToolCall(tc)) =
-                                self.messages.get_mut(self.selected_msg)
-                            {
-                                tc.expanded = !tc.expanded;
-                                self.refresh_chat_content();
-                            } else if let Some(ChatMessage::Assistant(a)) =
-                                self.messages.get_mut(self.selected_msg)
-                            {
-                                a.thinking_expanded = !a.thinking_expanded;
-                                self.refresh_chat_content();
-                            }
-                        }
-                        _ => {}
-                    },
-                    FocusState::Sidebar => match key.code {
-                        KeyCode::Char('j') | KeyCode::Down => {
-                            if !self.thread_entries.is_empty()
-                                && self.sidebar_cursor + 1 < self.thread_entries.len()
-                            {
-                                self.sidebar_cursor += 1;
-                            }
-                        }
-                        KeyCode::Char('k') | KeyCode::Up => {
-                            if self.sidebar_cursor > 0 {
-                                self.sidebar_cursor -= 1;
-                            }
-                        }
-                        KeyCode::Enter => {
-                            if !self.thread_entries.is_empty() {
-                                let idx = self.sidebar_cursor;
-                                let thread_id = self.thread_entries[idx].thread_id.clone();
-                                self.refresh_thread_modal_content(&thread_id);
-                                self.focus = FocusState::ThreadModal { thread_idx: idx };
-                            }
-                        }
-                        KeyCode::Escape => {
-                            self.focus = FocusState::Editor;
-                            return self.input.focus();
-                        }
-                        _ => {}
-                    },
-                    FocusState::ThreadModal { .. } => match key.code {
-                        KeyCode::Escape => {
-                            self.focus = FocusState::Sidebar;
-                        }
-                        KeyCode::Char('j') | KeyCode::Down => {
-                            self.thread_viewport.line_down(1);
-                        }
-                        KeyCode::Char('k') | KeyCode::Up => {
-                            self.thread_viewport.line_up(1);
-                        }
-                        KeyCode::Char('d') => {
-                            self.thread_viewport.half_page_down();
-                        }
-                        KeyCode::Char('u') => {
-                            self.thread_viewport.half_page_up();
-                        }
-                        KeyCode::Char('G') => {
-                            self.thread_viewport.goto_bottom();
-                        }
-                        KeyCode::Char('g') => {
-                            self.thread_viewport.goto_top();
-                        }
-                        KeyCode::Char(' ') => {
-                            // Toggle expand on selected items would require cursor tracking
-                            // within the modal — defer for now
-                        }
-                        _ => {}
-                    },
-                }
-                None
+                _ => {}
             }
-
-            Msg::MouseWheel(mouse) => {
-                match mouse.button {
-                    ruse::runtime::MouseButton::WheelUp => {
-                        self.chat_viewport.line_up(3);
-                        self.scroll_follow = false;
-                    }
-                    ruse::runtime::MouseButton::WheelDown => {
-                        self.chat_viewport.line_down(3);
-                    }
-                    _ => {}
-                }
-                None
-            }
-
-            Msg::WindowSize { width, height } => {
-                self.width = width as usize;
-                self.height = height as usize;
-                self.is_compact = layout::is_compact(self.width, self.height);
-                let lo = layout::compute_layout(self.width, self.height, self.is_compact, 3);
-                // Resize viewport without losing content
-                self.chat_viewport.set_width(lo.chat_w);
-                self.chat_viewport.set_height(lo.chat_h);
-                // Input spans full width (not just chat column)
-                self.input.set_width(self.width);
-                self.refresh_chat_content();
-                None
-            }
-
-            Msg::Paste(text) => {
-                if self.focus == FocusState::Editor && !self.is_busy {
-                    // Collapse newlines to spaces for single-line input
-                    let cleaned = text.replace('\n', " ").replace('\r', "");
-                    // Insert into the input by forwarding as a cleaned paste
-                    self.input.update(&Msg::Paste(cleaned));
-                    self.tab_state = None;
-                }
-                None
-            }
-
-            _ => None,
         }
+
+        // 4. WindowSize — recompute layout before scene gets the broadcast
+        if let Msg::WindowSize { width, height } = &msg {
+            self.width = *width as usize;
+            self.height = *height as usize;
+            self.is_compact = layout::is_compact(self.width, self.height);
+            self.recompute_layout();
+            // Fall through to scene.update() for broadcast to panes
+        }
+
+        // 5. Route to Scene — sends to focused pane (or broadcasts)
+        let cmd = self.scene.update(&msg);
+
+        // 6. Process pane actions
+        let action_cmd = self.process_pane_actions();
+
+        ruse::runtime::batch(vec![cmd, action_cmd])
     }
 
     fn view(&self) -> View {
@@ -1476,7 +1508,6 @@ impl TauModel {
     fn view_landing(&self) -> String {
         let mut lines = Vec::new();
 
-        // Logo
         let logo = Style::new()
             .foreground(Color::parse(theme::PRIMARY))
             .bold(true)
@@ -1485,13 +1516,11 @@ impl TauModel {
         lines.push(theme::half_muted_style().render(&["Terminal AI Assistant"]));
         lines.push(String::new());
 
-        // CWD
         let cwd = std::env::current_dir()
             .map(|p| p.display().to_string())
             .unwrap_or_else(|_| ".".to_string());
         lines.push(theme::half_muted_style().render(&[&cwd]));
 
-        // Model
         let model_line = format!(
             "{} {} ",
             theme::primary_style().render(&[theme::MODEL_ICON]),
@@ -1500,26 +1529,25 @@ impl TauModel {
         lines.push(model_line);
         lines.push(String::new());
 
-        // Startup messages
         for msg in &self.startup_messages {
             lines.push(theme::half_muted_style().render(&[msg.as_str()]));
         }
 
-        // Spacer to push input to bottom
-        let used = lines.len() + 3; // input + separator + help
+        let used = lines.len() + 3;
         let spacer = self.height.saturating_sub(used);
         for _ in 0..spacer {
             lines.push(String::new());
         }
 
-        // Input
-        let prompt = format!("{} ", theme::primary_style().render(&[">"]),);
-        lines.push(format!("{}{}", prompt, self.input.view()));
+        // Input — use editor pane view
+        let editor_view = self
+            .scene
+            .pane_as::<EditorPane>("editor")
+            .map(|e| e.view())
+            .unwrap_or_default();
+        lines.push(editor_view);
 
-        // Separator
         lines.push(theme::separator(self.width));
-
-        // Help
         lines
             .push(theme::half_muted_style().render(&["enter send | ctrl+c quit | /help commands"]));
 
@@ -1528,219 +1556,64 @@ impl TauModel {
 
     fn view_chat(&self) -> View {
         let lo = layout::compute_layout(self.width, self.height, self.is_compact, 3);
-        let w = self.width as u16;
         let h = self.height as u16;
         let chat_h = lo.chat_h as u16;
+        let w = self.width as u16;
 
-        // Chat viewport
-        let chat = self.chat_viewport.view();
+        // Get scene view — includes chat, sidebar (if visible), thread_modal (if open)
+        let mut view = self.scene.view();
 
-        // Input area
+        // Bottom area: editor pane view (or permission prompt) + status bar
         let input_area = if let Some(perm) = self.perm_queue.front() {
-            // Permission modal — show front of queue with count
-            let count_hint = if self.perm_queue.len() > 1 {
-                format!(" (+{})", self.perm_queue.len() - 1)
-            } else {
-                String::new()
-            };
-            let header = format!(
-                "{}  {} {}{}",
-                theme::green_dark_style().render(&[theme::TOOL_PENDING]),
-                theme::subtle_style().render(&[&perm.tool_name]),
-                theme::half_muted_style().render(&[&perm.description]),
-                theme::half_muted_style().render(&[&count_hint]),
-            );
-            let options = theme::half_muted_style().render(&["[a]llow  [s]ession  [d]eny"]);
-            let box_content = format!("{}\n{}", header, options);
-            Style::new()
-                .border(ROUNDED_BORDER, &[true])
-                .border_foreground(Color::parse(theme::GREEN_DARK))
-                .padding(&[0, 1])
-                .width(lo.chat_w as u16)
-                .render(&[&box_content])
-        } else if self.is_busy {
-            // Spinner
-            format!("  {}", self.spinner.view())
+            self.render_permission_prompt(perm, lo.chat_w)
         } else {
-            // Normal input — simple prompt, model info is in sidebar
-            let prompt = format!("  {} ", theme::primary_style().render(&[">"]),);
-            format!("{}{}", prompt, self.input.view())
+            self.scene
+                .pane_as::<EditorPane>("editor")
+                .map(|e| e.view())
+                .unwrap_or_default()
         };
 
-        // Status bar
         let focus_hint = if !self.perm_queue.is_empty() {
             FocusHint::Permission
         } else {
-            match self.focus {
-                FocusState::Editor => FocusHint::Editor,
-                FocusState::Chat => FocusHint::Chat,
-                FocusState::Sidebar => FocusHint::Sidebar,
-                FocusState::ThreadModal { .. } => FocusHint::ThreadModal,
+            match self.scene.focused() {
+                Some("editor") => FocusHint::Editor,
+                Some("chat") => FocusHint::Chat,
+                Some("sidebar") => FocusHint::Sidebar,
+                Some("thread_modal") => FocusHint::ThreadModal,
+                _ => FocusHint::Editor,
             }
         };
         let status_bar = status::render_status_bar(self.width, focus_hint, self.warning.as_deref());
 
         let bottom = format!("{}\n{}", input_area, status_bar);
+        let bottom_h = h.saturating_sub(chat_h);
+        view.regions
+            .push((Rect::new(0, chat_h, w, bottom_h), bottom));
 
-        if self.is_compact {
-            View::new(format!("{}\n{}", chat, bottom)).with_alt_screen()
-        } else {
-            let thinking_str = match self.thinking_level {
-                ThinkingLevel::Off => "off",
-                ThinkingLevel::Minimal => "minimal",
-                ThinkingLevel::Low => "low",
-                ThinkingLevel::Medium => "medium",
-                ThinkingLevel::High => "high",
-                ThinkingLevel::XHigh => "xhigh",
-            };
-            let sidebar_threads: Vec<sidebar::SidebarThread> = self
-                .thread_entries
-                .iter()
-                .map(|e| sidebar::SidebarThread {
-                    alias: &e.alias,
-                    status: match e.status {
-                        ThreadEntryStatus::Running => sidebar::SidebarThreadStatus::Running,
-                        ThreadEntryStatus::Completed => sidebar::SidebarThreadStatus::Completed,
-                        ThreadEntryStatus::Failed => sidebar::SidebarThreadStatus::Failed,
-                    },
-                })
-                .collect();
-            let selected_thread = if self.focus == FocusState::Sidebar
-                || matches!(self.focus, FocusState::ThreadModal { .. })
-            {
-                Some(self.sidebar_cursor)
-            } else {
-                None
-            };
-            let sb = sidebar::render_sidebar(&sidebar::SidebarState {
-                width: lo.sidebar_w,
-                height: lo.chat_h,
-                model_id: &self.model_id,
-                tokens_in: self.tokens_in,
-                tokens_out: self.tokens_out,
-                context_window: self.context_window,
-                total_cost: self.total_cost,
-                thinking_level: thinking_str,
-                active_tools: &self.active_tools,
-                todos: &self.todos,
-                cwd: &self.cwd,
-                threads: &sidebar_threads,
-                selected_thread,
-            });
-
-            let chat_w = lo.chat_w as u16;
-            let sidebar_w = lo.sidebar_w as u16;
-            let bottom_h = h.saturating_sub(chat_h);
-
-            let mut view = View::new("")
-                .with_region(Rect::new(0, 0, chat_w, chat_h), chat)
-                .with_region(Rect::new(chat_w, 0, sidebar_w, chat_h), sb)
-                .with_region(Rect::new(0, chat_h, w, bottom_h), bottom);
-
-            // Thread inspector modal overlay
-            if let FocusState::ThreadModal { thread_idx } = self.focus {
-                if let Some(entry) = self.thread_entries.get(thread_idx) {
-                    let modal = self.render_thread_modal(entry, lo.chat_w, lo.chat_h);
-                    // Center the modal over the chat area
-                    let modal_w = (lo.chat_w * 80 / 100).max(40);
-                    let modal_h = (lo.chat_h * 80 / 100).max(10);
-                    let modal_x = (lo.chat_w.saturating_sub(modal_w)) / 2;
-                    let modal_y = (lo.chat_h.saturating_sub(modal_h)) / 2;
-                    view = view.with_region(
-                        Rect::new(
-                            modal_x as u16,
-                            modal_y as u16,
-                            modal_w as u16,
-                            modal_h as u16,
-                        ),
-                        modal,
-                    );
-                }
-            }
-
-            view.with_alt_screen()
-        }
+        view.with_alt_screen()
     }
 
-    fn render_thread_modal(&self, entry: &ThreadEntry, chat_w: usize, chat_h: usize) -> String {
-        let modal_w = (chat_w * 80 / 100).max(40);
-        let modal_h = (chat_h * 80 / 100).max(10);
-        // Inner dims = modal - border (2) - padding (2)
-        let inner_w = modal_w.saturating_sub(4);
-
-        // Header
-        let (status_icon, status_style, status_text) = match entry.status {
-            ThreadEntryStatus::Running => {
-                (theme::TOOL_PENDING, theme::green_dark_style(), "Running")
-            }
-            ThreadEntryStatus::Completed => {
-                (theme::TOOL_SUCCESS, theme::green_style(), "Completed")
-            }
-            ThreadEntryStatus::Failed => (theme::TOOL_ERROR, theme::red_style(), "Failed"),
+    fn render_permission_prompt(&self, perm: &PendingPermission, chat_w: usize) -> String {
+        let count_hint = if self.perm_queue.len() > 1 {
+            format!(" (+{})", self.perm_queue.len() - 1)
+        } else {
+            String::new()
         };
-
-        let title = format!(
-            "{} {} {} {}",
-            status_style.render(&[status_icon]),
-            theme::subtle_style().bold(true).render(&[&entry.alias]),
-            theme::half_muted_style().render(&["@"]),
-            theme::half_muted_style().render(&[&entry.model]),
+        let header = format!(
+            "{}  {} {}{}",
+            theme::green_dark_style().render(&[theme::TOOL_PENDING]),
+            theme::subtle_style().render(&[&perm.tool_name]),
+            theme::half_muted_style().render(&[&perm.description]),
+            theme::half_muted_style().render(&[&count_hint]),
         );
-
-        // Task description (truncated to fit)
-        let task_display = if entry.task.len() > inner_w {
-            format!("{}…", &entry.task[..inner_w.saturating_sub(1)])
-        } else {
-            entry.task.clone()
-        };
-        let task_line = theme::half_muted_style().render(&[&task_display]);
-
-        let status_line = theme::half_muted_style().render(&[status_text]);
-
-        let header_sep = theme::muted_style().render(&[&theme::SECTION_SEP.repeat(inner_w)]);
-
-        // Viewport content (thread messages)
-        let viewport_content = self.thread_viewport.view();
-
-        // Build lines: header + separator + viewport
-        // We need to fit: title(1) + task(1) + status(1) + sep(1) + viewport(rest)
-        let header_lines = 4; // title, task, status, separator
-        let viewport_h = modal_h.saturating_sub(header_lines + 2); // 2 for top/bottom border
-
-        // Resize the viewport for the modal dimensions
-        // (can't mutate self here since we're in &self, but viewport was set up in refresh)
-        let _ = viewport_h; // viewport dimensions were set in refresh_thread_modal_content
-
-        let mut body_parts = vec![title, task_line, status_line, header_sep];
-
-        // Add viewport lines, truncated to viewport_h
-        let vp_lines: Vec<&str> = viewport_content.lines().collect();
-        let vp_display: String = vp_lines
-            .iter()
-            .take(viewport_h)
-            .cloned()
-            .collect::<Vec<_>>()
-            .join("\n");
-        if !vp_display.is_empty() {
-            body_parts.push(vp_display);
-        } else {
-            body_parts.push(theme::half_muted_style().render(&["No messages yet"]));
-        }
-
-        let body = body_parts.join("\n");
-
-        // Border color: green for running, muted for completed/failed
-        let border_color = match entry.status {
-            ThreadEntryStatus::Running => theme::GREEN_DARK,
-            ThreadEntryStatus::Completed => theme::FG_HALF_MUTED,
-            ThreadEntryStatus::Failed => theme::RED,
-        };
-
+        let options = theme::half_muted_style().render(&["[a]llow  [s]ession  [d]eny"]);
+        let box_content = format!("{}\n{}", header, options);
         Style::new()
             .border(ROUNDED_BORDER, &[true])
-            .border_foreground(Color::parse(border_color))
+            .border_foreground(Color::parse(theme::GREEN_DARK))
             .padding(&[0, 1])
-            .width(modal_w as u16)
-            .render(&[&body])
+            .width(chat_w as u16)
+            .render(&[&box_content])
     }
 }

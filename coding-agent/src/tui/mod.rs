@@ -6,6 +6,7 @@ mod editor;
 mod layout;
 mod model;
 mod msg;
+mod panes;
 mod sidebar;
 mod status;
 mod theme;
