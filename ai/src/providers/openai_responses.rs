@@ -39,11 +39,7 @@ impl OpenAIResponsesProvider {
                 return Ok(key.to_string());
             }
         }
-        // Provider-specific env vars
-        let env_var = match model.provider.as_str() {
-            "openai" | "openai-codex" | "opencode" => "OPENAI_API_KEY",
-            _ => "OPENAI_API_KEY",
-        };
+        let env_var = "OPENAI_API_KEY";
         std::env::var(env_var).map_err(|_| {
             anyhow::anyhow!(
                 "No API key for provider '{}'. Set {} or pass api_key.",

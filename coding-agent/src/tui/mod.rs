@@ -33,7 +33,6 @@ pub struct TuiRunConfig {
     pub session_manager: SessionManager,
     pub skills: Vec<Skill>,
     pub permission_service: Arc<PermissionService>,
-    pub startup_messages: Vec<String>,
     pub initial_messages: Vec<AgentMessage>,
 }
 
@@ -51,7 +50,6 @@ pub async fn run(agent: Arc<Agent>, config: TuiRunConfig) -> Result<()> {
             session_manager: config.session_manager,
             skills: config.skills,
             permission_service: Arc::clone(&config.permission_service),
-            startup_messages: config.startup_messages,
             initial_messages: config.initial_messages,
         },
     );

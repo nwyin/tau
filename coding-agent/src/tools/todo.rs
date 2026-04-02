@@ -7,7 +7,7 @@
 
 use std::sync::Arc;
 
-use agent::types::{AgentTool, AgentToolResult, BoxFuture, ToolUpdateFn};
+use agent::types::{AgentTool, AgentToolResult, BoxFuture};
 use ai::types::UserBlock;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -110,7 +110,6 @@ impl AgentTool for TodoTool {
         _tool_call_id: String,
         params: Value,
         _signal: Option<tokio_util::sync::CancellationToken>,
-        _on_update: Option<ToolUpdateFn>,
     ) -> BoxFuture<Result<AgentToolResult>> {
         Box::pin(async move {
             let todos: Vec<TodoItem> = params
@@ -187,7 +186,7 @@ mod tests {
             ]
         });
         let result = tool
-            .execute("call-1".into(), params, None, None)
+            .execute("call-1".into(), params, None)
             .await
             .unwrap();
 
@@ -203,7 +202,7 @@ mod tests {
         let tool = TodoTool;
         let params = json!({ "todos": [] });
         let result = tool
-            .execute("call-1".into(), params, None, None)
+            .execute("call-1".into(), params, None)
             .await
             .unwrap();
 

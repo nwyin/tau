@@ -207,7 +207,6 @@ async fn handles_tool_calls_and_results() {
             _tool_call_id: String,
             params: Value,
             _signal: Option<CancellationToken>,
-            _on_update: Option<agent::types::ToolUpdateFn>,
         ) -> agent::types::BoxFuture<anyhow::Result<agent::types::AgentToolResult>> {
             let executed = Arc::clone(&self.0);
             Box::pin(async move {
@@ -294,7 +293,6 @@ async fn injects_steering_messages_and_skips_remaining_tool_calls() {
             _tool_call_id: String,
             params: Value,
             _signal: Option<CancellationToken>,
-            _on_update: Option<agent::types::ToolUpdateFn>,
         ) -> agent::types::BoxFuture<anyhow::Result<agent::types::AgentToolResult>> {
             let executed = Arc::clone(&self.0);
             Box::pin(async move {
@@ -526,7 +524,6 @@ impl agent::types::AgentTool for SimpleTool {
         _id: String,
         _params: Value,
         _signal: Option<tokio_util::sync::CancellationToken>,
-        _on_update: Option<agent::types::ToolUpdateFn>,
     ) -> agent::types::BoxFuture<anyhow::Result<agent::types::AgentToolResult>> {
         Box::pin(async {
             Ok(agent::types::AgentToolResult {
@@ -659,7 +656,6 @@ async fn tool_definitions_present_during_round_trip() {
             _id: String,
             _params: Value,
             _signal: Option<tokio_util::sync::CancellationToken>,
-            _on_update: Option<agent::types::ToolUpdateFn>,
         ) -> agent::types::BoxFuture<anyhow::Result<agent::types::AgentToolResult>> {
             let ex = Arc::clone(&self.executed);
             Box::pin(async move {

@@ -44,7 +44,6 @@ fn openai_model() -> Model {
         context_window: 128_000,
         max_tokens: 4_096,
         headers: None,
-        compat: None,
     }
 }
 
@@ -66,7 +65,6 @@ fn reasoning_model() -> Model {
         context_window: 200_000,
         max_tokens: 64_000,
         headers: None,
-        compat: None,
     }
 }
 

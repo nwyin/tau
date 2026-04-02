@@ -36,7 +36,6 @@ async fn test_glob_finds_rust_files_in_nested_dirs() {
             "id1".into(),
             json!({"pattern": "**/*.rs", "path": root.to_str().unwrap()}),
             None,
-            None,
         )
         .await
         .unwrap();
@@ -75,7 +74,6 @@ async fn test_glob_results_sorted_by_mtime_newest_first() {
         .execute(
             "id2".into(),
             json!({"pattern": "*.txt", "path": root.to_str().unwrap()}),
-            None,
             None,
         )
         .await
@@ -118,7 +116,6 @@ async fn test_glob_respects_gitignore() {
             "id3".into(),
             json!({"pattern": "**/*", "path": root.to_str().unwrap()}),
             None,
-            None,
         )
         .await
         .unwrap();
@@ -150,7 +147,6 @@ async fn test_glob_no_matches_returns_helpful_message() {
         .execute(
             "id4".into(),
             json!({"pattern": "**/*.go", "path": root.to_str().unwrap()}),
-            None,
             None,
         )
         .await
@@ -184,7 +180,6 @@ async fn test_glob_explicit_path_scopes_search() {
             "id5".into(),
             json!({"pattern": "*.txt", "path": root.join("subdir").to_str().unwrap()}),
             None,
-            None,
         )
         .await
         .unwrap();
@@ -214,7 +209,6 @@ async fn test_glob_single_file_pattern_finds_exact_match() {
         .execute(
             "id6".into(),
             json!({"pattern": "Cargo.toml", "path": root.to_str().unwrap()}),
-            None,
             None,
         )
         .await

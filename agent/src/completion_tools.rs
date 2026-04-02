@@ -75,7 +75,6 @@ impl AgentTool for CompleteTool {
         _tool_call_id: String,
         params: Value,
         _signal: Option<tokio_util::sync::CancellationToken>,
-        _on_update: Option<crate::types::ToolUpdateFn>,
     ) -> BoxFuture<anyhow::Result<AgentToolResult>> {
         let outcome_signal = self.signal.clone();
         let result = params
@@ -155,7 +154,6 @@ impl AgentTool for AbortTool {
         _tool_call_id: String,
         params: Value,
         _signal: Option<tokio_util::sync::CancellationToken>,
-        _on_update: Option<crate::types::ToolUpdateFn>,
     ) -> BoxFuture<anyhow::Result<AgentToolResult>> {
         let outcome_signal = self.signal.clone();
         let reason = params
@@ -226,7 +224,6 @@ impl AgentTool for EscalateTool {
         _tool_call_id: String,
         params: Value,
         _signal: Option<tokio_util::sync::CancellationToken>,
-        _on_update: Option<crate::types::ToolUpdateFn>,
     ) -> BoxFuture<anyhow::Result<AgentToolResult>> {
         let outcome_signal = self.signal.clone();
         let problem = params
@@ -269,7 +266,7 @@ mod tests {
         let tool = CompleteTool::new(signal);
         let params = json!({"result": "Found 3 endpoints", "evidence": ["tc1", "tc2"]});
         let result = tool
-            .execute("call1".into(), params, None, None)
+            .execute("call1".into(), params, None)
             .await
             .unwrap();
 
@@ -289,7 +286,7 @@ mod tests {
         let (signal, rx) = outcome_channel();
         let tool = AbortTool::new(signal);
         let params = json!({"reason": "No access"});
-        tool.execute("call1".into(), params, None, None)
+        tool.execute("call1".into(), params, None)
             .await
             .unwrap();
 
@@ -305,7 +302,7 @@ mod tests {
         let (signal, rx) = outcome_channel();
         let tool = EscalateTool::new(signal);
         let params = json!({"problem": "Which database?"});
-        tool.execute("call1".into(), params, None, None)
+        tool.execute("call1".into(), params, None)
             .await
             .unwrap();
 
@@ -323,12 +320,12 @@ mod tests {
         let tool2 = AbortTool::new(signal);
 
         tool1
-            .execute("c1".into(), json!({"result": "first"}), None, None)
+            .execute("c1".into(), json!({"result": "first"}), None)
             .await
             .unwrap();
         // Second send is a no-op (sender already taken)
         tool2
-            .execute("c2".into(), json!({"reason": "second"}), None, None)
+            .execute("c2".into(), json!({"reason": "second"}), None)
             .await
             .unwrap();
 

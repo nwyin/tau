@@ -27,7 +27,6 @@ async fn test_missing_api_key_returns_helpful_error() {
             "id1".into(),
             json!({"query": "rust programming"}),
             None,
-            None,
         )
         .await
         .unwrap();
@@ -58,7 +57,6 @@ async fn test_num_results_over_limit_does_not_panic() {
         .execute(
             "id3".into(),
             json!({"query": "test query", "num_results": 999}),
-            None,
             None,
         )
         .await
@@ -124,7 +122,7 @@ async fn test_empty_api_key_returns_error() {
 
     let tool = WebSearchTool;
     let result = tool
-        .execute("id4".into(), json!({"query": "test"}), None, None)
+        .execute("id4".into(), json!({"query": "test"}), None)
         .await
         .unwrap();
 

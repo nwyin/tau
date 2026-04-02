@@ -7,7 +7,7 @@ mod common;
 use std::sync::Arc;
 
 use agent::agent::{Agent, AgentOptions, AgentStateInit};
-use agent::types::{AgentTool, AgentToolResult, ThinkingLevel, ToolUpdateFn};
+use agent::types::{AgentTool, AgentToolResult, ThinkingLevel};
 use ai::models::get_model;
 use ai::types::{Message, UserBlock};
 use serde_json::{json, Value};
@@ -84,7 +84,6 @@ impl AgentTool for CalculateTool {
         _tool_call_id: String,
         params: Value,
         _signal: Option<CancellationToken>,
-        _on_update: Option<ToolUpdateFn>,
     ) -> agent::types::BoxFuture<anyhow::Result<AgentToolResult>> {
         Box::pin(async move {
             let a = params.get("a").and_then(Value::as_f64).unwrap_or_default();
@@ -216,8 +215,6 @@ fn default_agent_opts_no_model() -> AgentOptions {
         session_id: None,
         get_api_key: None,
         thinking_budgets: None,
-        transport: None,
-        max_retry_delay_ms: None,
         max_turns: None,
     }
 }

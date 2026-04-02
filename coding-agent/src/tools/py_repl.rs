@@ -8,7 +8,7 @@
 use std::sync::Arc;
 
 use crate::tools;
-use agent::types::{AgentTool, AgentToolResult, BoxFuture, ToolUpdateFn};
+use agent::types::{AgentTool, AgentToolResult, BoxFuture};
 use ai::types::UserBlock;
 use serde_json::{json, Value};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -145,7 +145,6 @@ impl AgentTool for PyReplTool {
         _tool_call_id: String,
         params: Value,
         signal: Option<CancellationToken>,
-        _on_update: Option<ToolUpdateFn>,
     ) -> BoxFuture<anyhow::Result<AgentToolResult>> {
         let kernel = self.kernel.clone();
         let cell_counter = &self.cell_counter;
@@ -380,7 +379,7 @@ impl RpcDispatcher {
             .ok_or_else(|| format!("unknown tool: {}", name))?;
 
         let result = tool
-            .execute(format!("py-rpc-{}", name), args, None, None)
+            .execute(format!("py-rpc-{}", name), args, None)
             .await
             .map_err(|e| e.to_string())?;
 
@@ -396,7 +395,6 @@ impl RpcDispatcher {
             .execute(
                 format!("py-rpc-{}", tool.name()),
                 params.clone(),
-                None,
                 None,
             )
             .await
@@ -439,7 +437,7 @@ impl RpcDispatcher {
                             .get(name)
                             .ok_or_else(|| format!("unknown tool: {}", name))?;
                         let result = tool
-                            .execute(format!("py-parallel-{}", name), args, None, None)
+                            .execute(format!("py-parallel-{}", name), args, None)
                             .await
                             .map_err(|e| e.to_string())?;
                         Ok(Value::String(extract_text(&result)))
@@ -469,7 +467,6 @@ async fn dispatch_single(tool: &Arc<dyn AgentTool>, params: &Value) -> Result<Va
         .execute(
             format!("py-parallel-{}", tool.name()),
             params.clone(),
-            None,
             None,
         )
         .await

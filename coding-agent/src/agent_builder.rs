@@ -304,8 +304,6 @@ pub async fn build_agent(build_config: AgentBuildConfig) -> Result<BuiltAgent> {
         session_id: None,
         get_api_key: Some(get_api_key),
         thinking_budgets: None,
-        transport: None,
-        max_retry_delay_ms: None,
         max_turns,
     });
 

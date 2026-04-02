@@ -447,8 +447,6 @@ fn default_agent_opts() -> agent::agent::AgentOptions {
         session_id: None,
         get_api_key: None,
         thinking_budgets: None,
-        transport: None,
-        max_retry_delay_ms: None,
         max_turns: None,
     }
 }

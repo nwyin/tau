@@ -7,7 +7,7 @@
 use std::sync::Arc;
 
 use agent::orchestrator::OrchestratorState;
-use agent::types::{AgentEvent, AgentTool, AgentToolResult, BoxFuture, ToolUpdateFn};
+use agent::types::{AgentEvent, AgentTool, AgentToolResult, BoxFuture};
 use ai::types::UserBlock;
 use serde_json::{json, Value};
 use tokio_util::sync::CancellationToken;
@@ -93,7 +93,6 @@ impl AgentTool for DocumentTool {
         _tool_call_id: String,
         params: Value,
         _signal: Option<CancellationToken>,
-        _on_update: Option<ToolUpdateFn>,
     ) -> BoxFuture<anyhow::Result<AgentToolResult>> {
         let orchestrator = self.orchestrator.clone();
         let event_forwarder = self.event_forwarder.clone();
@@ -217,7 +216,7 @@ mod tests {
     }
 
     async fn exec(tool: &DocumentTool, params: Value) -> AgentToolResult {
-        tool.execute("test".to_string(), params, None, None)
+        tool.execute("test".to_string(), params, None)
             .await
             .unwrap()
     }
@@ -299,7 +298,7 @@ mod tests {
     async fn test_missing_name_on_read() {
         let tool = make_tool();
         let err = tool
-            .execute("test".to_string(), json!({"operation": "read"}), None, None)
+            .execute("test".to_string(), json!({"operation": "read"}), None)
             .await;
         assert!(err.is_err());
         assert!(err.unwrap_err().to_string().contains("'name' is required"));
@@ -312,7 +311,6 @@ mod tests {
             .execute(
                 "test".to_string(),
                 json!({"operation": "write", "name": "x"}),
-                None,
                 None,
             )
             .await;

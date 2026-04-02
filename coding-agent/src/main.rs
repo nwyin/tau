@@ -464,7 +464,6 @@ async fn main() -> Result<()> {
                 session_manager: session_mgr,
                 skills,
                 permission_service: built.permission_service,
-                startup_messages: built.startup_messages,
                 initial_messages: initial_messages_for_tui,
             },
         )

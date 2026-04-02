@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use agent::orchestrator::OrchestratorState;
-use agent::types::{AgentTool, AgentToolResult, BoxFuture, ToolUpdateFn};
+use agent::types::{AgentTool, AgentToolResult, BoxFuture};
 use ai::types::UserBlock;
 use serde_json::{json, Value};
 use tokio_util::sync::CancellationToken;
@@ -57,7 +57,6 @@ impl AgentTool for FromIdTool {
         _tool_call_id: String,
         params: Value,
         _signal: Option<CancellationToken>,
-        _on_update: Option<ToolUpdateFn>,
     ) -> BoxFuture<anyhow::Result<AgentToolResult>> {
         let orchestrator = self.orchestrator.clone();
 

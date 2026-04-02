@@ -29,8 +29,6 @@ use crate::skills::{self, Skill};
 struct StreamingState {
     assistant_buf: String,
     thinking_buf: String,
-    #[allow(dead_code)]
-    is_thinking: bool,
     assistant_msg_idx: usize,
 }
 
@@ -84,7 +82,6 @@ pub struct TauConfig {
     pub session_manager: SessionManager,
     pub skills: Vec<Skill>,
     pub permission_service: Arc<PermissionService>,
-    pub startup_messages: Vec<String>,
     pub initial_messages: Vec<AgentMessage>,
 }
 
@@ -129,19 +126,14 @@ pub struct TauModel {
 
     // Session
     session_manager: SessionManager,
-    #[allow(dead_code)]
     session_file: Option<Arc<SessionFile>>,
 
     // Skills + state
     skills: Vec<Skill>,
     is_busy: bool,
-    #[allow(dead_code)]
-    should_quit: bool,
     ctrl_c_count: u8,
     #[allow(dead_code)]
     active_thread_count: usize,
-    #[allow(dead_code)]
-    startup_messages: Vec<String>,
     debug: bool,
     warning: Option<String>,
 
@@ -208,10 +200,8 @@ impl TauModel {
             session_file: config.session_file,
             skills: config.skills,
             is_busy: false,
-            should_quit: false,
             ctrl_c_count: 0,
             active_thread_count: 0,
-            startup_messages: config.startup_messages,
             debug: false,
             warning: None,
             initial_messages: config.initial_messages,
@@ -980,7 +970,6 @@ impl TauModel {
                                 assistant_msg_idx: self.messages.len() - 1,
                                 assistant_buf: String::new(),
                                 thinking_buf: String::new(),
-                                is_thinking: false,
                             });
                         }
                         if let Some(ref mut stream) = self.streaming {
@@ -1007,11 +996,9 @@ impl TauModel {
                                 assistant_msg_idx: self.messages.len() - 1,
                                 assistant_buf: String::new(),
                                 thinking_buf: String::new(),
-                                is_thinking: true,
                             });
                         }
                         if let Some(ref mut stream) = self.streaming {
-                            stream.is_thinking = true;
                             stream.thinking_buf.push_str(delta);
                             if let Some(ChatMessage::Assistant(a)) =
                                 self.messages.get_mut(stream.assistant_msg_idx)
@@ -1307,7 +1294,6 @@ impl TauModel {
                                 assistant_msg_idx: msgs.len() - 1,
                                 assistant_buf: String::new(),
                                 thinking_buf: String::new(),
-                                is_thinking: false,
                             }
                         });
                     stream.assistant_buf.push_str(delta);
@@ -1333,10 +1319,8 @@ impl TauModel {
                                 assistant_msg_idx: msgs.len() - 1,
                                 assistant_buf: String::new(),
                                 thinking_buf: String::new(),
-                                is_thinking: true,
                             }
                         });
-                    stream.is_thinking = true;
                     stream.thinking_buf.push_str(delta);
                     if let Some(ChatMessage::Assistant(a)) = msgs.get_mut(stream.assistant_msg_idx)
                     {
@@ -1663,7 +1647,6 @@ impl Model for TauModel {
                     } else {
                         self.ctrl_c_count += 1;
                         if self.ctrl_c_count >= 2 {
-                            self.should_quit = true;
                             return ruse::runtime::quit();
                         }
                         self.push_system_msg("^C (press again to exit)");
@@ -1671,7 +1654,6 @@ impl Model for TauModel {
                     return None;
                 }
                 KeyCode::Char('d') if key.modifiers.contains(Modifiers::CTRL) => {
-                    self.should_quit = true;
                     return ruse::runtime::quit();
                 }
                 KeyCode::Char('t') if key.modifiers.contains(Modifiers::CTRL) => {

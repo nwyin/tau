@@ -16,7 +16,7 @@ fn make_temp_file(dir: &TempDir, name: &str, content: &str) -> std::path::PathBu
 async fn grep(params: serde_json::Value) -> String {
     let tool = GrepTool;
     let result = tool
-        .execute("id".to_string(), params, None, None)
+        .execute("id".to_string(), params, None)
         .await
         .unwrap();
     match &result.content[0] {

@@ -40,7 +40,6 @@ fn returns_false_for_opus_4_6_on_non_anthropic_api() {
         context_window: 200_000,
         max_tokens: 128_000,
         headers: None,
-        compat: None,
     };
     assert!(!supports_xhigh(&model));
 }

@@ -506,7 +506,7 @@ async fn execute_tool_calls(
                         let params = serde_json::Value::Object(
                             args.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
                         );
-                        match t.execute(call_id.clone(), params, cancel, None).await {
+                        match t.execute(call_id.clone(), params, cancel).await {
                             Ok(r) => (r, false),
                             Err(e) => (
                                 AgentToolResult {

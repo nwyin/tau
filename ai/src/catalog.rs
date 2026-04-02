@@ -39,7 +39,6 @@ fn m(id: &str, name: &str, prov: Prov, reasoning: bool, input: &[&str], lim: Lim
         context_window: lim.ctx,
         max_tokens: lim.max_tok,
         headers: None,
-        compat: None,
     }
 }
 

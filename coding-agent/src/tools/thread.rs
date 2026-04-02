@@ -10,7 +10,7 @@ use agent::completion_tools::{self, AbortTool, CompleteTool, EscalateTool};
 use agent::episode::generate_episode;
 use agent::orchestrator::OrchestratorState;
 use agent::thread::ThreadOutcome;
-use agent::types::{AgentEvent, AgentTool, AgentToolResult, BoxFuture, GetApiKeyFn, ToolUpdateFn};
+use agent::types::{AgentEvent, AgentTool, AgentToolResult, BoxFuture, GetApiKeyFn};
 use agent::{Agent, AgentOptions, AgentStateInit};
 use ai::types::{Model, UserBlock};
 use serde_json::{json, Value};
@@ -134,7 +134,6 @@ impl AgentTool for ThreadTool {
         _tool_call_id: String,
         params: Value,
         signal: Option<CancellationToken>,
-        _on_update: Option<ToolUpdateFn>,
     ) -> BoxFuture<anyhow::Result<AgentToolResult>> {
         let orchestrator = self.orchestrator.clone();
         let get_api_key = self.get_api_key.clone();
@@ -298,8 +297,6 @@ impl AgentTool for ThreadTool {
                 session_id: None,
                 get_api_key,
                 thinking_budgets: None,
-                transport: None,
-                max_retry_delay_ms: None,
                 max_turns: Some(25),
             });
 

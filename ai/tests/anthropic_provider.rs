@@ -42,7 +42,6 @@ fn anthropic_model() -> Model {
         context_window: 200_000,
         max_tokens: 8_192,
         headers: None,
-        compat: None,
     }
 }
 
@@ -64,7 +63,6 @@ fn reasoning_model() -> Model {
         context_window: 200_000,
         max_tokens: 32_000,
         headers: None,
-        compat: None,
     }
 }
 
@@ -86,7 +84,6 @@ fn non_xhigh_reasoning_model() -> Model {
         context_window: 200_000,
         max_tokens: 128_000,
         headers: None,
-        compat: None,
     }
 }
 

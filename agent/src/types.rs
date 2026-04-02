@@ -88,8 +88,6 @@ pub struct AgentToolResult {
     pub details: Option<Value>,
 }
 
-pub type ToolUpdateFn = Arc<dyn Fn(AgentToolResult) + Send + Sync>;
-
 pub trait AgentTool: Send + Sync {
     fn name(&self) -> &str;
     fn label(&self) -> &str;
@@ -101,7 +99,6 @@ pub trait AgentTool: Send + Sync {
         tool_call_id: String,
         params: Value,
         signal: Option<tokio_util::sync::CancellationToken>,
-        on_update: Option<ToolUpdateFn>,
     ) -> BoxFuture<anyhow::Result<AgentToolResult>>;
 }
 
@@ -118,7 +115,6 @@ pub struct AgentState {
     pub is_streaming: bool,
     pub stream_message: Option<AgentMessage>,
     pub pending_tool_calls: std::collections::HashSet<String>,
-    pub error: Option<String>,
 }
 
 // ---------------------------------------------------------------------------

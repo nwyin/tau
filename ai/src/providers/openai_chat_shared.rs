@@ -580,7 +580,6 @@ mod tests {
             context_window: 128000,
             max_tokens: 4096,
             headers: None,
-            compat: None,
         }
     }
 

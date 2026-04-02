@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use agent::agent::{Agent, AgentOptions, AgentStateInit};
-use agent::types::{AgentMessage, AgentTool, AgentToolResult, BoxFuture, ToolUpdateFn};
+use agent::types::{AgentMessage, AgentTool, AgentToolResult, BoxFuture};
 use ai::types::{
     AssistantMessage, ContentBlock, Cost, Message, ModelCost, StopReason, ToolResultMessage, Usage,
     UserBlock, UserContent, UserMessage,
@@ -31,7 +31,6 @@ fn mock_model() -> ai::types::Model {
         context_window: 8192,
         max_tokens: 2048,
         headers: None,
-        compat: None,
     }
 }
 
@@ -59,7 +58,6 @@ impl AgentTool for MockTool {
         _tool_call_id: String,
         _params: Value,
         _signal: Option<tokio_util::sync::CancellationToken>,
-        _on_update: Option<ToolUpdateFn>,
     ) -> BoxFuture<anyhow::Result<AgentToolResult>> {
         Box::pin(async {
             Ok(AgentToolResult {
@@ -186,8 +184,6 @@ fn new_agent() -> Agent {
         session_id: None,
         get_api_key: None,
         thinking_budgets: None,
-        transport: None,
-        max_retry_delay_ms: None,
         max_turns: None,
     })
 }

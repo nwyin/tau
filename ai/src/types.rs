@@ -63,26 +63,14 @@ pub enum CacheRetention {
     Long,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Transport {
-    #[default]
-    Sse,
-    #[serde(rename = "websocket")]
-    WebSocket,
-    Auto,
-}
-
 #[derive(Debug, Clone, Default)]
 pub struct StreamOptions {
     pub temperature: Option<f64>,
     pub max_tokens: Option<u32>,
     pub api_key: Option<String>,
-    pub transport: Option<Transport>,
     pub cache_retention: Option<CacheRetention>,
     pub session_id: Option<String>,
     pub headers: Option<HashMap<String, String>>,
-    pub max_retry_delay_ms: Option<u64>,
     pub metadata: Option<HashMap<String, serde_json::Value>>,
 }
 
@@ -449,7 +437,4 @@ pub struct Model {
     pub max_tokens: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub headers: Option<HashMap<String, String>>,
-    /// Provider-specific compatibility overrides (stored as raw JSON for flexibility).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub compat: Option<serde_json::Value>,
 }

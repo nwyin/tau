@@ -31,7 +31,6 @@ fn mock_model() -> ai::types::Model {
         context_window: 8192,
         max_tokens: 2048,
         headers: None,
-        compat: None,
     }
 }
 
@@ -177,8 +176,6 @@ async fn test_prompt_mode_runs_to_completion() {
         session_id: None,
         get_api_key: None,
         thinking_budgets: None,
-        transport: None,
-        max_retry_delay_ms: None,
         max_turns: None,
     });
 
@@ -224,8 +221,6 @@ async fn test_prompt_mode_no_tool_calls() {
         session_id: None,
         get_api_key: None,
         thinking_budgets: None,
-        transport: None,
-        max_retry_delay_ms: None,
         max_turns: None,
     });
 

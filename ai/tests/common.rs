@@ -26,7 +26,6 @@ pub fn mock_model(api: &str, provider: &str) -> ai::types::Model {
         context_window: 8192,
         max_tokens: 2048,
         headers: None,
-        compat: None,
     }
 }
 

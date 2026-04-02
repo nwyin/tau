@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use agent::orchestrator::OrchestratorState;
 use agent::thread::{Episode, ThreadOutcome};
-use agent::types::{AgentEvent, AgentTool, AgentToolResult, BoxFuture, GetApiKeyFn, ToolUpdateFn};
+use agent::types::{AgentEvent, AgentTool, AgentToolResult, BoxFuture, GetApiKeyFn};
 use ai::types::{Model, UserBlock};
 use futures::StreamExt;
 use serde_json::{json, Value};
@@ -102,7 +102,6 @@ impl AgentTool for QueryTool {
         _tool_call_id: String,
         params: Value,
         _signal: Option<CancellationToken>,
-        _on_update: Option<ToolUpdateFn>,
     ) -> BoxFuture<anyhow::Result<AgentToolResult>> {
         let orchestrator = self.orchestrator.clone();
         let get_api_key = self.get_api_key.clone();

@@ -23,7 +23,7 @@ fn text_content(result: &agent::types::AgentToolResult) -> String {
 async fn test_bash_echo() {
     let tool = BashTool;
     let result: AgentToolResult = tool
-        .execute("id1".into(), json!({"command": "echo hello"}), None, None)
+        .execute("id1".into(), json!({"command": "echo hello"}), None)
         .await
         .unwrap();
     let out = text_content(&result);
@@ -38,7 +38,7 @@ async fn test_bash_echo() {
 async fn test_bash_exit_code() {
     let tool = BashTool;
     let result: AgentToolResult = tool
-        .execute("id2".into(), json!({"command": "exit 1"}), None, None)
+        .execute("id2".into(), json!({"command": "exit 1"}), None)
         .await
         .unwrap();
     let out = text_content(&result);
@@ -56,7 +56,6 @@ async fn test_bash_timeout() {
         .execute(
             "id3".into(),
             json!({"command": "sleep 10", "timeout": 1}),
-            None,
             None,
         )
         .await
@@ -82,7 +81,7 @@ async fn test_bash_cancellation() {
     });
 
     let result: AgentToolResult = tool
-        .execute("id4".into(), json!({"command": "sleep 10"}), Some(ct), None)
+        .execute("id4".into(), json!({"command": "sleep 10"}), Some(ct))
         .await
         .unwrap();
     let out = text_content(&result);
@@ -104,7 +103,6 @@ async fn test_file_read_numbered_lines() {
         .execute(
             "id5".into(),
             json!({"path": path.to_str().unwrap()}),
-            None,
             None,
         )
         .await
@@ -137,7 +135,6 @@ async fn test_file_read_offset_limit() {
             "id6".into(),
             json!({"path": path.to_str().unwrap(), "offset": 2, "limit": 2}),
             None,
-            None,
         )
         .await
         .unwrap();
@@ -164,7 +161,6 @@ async fn test_file_read_not_found() {
             "id7".into(),
             json!({"path": "/nonexistent/path/that/does/not/exist.txt"}),
             None,
-            None,
         )
         .await
         .unwrap();
@@ -189,7 +185,6 @@ async fn test_file_read_binary() {
             "id8".into(),
             json!({"path": path.to_str().unwrap()}),
             None,
-            None,
         )
         .await
         .unwrap();
@@ -211,7 +206,6 @@ async fn test_file_write_creates_file() {
         .execute(
             "id9".into(),
             json!({"path": path.to_str().unwrap(), "content": "hello world"}),
-            None,
             None,
         )
         .await
@@ -235,7 +229,6 @@ async fn test_file_write_creates_parents() {
         .execute(
             "id10".into(),
             json!({"path": path.to_str().unwrap(), "content": "nested"}),
-            None,
             None,
         )
         .await
@@ -261,7 +254,6 @@ async fn test_file_write_overwrites() {
             "id11".into(),
             json!({"path": path.to_str().unwrap(), "content": "new content"}),
             None,
-            None,
         )
         .await
         .unwrap();
@@ -286,7 +278,6 @@ async fn test_file_edit_basic_replacement() {
             "id12".into(),
             json!({"path": path.to_str().unwrap(), "old_string": "y=2", "new_string": "y=999"}),
             None,
-            None,
         )
         .await
         .unwrap();
@@ -310,7 +301,6 @@ async fn test_file_edit_multiple_matches() {
         .execute(
             "id13".into(),
             json!({"path": path.to_str().unwrap(), "old_string": "foo", "new_string": "baz"}),
-            None,
             None,
         )
         .await
@@ -341,7 +331,6 @@ async fn test_file_edit_not_found() {
             "id14".into(),
             json!({"path": path.to_str().unwrap(), "old_string": "does not exist", "new_string": "x"}),
             None,
-            None,
         )
         .await
         .unwrap();
@@ -366,7 +355,6 @@ async fn test_file_edit_nonexistent_file() {
             "id15".into(),
             json!({"path": "/nonexistent/path/file.txt", "old_string": "foo", "new_string": "bar"}),
             None,
-            None,
         )
         .await
         .unwrap();
@@ -390,7 +378,6 @@ async fn test_file_edit_binary_file() {
             "id16".into(),
             json!({"path": path.to_str().unwrap(), "old_string": "foo", "new_string": "bar"}),
             None,
-            None,
         )
         .await
         .unwrap();
@@ -413,7 +400,6 @@ async fn test_file_edit_empty_new_string_deletes() {
         .execute(
             "id17".into(),
             json!({"path": path.to_str().unwrap(), "old_string": "delete me\n", "new_string": ""}),
-            None,
             None,
         )
         .await
@@ -443,7 +429,6 @@ async fn test_file_edit_whitespace_exact_match() {
             "id18a".into(),
             json!({"path": path.to_str().unwrap(), "old_string": "    return 1;", "new_string": "    return 2;"}),
             None,
-            None,
         )
         .await
         .unwrap();
@@ -460,7 +445,6 @@ async fn test_file_edit_whitespace_exact_match() {
         .execute(
             "id18b".into(),
             json!({"path": path.to_str().unwrap(), "old_string": "\treturn 1;", "new_string": "\treturn 42;"}),
-            None,
             None,
         )
         .await
@@ -494,7 +478,6 @@ async fn test_fuzzy_trailing_whitespace_recovery() {
             "fz1".into(),
             json!({"path": path.to_str().unwrap(), "old_string": "hello world   \ngoodbye", "new_string": "hi\nbye"}),
             None,
-            None,
         )
         .await
         .unwrap();
@@ -519,7 +502,6 @@ async fn test_fuzzy_unicode_recovery() {
         .execute(
             "fz2".into(),
             json!({"path": path.to_str().unwrap(), "old_string": "let msg = \u{201c}hello\u{201d};", "new_string": "let msg = \"world\";"}),
-            None,
             None,
         )
         .await
@@ -549,7 +531,6 @@ async fn test_fuzzy_ambiguous_rejected() {
             "fz3".into(),
             json!({"path": path.to_str().unwrap(), "old_string": "      foo()", "new_string": "bar()"}),
             None,
-            None,
         )
         .await
         .unwrap();
@@ -572,7 +553,6 @@ async fn test_exact_match_preferred_over_fuzzy() {
         .execute(
             "fz4".into(),
             json!({"path": path.to_str().unwrap(), "old_string": "  hello world", "new_string": "  goodbye world"}),
-            None,
             None,
         )
         .await
@@ -597,7 +577,6 @@ async fn test_fuzzy_indent_shift_recovery() {
         .execute(
             "fz5".into(),
             json!({"path": path.to_str().unwrap(), "old_string": "    let x = 1;\n    let y = 2;", "new_string": "  let x = 10;\n  let y = 20;"}),
-            None,
             None,
         )
         .await

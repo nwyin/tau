@@ -31,7 +31,6 @@ async fn file_read_details_correct_line_counts() {
             "id".into(),
             json!({"path": path.to_str().unwrap()}),
             None,
-            None,
         )
         .await
         .unwrap();
@@ -56,7 +55,6 @@ async fn file_read_details_limited_lines_returned() {
             "id".into(),
             json!({"path": path.to_str().unwrap(), "offset": 2, "limit": 2}),
             None,
-            None,
         )
         .await
         .unwrap();
@@ -79,7 +77,6 @@ async fn file_read_nonexistent_details_none() {
             "id".into(),
             json!({"path": "/nonexistent/xyz.txt"}),
             None,
-            None,
         )
         .await
         .unwrap();
@@ -100,7 +97,6 @@ async fn file_write_details_create() {
         .execute(
             "id".into(),
             json!({"path": path.to_str().unwrap(), "content": "hello world"}),
-            None,
             None,
         )
         .await
@@ -126,7 +122,6 @@ async fn file_write_details_overwrite() {
         .execute(
             "id".into(),
             json!({"path": path.to_str().unwrap(), "content": "new content"}),
-            None,
             None,
         )
         .await
@@ -157,7 +152,6 @@ async fn file_edit_details_success() {
             "id".into(),
             json!({"path": path.to_str().unwrap(), "old_string": "bar", "new_string": "baz"}),
             None,
-            None,
         )
         .await
         .unwrap();
@@ -179,7 +173,6 @@ async fn file_edit_details_no_match() {
         .execute(
             "id".into(),
             json!({"path": path.to_str().unwrap(), "old_string": "xyz", "new_string": "abc"}),
-            None,
             None,
         )
         .await
@@ -211,7 +204,6 @@ async fn glob_details_correct_result_count() {
             "id".into(),
             json!({"pattern": "*.txt", "path": dir.path().to_str().unwrap()}),
             None,
-            None,
         )
         .await
         .unwrap();
@@ -239,7 +231,6 @@ async fn glob_details_zero_matches() {
             "id".into(),
             json!({"pattern": "*.nonexistent", "path": dir.path().to_str().unwrap()}),
             None,
-            None,
         )
         .await
         .unwrap();
@@ -258,7 +249,7 @@ async fn glob_details_zero_matches() {
 #[tokio::test]
 async fn bash_details_success() {
     let result = BashTool
-        .execute("id".into(), json!({"command": "echo hello"}), None, None)
+        .execute("id".into(), json!({"command": "echo hello"}), None)
         .await
         .unwrap();
 
@@ -284,7 +275,7 @@ async fn bash_details_success() {
 #[tokio::test]
 async fn bash_details_nonzero_exit() {
     let result = BashTool
-        .execute("id".into(), json!({"command": "exit 42"}), None, None)
+        .execute("id".into(), json!({"command": "exit 42"}), None)
         .await
         .unwrap();
 
@@ -302,7 +293,6 @@ async fn bash_details_line_counts() {
         .execute(
             "id".into(),
             json!({"command": "echo line1; echo line2; echo line3 >&2"}),
-            None,
             None,
         )
         .await

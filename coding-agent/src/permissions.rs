@@ -13,7 +13,7 @@ use std::io::{self, BufRead, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use agent::types::{AgentTool, AgentToolResult, BoxFuture, ToolUpdateFn};
+use agent::types::{AgentTool, AgentToolResult, BoxFuture};
 use ai::types::UserBlock;
 use serde_json::Value;
 
@@ -279,12 +279,11 @@ impl AgentTool for PermissionWrapper {
         tool_call_id: String,
         params: Value,
         signal: Option<tokio_util::sync::CancellationToken>,
-        on_update: Option<ToolUpdateFn>,
     ) -> BoxFuture<anyhow::Result<AgentToolResult>> {
         let desc = describe_tool_call(self.inner.name(), &params);
 
         match self.service.check(self.inner.name(), &desc) {
-            Ok(()) => self.inner.execute(tool_call_id, params, signal, on_update),
+            Ok(()) => self.inner.execute(tool_call_id, params, signal),
             Err(msg) => Box::pin(async move {
                 Ok(AgentToolResult {
                     content: vec![UserBlock::Text { text: msg }],

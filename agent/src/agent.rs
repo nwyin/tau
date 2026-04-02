@@ -3,7 +3,7 @@
 use std::collections::{HashSet, VecDeque};
 use std::sync::{Arc, Mutex};
 
-use ai::types::{Model, SimpleStreamOptions, ThinkingBudgets, Transport};
+use ai::types::{Model, SimpleStreamOptions, ThinkingBudgets};
 use anyhow::{anyhow, Result};
 use futures::StreamExt;
 use tokio_util::sync::CancellationToken;
@@ -28,8 +28,6 @@ pub struct AgentOptions {
     pub session_id: Option<String>,
     pub get_api_key: Option<GetApiKeyFn>,
     pub thinking_budgets: Option<ThinkingBudgets>,
-    pub transport: Option<Transport>,
-    pub max_retry_delay_ms: Option<u64>,
     pub max_turns: Option<u32>,
 }
 
@@ -71,8 +69,6 @@ pub struct Agent {
     session_id: Option<String>,
     get_api_key: Option<GetApiKeyFn>,
     thinking_budgets: Option<ThinkingBudgets>,
-    transport: Transport,
-    max_retry_delay_ms: Option<u64>,
     max_turns: Option<u32>,
 
     cancel: Arc<Mutex<Option<CancellationToken>>>,
@@ -105,7 +101,6 @@ impl Agent {
             is_streaming: false,
             stream_message: None,
             pending_tool_calls: HashSet::new(),
-            error: None,
         };
 
         Agent {
@@ -121,8 +116,6 @@ impl Agent {
             session_id: opts.session_id,
             get_api_key: opts.get_api_key,
             thinking_budgets: opts.thinking_budgets,
-            transport: opts.transport.unwrap_or_default(),
-            max_retry_delay_ms: opts.max_retry_delay_ms,
             max_turns: opts.max_turns,
             cancel: Arc::new(Mutex::new(None)),
         }
@@ -247,7 +240,6 @@ impl Agent {
         state.is_streaming = false;
         state.stream_message = None;
         state.pending_tool_calls.clear();
-        state.error = None;
         drop(state);
         self.clear_all_queues();
     }
@@ -295,7 +287,6 @@ impl Agent {
             let mut state = self.state.lock().unwrap();
             state.is_streaming = true;
             state.stream_message = None;
-            state.error = None;
         }
 
         let context = self.build_context();
@@ -382,8 +373,6 @@ impl Agent {
             thinking_budgets: self.thinking_budgets.clone(),
             base: ai::types::StreamOptions {
                 session_id: self.session_id.clone(),
-                max_retry_delay_ms: self.max_retry_delay_ms,
-                transport: Some(self.transport.clone()),
                 ..Default::default()
             },
         };

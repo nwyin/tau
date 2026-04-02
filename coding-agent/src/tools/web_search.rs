@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use agent::types::{AgentTool, AgentToolResult, BoxFuture, ToolUpdateFn};
+use agent::types::{AgentTool, AgentToolResult, BoxFuture};
 use ai::types::UserBlock;
 use anyhow::Result;
 use serde_json::{json, Value};
@@ -40,7 +40,6 @@ impl AgentTool for WebSearchTool {
         _tool_call_id: String,
         params: Value,
         signal: Option<CancellationToken>,
-        _on_update: Option<ToolUpdateFn>,
     ) -> BoxFuture<Result<AgentToolResult>> {
         Box::pin(async move {
             let api_key = match std::env::var("EXA_API_KEY") {

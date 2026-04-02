@@ -13,7 +13,6 @@ async fn invalid_url_no_scheme_returns_error() {
             "id1".to_string(),
             json!({"url": "example.com/page"}),
             None,
-            None,
         )
         .await
         .expect("execute should not panic");
@@ -34,7 +33,6 @@ async fn ftp_url_returns_error() {
             "id2".to_string(),
             json!({"url": "ftp://example.com/file.txt"}),
             None,
-            None,
         )
         .await
         .expect("execute should not panic");
@@ -54,7 +52,6 @@ async fn file_url_returns_error() {
         .execute(
             "id3".to_string(),
             json!({"url": "file:///etc/passwd"}),
-            None,
             None,
         )
         .await

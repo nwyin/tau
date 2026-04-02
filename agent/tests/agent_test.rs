@@ -29,8 +29,6 @@ fn creates_agent_with_default_state() {
         session_id: None,
         get_api_key: None,
         thinking_budgets: None,
-        transport: None,
-        max_retry_delay_ms: None,
         max_turns: None,
     });
 
@@ -42,7 +40,6 @@ fn creates_agent_with_default_state() {
         assert!(!s.is_streaming);
         assert!(s.stream_message.is_none());
         assert!(s.pending_tool_calls.is_empty());
-        assert!(s.error.is_none());
     });
 }
 
@@ -314,8 +311,6 @@ fn default_opts() -> AgentOptions {
         session_id: None,
         get_api_key: None,
         thinking_budgets: None,
-        transport: None,
-        max_retry_delay_ms: None,
         max_turns: None,
     }
 }
