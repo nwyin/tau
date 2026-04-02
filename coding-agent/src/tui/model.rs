@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use agent::types::{AgentEvent, AgentMessage, ThinkingLevel};
@@ -31,6 +32,11 @@ enum Screen {
 enum FocusState {
     Editor,
     Chat,
+    Sidebar,
+    /// Thread inspector modal is open. `thread_idx` is the index into `thread_entries`.
+    ThreadModal {
+        thread_idx: usize,
+    },
 }
 
 // ---------------------------------------------------------------------------
@@ -121,12 +127,43 @@ pub struct TauModel {
     startup_messages: Vec<String>,
     debug: bool,
     warning: Option<String>,
+
+    // Thread inspector
+    thread_entries: Vec<ThreadEntry>,
+    sidebar_cursor: usize,
+    /// Per-thread message buffers for the inspector modal, keyed by thread_id.
+    thread_messages: HashMap<String, Vec<ChatMessage>>,
+    /// Per-thread streaming state, keyed by thread_id.
+    thread_streaming: HashMap<String, StreamingState>,
+    /// Viewport for the thread inspector modal.
+    thread_viewport: Viewport,
 }
 
 struct PendingPermission {
     tool_name: String,
     description: String,
     resp_tx: std::sync::mpsc::Sender<PromptResult>,
+}
+
+// ---------------------------------------------------------------------------
+// Thread entries for sidebar navigation + inspector modal
+// ---------------------------------------------------------------------------
+
+/// A thread entry tracked in the sidebar for navigation and inspection.
+#[allow(dead_code)]
+struct ThreadEntry {
+    thread_id: String,
+    alias: String,
+    task: String,
+    model: String,
+    status: ThreadEntryStatus,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum ThreadEntryStatus {
+    Running,
+    Completed,
+    Failed,
 }
 
 // ---------------------------------------------------------------------------
@@ -145,7 +182,9 @@ pub struct TauConfig {
 
 impl TauModel {
     pub fn new(agent: Arc<Agent>, config: TauConfig) -> Self {
-        let input = TextInput::new().with_placeholder("Ready for instructions");
+        let input = TextInput::new()
+            .with_placeholder("Ready for instructions")
+            .with_width(80);
 
         Self {
             width: 80,
@@ -186,6 +225,11 @@ impl TauModel {
             startup_messages: config.startup_messages,
             debug: false,
             warning: None,
+            thread_entries: Vec::new(),
+            sidebar_cursor: 0,
+            thread_messages: HashMap::new(),
+            thread_streaming: HashMap::new(),
+            thread_viewport: Viewport::new(80, 20),
         }
     }
 
@@ -289,10 +333,12 @@ impl TauModel {
                     ("Ctrl-T", "Cycle thinking level"),
                     ("Ctrl-C", "Abort / exit"),
                     ("Ctrl-D", "Exit"),
-                    ("Tab", "Switch focus (editor/chat)"),
-                    ("j/k", "Scroll chat"),
+                    ("Tab", "Cycle focus (editor/chat/sidebar)"),
+                    ("j/k", "Scroll / navigate"),
                     ("J/K", "Jump between messages"),
                     ("Space", "Expand/collapse"),
+                    ("Enter", "Inspect thread (sidebar)"),
+                    ("Esc", "Close modal / back"),
                 ];
                 for (key, desc) in keys {
                     text.push_str(&format!("  {:<24} {}\n", key, desc));
@@ -768,7 +814,12 @@ impl TauModel {
                 None
             }
 
-            AgentEvent::ThreadStart { alias, task, .. } => {
+            AgentEvent::ThreadStart {
+                thread_id,
+                alias,
+                task,
+                model,
+            } => {
                 self.active_thread_count += 1;
                 self.active_thread_aliases.push(alias.clone());
                 let header = format!("{}: {}", alias, task.chars().take(60).collect::<String>());
@@ -781,6 +832,18 @@ impl TauModel {
                     expanded: false,
                 }));
                 self.active_tools.push(format!("thread:{}", alias));
+
+                // Track thread entry for sidebar navigation
+                self.thread_entries.push(ThreadEntry {
+                    thread_id: thread_id.clone(),
+                    alias: alias.clone(),
+                    task: task.clone(),
+                    model: model.clone(),
+                    status: ThreadEntryStatus::Running,
+                });
+                // Initialize message buffer for this thread
+                self.thread_messages.entry(thread_id.clone()).or_default();
+
                 self.refresh_chat_content();
                 None
             }
@@ -804,6 +867,17 @@ impl TauModel {
                         }
                     }
                 }
+
+                // Update thread entry status
+                if let Some(entry) = self.thread_entries.iter_mut().find(|e| e.alias == *alias) {
+                    entry.status = match outcome {
+                        agent::thread::ThreadOutcome::Completed { .. } => {
+                            ThreadEntryStatus::Completed
+                        }
+                        _ => ThreadEntryStatus::Failed,
+                    };
+                }
+
                 self.refresh_chat_content();
                 None
             }
@@ -823,8 +897,202 @@ impl TauModel {
                 None
             }
 
+            AgentEvent::ThreadEvent {
+                thread_id,
+                alias: _,
+                event,
+            } => {
+                self.handle_thread_event(thread_id, event);
+                // Refresh modal viewport if we're viewing this thread
+                if let FocusState::ThreadModal { thread_idx } = self.focus {
+                    if let Some(entry) = self.thread_entries.get(thread_idx) {
+                        if entry.thread_id == *thread_id {
+                            self.refresh_thread_modal_content(thread_id);
+                        }
+                    }
+                }
+                None
+            }
+
             _ => None,
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // Thread event handling (for inspector modal)
+    // -----------------------------------------------------------------------
+
+    fn handle_thread_event(&mut self, thread_id: &str, event: &AgentEvent) {
+        let msgs = self
+            .thread_messages
+            .entry(thread_id.to_string())
+            .or_default();
+
+        match event {
+            AgentEvent::MessageUpdate {
+                assistant_event, ..
+            } => match assistant_event.as_ref() {
+                AssistantMessageEvent::TextDelta { delta, .. } => {
+                    let stream = self
+                        .thread_streaming
+                        .entry(thread_id.to_string())
+                        .or_insert_with(|| {
+                            msgs.push(ChatMessage::Assistant(AssistantMessage {
+                                thinking: None,
+                                thinking_expanded: false,
+                                content: String::new(),
+                                rendered_content: None,
+                                model_name: String::new(),
+                                is_streaming: true,
+                            }));
+                            StreamingState {
+                                assistant_msg_idx: msgs.len() - 1,
+                                assistant_buf: String::new(),
+                                thinking_buf: String::new(),
+                                is_thinking: false,
+                            }
+                        });
+                    stream.assistant_buf.push_str(delta);
+                    if let Some(ChatMessage::Assistant(a)) = msgs.get_mut(stream.assistant_msg_idx)
+                    {
+                        a.content.clone_from(&stream.assistant_buf);
+                    }
+                }
+                AssistantMessageEvent::ThinkingDelta { delta, .. } => {
+                    let stream = self
+                        .thread_streaming
+                        .entry(thread_id.to_string())
+                        .or_insert_with(|| {
+                            msgs.push(ChatMessage::Assistant(AssistantMessage {
+                                thinking: Some(String::new()),
+                                thinking_expanded: false,
+                                content: String::new(),
+                                rendered_content: None,
+                                model_name: String::new(),
+                                is_streaming: true,
+                            }));
+                            StreamingState {
+                                assistant_msg_idx: msgs.len() - 1,
+                                assistant_buf: String::new(),
+                                thinking_buf: String::new(),
+                                is_thinking: true,
+                            }
+                        });
+                    stream.is_thinking = true;
+                    stream.thinking_buf.push_str(delta);
+                    if let Some(ChatMessage::Assistant(a)) = msgs.get_mut(stream.assistant_msg_idx)
+                    {
+                        a.thinking = Some(stream.thinking_buf.clone());
+                    }
+                }
+                _ => {}
+            },
+
+            AgentEvent::TurnEnd { .. } => {
+                // Finalize the current streaming message for this thread
+                if let Some(stream) = self.thread_streaming.remove(thread_id) {
+                    if let Some(ChatMessage::Assistant(a)) = msgs.get_mut(stream.assistant_msg_idx)
+                    {
+                        a.is_streaming = false;
+                        a.rendered_content = Some(ruse::glamour::render_dark(&a.content));
+                    }
+                }
+            }
+
+            AgentEvent::ToolExecutionStart {
+                tool_call_id,
+                tool_name,
+                args,
+                ..
+            } => {
+                let header = extract_tool_detail(tool_name, args);
+                msgs.push(ChatMessage::ToolCall(ToolCallMessage {
+                    tool_call_id: Some(tool_call_id.clone()),
+                    tool_name: tool_name.clone(),
+                    header,
+                    body: String::new(),
+                    status: ToolStatus::Pending,
+                    expanded: false,
+                }));
+            }
+
+            AgentEvent::ToolExecutionEnd {
+                tool_call_id,
+                result,
+                is_error,
+                ..
+            } => {
+                let body_text = result
+                    .content
+                    .iter()
+                    .filter_map(|b| {
+                        if let ai::types::UserBlock::Text { text } = b {
+                            Some(text.as_str())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                for msg in msgs.iter_mut().rev() {
+                    if let ChatMessage::ToolCall(tc) = msg {
+                        if tc.tool_call_id.as_deref() == Some(tool_call_id)
+                            && tc.status == ToolStatus::Pending
+                        {
+                            tc.status = if *is_error {
+                                ToolStatus::Error
+                            } else {
+                                ToolStatus::Success
+                            };
+                            tc.body = body_text;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            AgentEvent::AgentEnd { .. } => {
+                // Finalize any leftover streaming state
+                if let Some(stream) = self.thread_streaming.remove(thread_id) {
+                    if let Some(ChatMessage::Assistant(a)) = msgs.get_mut(stream.assistant_msg_idx)
+                    {
+                        a.is_streaming = false;
+                        a.rendered_content = Some(ruse::glamour::render_dark(&a.content));
+                    }
+                }
+            }
+
+            _ => {}
+        }
+    }
+
+    fn refresh_thread_modal_content(&mut self, thread_id: &str) {
+        let lo = layout::compute_layout(self.width, self.height, self.is_compact, 3);
+        // Modal is 80% of viewport
+        let modal_w = (lo.chat_w * 80 / 100).max(40);
+        let modal_h = (lo.chat_h * 80 / 100).max(10);
+        // Inner width accounts for border + padding (2 border + 2 padding = 4)
+        let inner_w = modal_w.saturating_sub(4);
+        // Header takes 4 lines (title, task, status, separator), border takes 2
+        let viewport_h = modal_h.saturating_sub(6);
+
+        // Resize viewport to match modal
+        self.thread_viewport.set_width(inner_w);
+        self.thread_viewport.set_height(viewport_h);
+
+        let mut content = String::new();
+        if let Some(msgs) = self.thread_messages.get(thread_id) {
+            for (i, msg) in msgs.iter().enumerate() {
+                if i > 0 {
+                    content.push('\n');
+                }
+                content.push_str(&msg.render(inner_w, false));
+            }
+        }
+
+        self.thread_viewport.set_content(&content);
+        // Auto-scroll to bottom (follow mode)
+        self.thread_viewport.goto_bottom();
     }
 
     // -----------------------------------------------------------------------
@@ -991,7 +1259,29 @@ impl Model for TauModel {
                         }
                         return None;
                     }
+                    KeyCode::Tab if self.focus == FocusState::Chat => {
+                        // Chat -> Sidebar (if not compact and threads exist)
+                        if !self.is_compact && !self.thread_entries.is_empty() {
+                            self.focus = FocusState::Sidebar;
+                        } else {
+                            self.focus = FocusState::Editor;
+                            self.scroll_follow = true;
+                            self.chat_viewport.goto_bottom();
+                            self.refresh_chat_content();
+                            return self.input.focus();
+                        }
+                        return None;
+                    }
+                    KeyCode::Tab if self.focus == FocusState::Sidebar => {
+                        // Sidebar -> Editor
+                        self.focus = FocusState::Editor;
+                        self.scroll_follow = true;
+                        self.chat_viewport.goto_bottom();
+                        self.refresh_chat_content();
+                        return self.input.focus();
+                    }
                     KeyCode::Tab => {
+                        // ThreadModal or other -> Editor
                         self.focus = FocusState::Editor;
                         self.scroll_follow = true;
                         self.chat_viewport.goto_bottom();
@@ -1068,6 +1358,61 @@ impl Model for TauModel {
                         }
                         _ => {}
                     },
+                    FocusState::Sidebar => match key.code {
+                        KeyCode::Char('j') | KeyCode::Down => {
+                            if !self.thread_entries.is_empty()
+                                && self.sidebar_cursor + 1 < self.thread_entries.len()
+                            {
+                                self.sidebar_cursor += 1;
+                            }
+                        }
+                        KeyCode::Char('k') | KeyCode::Up => {
+                            if self.sidebar_cursor > 0 {
+                                self.sidebar_cursor -= 1;
+                            }
+                        }
+                        KeyCode::Enter => {
+                            if !self.thread_entries.is_empty() {
+                                let idx = self.sidebar_cursor;
+                                let thread_id = self.thread_entries[idx].thread_id.clone();
+                                self.refresh_thread_modal_content(&thread_id);
+                                self.focus = FocusState::ThreadModal { thread_idx: idx };
+                            }
+                        }
+                        KeyCode::Escape => {
+                            self.focus = FocusState::Editor;
+                            return self.input.focus();
+                        }
+                        _ => {}
+                    },
+                    FocusState::ThreadModal { .. } => match key.code {
+                        KeyCode::Escape => {
+                            self.focus = FocusState::Sidebar;
+                        }
+                        KeyCode::Char('j') | KeyCode::Down => {
+                            self.thread_viewport.line_down(1);
+                        }
+                        KeyCode::Char('k') | KeyCode::Up => {
+                            self.thread_viewport.line_up(1);
+                        }
+                        KeyCode::Char('d') => {
+                            self.thread_viewport.half_page_down();
+                        }
+                        KeyCode::Char('u') => {
+                            self.thread_viewport.half_page_up();
+                        }
+                        KeyCode::Char('G') => {
+                            self.thread_viewport.goto_bottom();
+                        }
+                        KeyCode::Char('g') => {
+                            self.thread_viewport.goto_top();
+                        }
+                        KeyCode::Char(' ') => {
+                            // Toggle expand on selected items would require cursor tracking
+                            // within the modal — defer for now
+                        }
+                        _ => {}
+                    },
                 }
                 None
             }
@@ -1094,7 +1439,20 @@ impl Model for TauModel {
                 // Resize viewport without losing content
                 self.chat_viewport.set_width(lo.chat_w);
                 self.chat_viewport.set_height(lo.chat_h);
+                // Input spans full width (not just chat column)
+                self.input.set_width(self.width);
                 self.refresh_chat_content();
+                None
+            }
+
+            Msg::Paste(text) => {
+                if self.focus == FocusState::Editor && !self.is_busy {
+                    // Collapse newlines to spaces for single-line input
+                    let cleaned = text.replace('\n', " ").replace('\r', "");
+                    // Insert into the input by forwarding as a cleaned paste
+                    self.input.update(&Msg::Paste(cleaned));
+                    self.tab_state = None;
+                }
                 None
             }
 
@@ -1216,6 +1574,8 @@ impl TauModel {
             match self.focus {
                 FocusState::Editor => FocusHint::Editor,
                 FocusState::Chat => FocusHint::Chat,
+                FocusState::Sidebar => FocusHint::Sidebar,
+                FocusState::ThreadModal { .. } => FocusHint::ThreadModal,
             }
         };
         let status_bar = status::render_status_bar(self.width, focus_hint, self.warning.as_deref());
@@ -1233,6 +1593,25 @@ impl TauModel {
                 ThinkingLevel::High => "high",
                 ThinkingLevel::XHigh => "xhigh",
             };
+            let sidebar_threads: Vec<sidebar::SidebarThread> = self
+                .thread_entries
+                .iter()
+                .map(|e| sidebar::SidebarThread {
+                    alias: &e.alias,
+                    status: match e.status {
+                        ThreadEntryStatus::Running => sidebar::SidebarThreadStatus::Running,
+                        ThreadEntryStatus::Completed => sidebar::SidebarThreadStatus::Completed,
+                        ThreadEntryStatus::Failed => sidebar::SidebarThreadStatus::Failed,
+                    },
+                })
+                .collect();
+            let selected_thread = if self.focus == FocusState::Sidebar
+                || matches!(self.focus, FocusState::ThreadModal { .. })
+            {
+                Some(self.sidebar_cursor)
+            } else {
+                None
+            };
             let sb = sidebar::render_sidebar(&sidebar::SidebarState {
                 width: lo.sidebar_w,
                 height: lo.chat_h,
@@ -1245,17 +1624,123 @@ impl TauModel {
                 active_tools: &self.active_tools,
                 todos: &self.todos,
                 cwd: &self.cwd,
+                threads: &sidebar_threads,
+                selected_thread,
             });
 
             let chat_w = lo.chat_w as u16;
             let sidebar_w = lo.sidebar_w as u16;
             let bottom_h = h.saturating_sub(chat_h);
 
-            View::new("")
+            let mut view = View::new("")
                 .with_region(Rect::new(0, 0, chat_w, chat_h), chat)
                 .with_region(Rect::new(chat_w, 0, sidebar_w, chat_h), sb)
-                .with_region(Rect::new(0, chat_h, w, bottom_h), bottom)
-                .with_alt_screen()
+                .with_region(Rect::new(0, chat_h, w, bottom_h), bottom);
+
+            // Thread inspector modal overlay
+            if let FocusState::ThreadModal { thread_idx } = self.focus {
+                if let Some(entry) = self.thread_entries.get(thread_idx) {
+                    let modal = self.render_thread_modal(entry, lo.chat_w, lo.chat_h);
+                    // Center the modal over the chat area
+                    let modal_w = (lo.chat_w * 80 / 100).max(40);
+                    let modal_h = (lo.chat_h * 80 / 100).max(10);
+                    let modal_x = (lo.chat_w.saturating_sub(modal_w)) / 2;
+                    let modal_y = (lo.chat_h.saturating_sub(modal_h)) / 2;
+                    view = view.with_region(
+                        Rect::new(
+                            modal_x as u16,
+                            modal_y as u16,
+                            modal_w as u16,
+                            modal_h as u16,
+                        ),
+                        modal,
+                    );
+                }
+            }
+
+            view.with_alt_screen()
         }
+    }
+
+    fn render_thread_modal(&self, entry: &ThreadEntry, chat_w: usize, chat_h: usize) -> String {
+        let modal_w = (chat_w * 80 / 100).max(40);
+        let modal_h = (chat_h * 80 / 100).max(10);
+        // Inner dims = modal - border (2) - padding (2)
+        let inner_w = modal_w.saturating_sub(4);
+
+        // Header
+        let (status_icon, status_style, status_text) = match entry.status {
+            ThreadEntryStatus::Running => {
+                (theme::TOOL_PENDING, theme::green_dark_style(), "Running")
+            }
+            ThreadEntryStatus::Completed => {
+                (theme::TOOL_SUCCESS, theme::green_style(), "Completed")
+            }
+            ThreadEntryStatus::Failed => (theme::TOOL_ERROR, theme::red_style(), "Failed"),
+        };
+
+        let title = format!(
+            "{} {} {} {}",
+            status_style.render(&[status_icon]),
+            theme::subtle_style().bold(true).render(&[&entry.alias]),
+            theme::half_muted_style().render(&["@"]),
+            theme::half_muted_style().render(&[&entry.model]),
+        );
+
+        // Task description (truncated to fit)
+        let task_display = if entry.task.len() > inner_w {
+            format!("{}…", &entry.task[..inner_w.saturating_sub(1)])
+        } else {
+            entry.task.clone()
+        };
+        let task_line = theme::half_muted_style().render(&[&task_display]);
+
+        let status_line = theme::half_muted_style().render(&[status_text]);
+
+        let header_sep = theme::muted_style().render(&[&theme::SECTION_SEP.repeat(inner_w)]);
+
+        // Viewport content (thread messages)
+        let viewport_content = self.thread_viewport.view();
+
+        // Build lines: header + separator + viewport
+        // We need to fit: title(1) + task(1) + status(1) + sep(1) + viewport(rest)
+        let header_lines = 4; // title, task, status, separator
+        let viewport_h = modal_h.saturating_sub(header_lines + 2); // 2 for top/bottom border
+
+        // Resize the viewport for the modal dimensions
+        // (can't mutate self here since we're in &self, but viewport was set up in refresh)
+        let _ = viewport_h; // viewport dimensions were set in refresh_thread_modal_content
+
+        let mut body_parts = vec![title, task_line, status_line, header_sep];
+
+        // Add viewport lines, truncated to viewport_h
+        let vp_lines: Vec<&str> = viewport_content.lines().collect();
+        let vp_display: String = vp_lines
+            .iter()
+            .take(viewport_h)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("\n");
+        if !vp_display.is_empty() {
+            body_parts.push(vp_display);
+        } else {
+            body_parts.push(theme::half_muted_style().render(&["No messages yet"]));
+        }
+
+        let body = body_parts.join("\n");
+
+        // Border color: green for running, muted for completed/failed
+        let border_color = match entry.status {
+            ThreadEntryStatus::Running => theme::GREEN_DARK,
+            ThreadEntryStatus::Completed => theme::FG_HALF_MUTED,
+            ThreadEntryStatus::Failed => theme::RED,
+        };
+
+        Style::new()
+            .border(ROUNDED_BORDER, &[true])
+            .border_foreground(Color::parse(border_color))
+            .padding(&[0, 1])
+            .width(modal_w as u16)
+            .render(&[&body])
     }
 }

@@ -5,6 +5,8 @@ use super::theme;
 pub enum FocusHint {
     Editor,
     Chat,
+    Sidebar,
+    ThreadModal,
     Permission,
 }
 
@@ -23,7 +25,9 @@ pub fn render_status_bar(width: usize, hint: FocusHint, warning: Option<&str>) -
 
     let help = match hint {
         FocusHint::Editor => "enter send | shift+enter newline | ctrl+p cmds | tab chat",
-        FocusHint::Chat => "j/k scroll | J/K messages | space expand | tab editor",
+        FocusHint::Chat => "j/k scroll | J/K messages | space expand | tab sidebar",
+        FocusHint::Sidebar => "j/k navigate | enter inspect | esc editor | tab editor",
+        FocusHint::ThreadModal => "j/k scroll | esc close | g/G top/bottom",
         FocusHint::Permission => "a allow | s session | d deny | esc cancel",
     };
 

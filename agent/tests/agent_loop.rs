@@ -802,5 +802,6 @@ fn event_type(e: &AgentEvent) -> &'static str {
         AgentEvent::QueryStart { .. } => "query_start",
         AgentEvent::QueryEnd { .. } => "query_end",
         AgentEvent::ContextCompact { .. } => "context_compact",
+        AgentEvent::ThreadEvent { .. } => "thread_event",
     }
 }

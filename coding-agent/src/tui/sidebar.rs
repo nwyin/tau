@@ -3,6 +3,19 @@ use ruse::prelude::*;
 use super::theme;
 use crate::tools::TodoItem;
 
+/// Thread entry for sidebar display.
+pub struct SidebarThread<'a> {
+    pub alias: &'a str,
+    pub status: SidebarThreadStatus,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum SidebarThreadStatus {
+    Running,
+    Completed,
+    Failed,
+}
+
 pub struct SidebarState<'a> {
     pub width: usize,
     pub height: usize,
@@ -15,6 +28,10 @@ pub struct SidebarState<'a> {
     pub active_tools: &'a [String],
     pub todos: &'a [TodoItem],
     pub cwd: &'a str,
+    /// Thread entries for sidebar navigation.
+    pub threads: &'a [SidebarThread<'a>],
+    /// Currently selected thread index (when sidebar is focused).
+    pub selected_thread: Option<usize>,
 }
 
 pub fn render_sidebar(s: &SidebarState) -> String {
@@ -103,6 +120,45 @@ pub fn render_sidebar(s: &SidebarState) -> String {
                 theme::half_muted_style().render(&[&display]),
             );
             lines.push(tool_line);
+        }
+    }
+
+    // Thread entries for navigation
+    if !s.threads.is_empty() {
+        lines.push(String::new());
+        lines.push(section_header("Threads", inner_w));
+
+        for (i, thread) in s.threads.iter().enumerate() {
+            let is_selected = s.selected_thread == Some(i);
+            let (icon, icon_style) = match thread.status {
+                SidebarThreadStatus::Running => (theme::TOOL_PENDING, theme::green_dark_style()),
+                SidebarThreadStatus::Completed => (theme::TOOL_SUCCESS, theme::green_style()),
+                SidebarThreadStatus::Failed => (theme::TOOL_ERROR, theme::red_style()),
+            };
+            // Truncate alias to fit sidebar
+            let max_alias = inner_w.saturating_sub(4); // "  X " prefix
+            let alias = if thread.alias.len() > max_alias {
+                format!("{}…", &thread.alias[..max_alias.saturating_sub(1)])
+            } else {
+                thread.alias.to_string()
+            };
+            let label_style = if is_selected {
+                theme::subtle_style().bold(true)
+            } else {
+                theme::half_muted_style()
+            };
+            let prefix = if is_selected { ">" } else { " " };
+            let line = format!(
+                "{}{} {}",
+                theme::primary_style().render(&[prefix]),
+                icon_style.render(&[icon]),
+                label_style.render(&[&alias]),
+            );
+            lines.push(line);
+
+            if lines.len() >= s.height.saturating_sub(1) {
+                break;
+            }
         }
     }
 

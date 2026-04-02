@@ -313,7 +313,7 @@ impl AgentTool for ThreadTool {
                 let tid = thread_id.clone();
                 let a = alias.clone();
                 let _unsub = agent.subscribe(move |event| {
-                    // Forward tool events with thread identity baked in
+                    // Forward tool events with thread identity baked in (for main chat display)
                     match event {
                         AgentEvent::ToolExecutionStart {
                             tool_call_id,
@@ -347,6 +347,13 @@ impl AgentTool for ThreadTool {
                         }
                         _ => {}
                     }
+
+                    // Also forward ALL events wrapped in ThreadEvent for the inspector modal
+                    fwd(AgentEvent::ThreadEvent {
+                        thread_id: tid.clone(),
+                        alias: a.clone(),
+                        event: Box::new(event.clone()),
+                    });
                 });
             }
 

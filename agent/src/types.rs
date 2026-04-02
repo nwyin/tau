@@ -277,6 +277,15 @@ pub enum AgentEvent {
         after_tokens: u64,
         strategy: String,
     },
+
+    /// Wraps an event emitted by a child thread's agent loop, tagged with
+    /// the thread's identity. Used by the TUI to build per-thread message
+    /// buffers for the thread inspector modal.
+    ThreadEvent {
+        thread_id: String,
+        alias: String,
+        event: Box<AgentEvent>,
+    },
 }
 
 // Needed so AgentToolResult can live inside AgentEvent::ToolExecutionUpdate.

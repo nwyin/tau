@@ -55,7 +55,8 @@ pub async fn run(agent: Arc<Agent>, config: TuiRunConfig) -> Result<()> {
 
     let program = Program::new(model)
         .with_alt_screen()
-        .with_mouse(MouseMode::CellMotion);
+        .with_mouse(MouseMode::CellMotion)
+        .with_bracketed_paste();
 
     let (handle, fut) = program.run_with_handle();
 

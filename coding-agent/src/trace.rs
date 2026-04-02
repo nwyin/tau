@@ -486,6 +486,10 @@ fn handle_event(s: &mut TraceInner, event: &AgentEvent, trace_dir: &Path) {
                 }),
             );
         }
+
+        // ThreadEvent is handled by the TUI — the inner events are already
+        // traced when they arrive as direct forwarded events (ToolExecutionStart/End).
+        AgentEvent::ThreadEvent { .. } => {}
     }
 }
 
