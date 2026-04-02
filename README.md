@@ -1,33 +1,42 @@
 # tau
 
-A minimal Rust coding agent harness
+A Rust coding-agent harness with a full-screen TUI, headless CLI, JSON-RPC serve mode, reusable worker threads, and structured traces.
 
 ## Architecture
 
-```
-ai             LLM streaming primitives (providers, models, event streams)
-agent          generic agent loop (tools, steering, follow-ups, events)
-coding-agent   built-in tools, system prompt, REPL + headless CLI
+```text
+ai             provider adapters, model catalog, auth, streaming primitives
+agent          generic agent runtime, context compaction, stats, orchestration
+coding-agent   tau binary: TUI/CLI/serve modes, tools, permissions, sessions, traces
 ```
 
-`ai` and `agent` have no opinion about coding — they're generic building blocks. `coding-agent` is one harness built on top; you could build a data-analysis agent or a research agent on the same foundation without importing coding-specific dependencies.
+`ai` and `agent` stay generic. `coding-agent` is the built-in coding harness on top.
+
+## What tau has today
+
+- Full-screen TUI with chat, sidebar, slash commands, thread inspection, and inline edit/create diffs
+- Headless `--prompt` mode for scripting and benchmarks
+- `serve` mode for JSON-RPC orchestration over stdio
+- Built-in tool suite for file edits, shell, search, web access, planning, and orchestration
+- Reusable in-process threads, episodes, shared documents, and a persistent Python REPL tool
+- Tool permissions (`allow` / `deny` / `ask`) plus `--yolo` auto-approve mode
+- Session persistence, resume support, and always-on structured trace capture
+- Skill discovery from project-local and user-global `.tau/skills/` directories
 
 ## Tools
 
-| Tool         | What it does                                                  |
-| ------------ | ------------------------------------------------------------- |
-| `bash`       | Shell execution with timeout, cancellation, output truncation |
-| `file_read`  | Read files with line numbers, offset/limit, binary detection  |
-| `file_write` | Write/create files, auto-create parent directories            |
-| `file_edit`  | Exact-match string replacement with context on miss           |
-| `grep`       | Ripgrep-backed content search with glob filtering             |
-| `glob`       | Native gitignore-aware file discovery, mtime-sorted           |
+| Category | Tools |
+| --- | --- |
+| Filesystem + shell | `bash`, `file_read`, `file_edit`, `file_write`, `glob`, `grep` |
+| Web | `web_fetch`, `web_search` |
+| Planning + delegation | `subagent`, `todo` |
+| Orchestration | `thread`, `query`, `document`, `log`, `from_id`, `py_repl` |
 
-**Hashline mode** — tau also ships hash-anchored line editing (invented by [Can Boluk](https://github.com/can1357) for [oh-my-pi](https://github.com/anthropics/omp)). Each line gets a content-hash tag; edits reference tags instead of reproducing text.
+`thread`, `query`, `document`, `log`, `from_id`, and `py_repl` are backed by shared in-process orchestration state, so threads can reuse prior episodes and coordinate through virtual documents.
 
 ## Installation
 
-### From source (recommended for development)
+### From source
 
 Requires [Rust toolchain](https://rustup.rs/) (1.75+).
 
@@ -45,7 +54,7 @@ This puts `tau` on your `$PATH`.
 
 ### Prebuilt Linux binary
 
-CI builds a static `x86_64-unknown-linux-musl` binary on every tagged release. Download it directly:
+Tagged releases publish a static `x86_64-unknown-linux-musl` binary:
 
 ```bash
 curl -fsSL \
@@ -54,118 +63,159 @@ curl -fsSL \
 chmod +x /usr/local/bin/tau
 ```
 
-Override the release source with `TAU_BINARY_VERSION`, `TAU_BINARY_REPO`, or `TAU_BINARY_URL` when needed. See [Release and container install](docs/releases.md) for details.
-
-### Structural analysis tools (optional)
-
-For call-graph and CFG analysis, install the companion binaries:
-
-```bash
-cargo install --git https://github.com/tnguyen21/pycg-rs.git pycg
-cargo install --git https://github.com/tnguyen21/pycfg-rs.git pycfg
-```
-
-These are only needed if you pass structural tools (`cg_*`, `cfg_*`) via `--tools`.
+Override the release source with `TAU_BINARY_VERSION`, `TAU_BINARY_REPO`, or `TAU_BINARY_URL` when needed. See [Release and container install](docs/releases.md).
 
 ## Quick start
 
 ```bash
-# Set a provider key
+# Anthropic
 export ANTHROPIC_API_KEY=sk-ant-...
-# or
-export OPENAI_API_KEY=sk-...
 
-# Interactive REPL
+# OpenAI-family models
+export OPENAI_API_KEY=sk-...
+# or use Codex OAuth
+codex login
+
+# Interactive TUI
 tau
 
 # Choose a model
 tau --model claude-sonnet-4-6
 
-# Headless (for scripting / benchmarks)
-tau --prompt "List all Rust files in this repo"
+# One-shot / headless mode
+tau --prompt "Summarize this repo"
 
-# Restrict tool access
-tau --tools file_read,file_write,file_edit,glob,grep,bash
+# Restrict tools
+tau --tools file_read,grep,glob
 
-# With stats
-tau --stats --prompt "Explain this repo"
+# List models
+tau models --provider anthropic
+
+# Run as a JSON-RPC backend
+tau serve --cwd .
 ```
 
-## Providers
+## Providers and auth
 
-tau supports three backend surfaces:
-- OpenAI Responses API for direct OpenAI models
-- Anthropic Messages API for direct Anthropic models
-- OpenAI-compatible Chat Completions endpoints, including OpenRouter model families such as Gemini, Qwen, Grok, DeepSeek, and Kimi
+Tau supports:
 
-There is no separate Kimi provider in tau; Kimi models are accessed through OpenRouter/OpenAI-compatible chat routing.
+- Anthropic Messages API
+- OpenAI Responses API
+- OpenAI-compatible chat backends, including OpenRouter and other compatible providers in the built-in model catalog
 
-## Testing
+Auth comes from provider-specific environment variables such as `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, `GROQ_API_KEY`, `TOGETHER_API_KEY`, and `DEEPSEEK_API_KEY`.
+
+For OpenAI-family models, tau can also fall back to Codex OAuth from `~/.codex/auth.json` when `OPENAI_API_KEY` is not set.
+
+## Testing and benchmarking
 
 ```bash
-cargo test                    # 270+ offline tests, no API keys needed
-cargo bench                   # criterion benchmarks (SSE parsing, serde, agent construction)
+cargo test
+cargo bench
 ```
 
-Live provider tests exist behind a double opt-in gate: `OPENAI_API_KEY` + `RUN_LIVE_PROVIDER_TESTS=1`.
+- `cargo test` is offline by default; live provider tests require explicit opt-in
+- Criterion benches cover core runtime pieces such as SSE parsing, serde, and agent construction
+- Broader harness evals and microbenchmarks live under [`benchmarks/`](benchmarks/) — see [Benchmarking strategy](docs/benchmarking.md)
+
+The Python benchmark suite targets Python 3.12+ and `uv`.
 
 ## Configuration
 
-tau reads `~/.tau/config.toml` (global) and `.tau/config.toml` (project-local):
+Tau reads global config from `~/.tau/config.toml`:
 
 ```toml
-[agent]
 model = "claude-sonnet-4-6"
-edit_mode = "hashline"    # or "standard"
+thinking = "medium"
+tools = ["file_read", "file_edit", "file_write", "glob", "grep", "bash"]
+skills = true
 
-[agent.thinking]
-level = "medium"          # off, low, medium, high
+[permissions]
+bash = "ask"
+file_edit = "ask"
+file_write = "ask"
+web_search = "allow"
+
+[models]
+search = "claude-haiku-4-5"
+subagent = "claude-haiku-4-5"
+reasoning = "claude-opus-4-6"
 ```
 
-## Sessions
+Model slots let orchestration tools route work to different models for cheap search, deeper reasoning, or subagents.
 
-Sessions persist as JSONL in `~/.tau/sessions/`. Resume with `--resume` (latest) or `--session <id>`.
+## Skills
+
+Tau auto-discovers skills from:
+
+- project-local `.tau/skills/` directories (walking up from the current directory toward the git root)
+- user-global `~/.tau/skills/`
+
+In the TUI, invoke skills with `/skill:<name>`. You can also load explicit skill files with repeated `--skill PATH` flags.
+
+## Sessions and traces
+
+- Interactive TUI runs create sessions by default in `~/.tau/sessions/`
+- Resume with `--resume` or `--session <id>`
+- Use `--no-session` for ephemeral runs
+- Traces are written to `~/.tau/traces/<session_id>/` by default as `run.json` and `trace.jsonl`
+- Override trace output with `--trace-output <dir>`
+
+For trace inspection, see [`tools/tau-trace`](tools/tau-trace/README.md) and [Trace analysis](docs/trace-analysis.md).
 
 ## Project structure
 
-```
+```text
 ai/
   src/
-    types.rs              # ContentBlock, Message, Model, streaming types
-    stream.rs             # EventStream (mpsc + oneshot channels)
-    providers/            # OpenAI Responses, Anthropic Messages
-    models.rs, catalog.rs # Model registry (~65 models)
+    providers/            # Anthropic, OpenAI Responses, OpenAI-compatible chat
+    catalog.rs            # built-in model catalog
+    models.rs             # model registry helpers
+    codex_auth.rs         # Codex OAuth / ChatGPT backend auth
+    stream.rs, types.rs   # streaming + shared types
 agent/
   src/
-    loop_.rs              # Two-level agent loop (outer: follow-ups, inner: stream → tools → steer)
-    agent.rs              # Agent struct (state, queues, cancellation, events)
-    types.rs              # AgentTool trait, AgentEvent, AgentLoopConfig
+    agent.rs, loop_.rs    # core agent runtime
+    context.rs            # mechanical context compaction
+    orchestrator.rs       # shared thread/document state
+    thread.rs             # thread + episode types
+    stats.rs              # runtime statistics
 coding-agent/
   src/
-    tools/                # bash, file_read, file_write, file_edit, grep, glob, hashline
-    system_prompt.rs      # Dynamic prompt built from active tools + cwd
-    cli.rs, config.rs     # CLI parsing, TOML config
+    main.rs               # TUI + headless CLI entrypoint
+    serve.rs              # JSON-RPC stdio server
+    cli.rs, config.rs     # CLI parsing + config loading
+    permissions.rs        # allow/deny/ask tool policy layer
     session.rs            # JSONL session persistence
-    main.rs               # REPL + headless modes
+    trace.rs              # run.json + trace.jsonl output
+    skills.rs             # slash-command skill loading
+    rpc/                  # serve-mode transport + handlers
+    tools/                # built-in tools and orchestration tools
+    tui/                  # panes, chat UI, sidebar, thread modal
+tools/
+  tau-trace/              # TUI viewer for tau trace files
+benchmarks/              # eval adapters, microbenchmarks, fixtures
 ```
 
 ## Docs
 
-- [Architecture overview](docs/overview.md) — detailed walkthrough of types, patterns, and design decisions
-- [Release and container install](docs/releases.md) — tag-driven musl releases and container download flow
-- [Feature comparison](docs/feature-comparison.md) — tau vs 6 other harnesses across every dimension
-- [Toolset tradeoffs](docs/toolset-tradeoffs.md) — why this toolset, what others chose, and what it means
-- [Benchmarks landscape](docs/benchmarks-landscape.md) — harness-sensitive benchmarks and key numbers
-- [Harness lit review](docs/harness-lit-review.md) — people, papers, and open questions in harness engineering
+- [Architecture overview](docs/overview.md)
+- [Benchmarking strategy](docs/benchmarking.md)
+- [Orchestration design](docs/design-orchestration.md)
+- [Context management](docs/context-management.md)
+- [Trace analysis](docs/trace-analysis.md)
+- [Release and container install](docs/releases.md)
+- [Feature comparison](docs/feature-comparison.md)
+- [Benchmarks landscape](docs/benchmarks-landscape.md)
+- [Harness lit review](docs/harness-lit-review.md)
 
 ## Roadmap
 
-tau is currently a **hackable reference**. The path forward:
+Tau is still a hackable research harness. Near-term work is centered on:
 
-1. **Daily driver** — compaction, permissions, sub-agents, MCP, skills. See [feature-comparison.md](docs/feature-comparison.md) for the full gap analysis.
-2. **RL trajectory generator** — the daily driver bootstraps itself, then generates trajectories for co-training research.
-
-The long-term thesis: models and harnesses will be co-developed. An RL post-training step where the model does rollouts with harness trajectories and learns better tool use, context management, and file navigation. tau is built to be instrumentable enough to make that possible.
+1. Daily-driver polish for the TUI, permissions UX, skills, and orchestration workflows
+2. Better trace observability and benchmark coverage
+3. RL trajectory generation and harness-aware post-training experiments
 
 ## License
 
