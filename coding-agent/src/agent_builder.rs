@@ -163,7 +163,11 @@ pub async fn build_agent(build_config: AgentBuildConfig) -> Result<BuiltAgent> {
     };
 
     // Create orchestrator state
-    let orchestrator = OrchestratorState::new();
+    let max_threads = std::env::var("TAU_MAX_THREADS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(10usize);
+    let orchestrator = OrchestratorState::with_max_threads(max_threads);
 
     // Build tools
     let mut tool_list: Vec<Arc<dyn AgentTool>> = if let Some(ref tool_names) = build_config.tools {

@@ -40,6 +40,7 @@ impl ModelSlots {
 pub struct TauConfig {
     pub model: String,
     pub max_turns: Option<u32>,
+    pub max_threads: Option<u32>,
     pub tools: Option<Vec<String>>,
     pub skills: Option<bool>,     // default: true
     pub thinking: Option<String>, // "off"|"minimal"|"low"|"medium"|"high"|"xhigh"
@@ -52,6 +53,7 @@ impl Default for TauConfig {
         Self {
             model: "gpt-5.4".to_string(),
             max_turns: None,
+            max_threads: None,
             tools: None,
             skills: None,
             thinking: Some("high".to_string()),

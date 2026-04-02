@@ -337,6 +337,20 @@ fn handle_event(s: &mut TraceInner, event: &AgentEvent, trace_dir: &Path) {
             write_trace_event(s, &event);
         }
 
+        AgentEvent::ThreadQueued {
+            thread_id, alias, ..
+        } => {
+            write_trace_event(
+                s,
+                &json!({
+                    "ts": now.to_rfc3339(),
+                    "event": "thread_queued",
+                    "thread_id": thread_id,
+                    "alias": alias,
+                }),
+            );
+        }
+
         AgentEvent::ThreadStart {
             thread_id,
             alias,

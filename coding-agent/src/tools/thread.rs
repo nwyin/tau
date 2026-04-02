@@ -358,6 +358,19 @@ impl AgentTool for ThreadTool {
                 });
             }
 
+            // Emit ThreadQueued if semaphore is full
+            if orchestrator.thread_semaphore_available() == 0 {
+                if let Some(ref fwd) = forward_fn {
+                    fwd(AgentEvent::ThreadQueued {
+                        thread_id: thread_id.clone(),
+                        alias: alias.clone(),
+                    });
+                }
+            }
+
+            // Acquire permit (blocks if at capacity)
+            let _permit = orchestrator.acquire_thread_permit().await;
+
             // Emit ThreadStart
             if let Some(ref fwd) = forward_fn {
                 fwd(AgentEvent::ThreadStart {
