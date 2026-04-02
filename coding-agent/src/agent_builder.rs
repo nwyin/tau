@@ -63,6 +63,14 @@ pub async fn build_agent(build_config: AgentBuildConfig) -> Result<BuiltAgent> {
     // Register providers and resolve model
     ai::register_builtin_providers();
 
+    // Initialize API concurrency limiter: env > config > default(10)
+    let max_api = std::env::var("TAU_MAX_API_REQUESTS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .or(config.max_api_requests.map(|v| v as usize))
+        .unwrap_or(10usize);
+    ai::concurrency::init(max_api);
+
     let model = ai::models::find_model(&model_id)
         .ok_or_else(|| anyhow!("Model '{}' not found in registry", model_id))?;
     let mut model: Model = (*model).clone();

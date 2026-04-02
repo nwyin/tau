@@ -723,6 +723,8 @@ fn stream_anthropic_messages(
     let (mut tx, stream) = assistant_message_event_stream();
 
     tokio::spawn(async move {
+        let _permit = crate::concurrency::acquire().await;
+
         let mut output = AssistantMessage {
             role: "assistant".into(),
             content: Vec::new(),
@@ -741,33 +743,64 @@ fn stream_anthropic_messages(
         let body = build_request_body(&model, &context, &opts);
         let url = format!("{}/v1/messages", model.base_url);
 
-        let mut req = client
-            .post(&url)
-            .header("x-api-key", &api_key)
-            .header("anthropic-version", "2023-06-01")
-            .header("content-type", "application/json");
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert("x-api-key", api_key.parse().unwrap());
+        headers.insert("anthropic-version", "2023-06-01".parse().unwrap());
+        headers.insert("content-type", "application/json".parse().unwrap());
 
-        if let Some(headers) = &model.headers {
-            for (k, v) in headers {
-                req = req.header(k, v);
+        if let Some(model_headers) = &model.headers {
+            for (k, v) in model_headers {
+                if let (Ok(name), Ok(val)) = (
+                    k.parse::<reqwest::header::HeaderName>(),
+                    v.parse::<reqwest::header::HeaderValue>(),
+                ) {
+                    headers.insert(name, val);
+                }
             }
         }
-        if let Some(headers) = &opts.extra_headers {
-            for (k, v) in headers {
-                req = req.header(k, v);
+        if let Some(extra_headers) = &opts.extra_headers {
+            for (k, v) in extra_headers {
+                if let (Ok(name), Ok(val)) = (
+                    k.parse::<reqwest::header::HeaderName>(),
+                    v.parse::<reqwest::header::HeaderValue>(),
+                ) {
+                    headers.insert(name, val);
+                }
             }
         }
 
-        let response = match req.json(&body).send().await {
-            Ok(r) => r,
-            Err(e) => {
-                output.stop_reason = StopReason::Error;
-                output.error_message = Some(e.to_string());
-                tx.push(AssistantMessageEvent::Error {
-                    reason: StopReason::Error,
-                    error: output,
-                });
-                return;
+        let mut attempt = 0u32;
+        let response = loop {
+            let req = client.post(&url).headers(headers.clone()).json(&body);
+            match req.send().await {
+                Ok(resp)
+                    if crate::retry::is_retryable(resp.status().as_u16())
+                        && attempt < crate::retry::MAX_RETRIES =>
+                {
+                    let retry_after = resp
+                        .headers()
+                        .get("retry-after")
+                        .and_then(|v| v.to_str().ok())
+                        .and_then(|v| v.parse::<u64>().ok());
+                    tokio::time::sleep(crate::retry::delay(attempt, retry_after)).await;
+                    attempt += 1;
+                    continue;
+                }
+                Ok(resp) => break resp,
+                Err(e) if attempt < crate::retry::MAX_RETRIES => {
+                    tokio::time::sleep(crate::retry::delay(attempt, None)).await;
+                    attempt += 1;
+                    continue;
+                }
+                Err(e) => {
+                    output.stop_reason = StopReason::Error;
+                    output.error_message = Some(e.to_string());
+                    tx.push(AssistantMessageEvent::Error {
+                        reason: StopReason::Error,
+                        error: output,
+                    });
+                    return;
+                }
             }
         };
 
