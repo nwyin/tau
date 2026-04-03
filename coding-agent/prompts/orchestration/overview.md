@@ -53,3 +53,18 @@ With worktree isolation:
 - After completion, use `tau.diff(alias)` to inspect and `tau.merge(alias)` to integrate
 
 Read-only threads (research, scanning) do not need worktrees.
+
+## Adaptive checkpoints
+
+For long-running multi-phase work, add a **checkpoint** after each phase that evaluates
+actual project state (does it build? how many tests pass?) and decides how to proceed.
+Use `tau.query(prompt, model="reasoning")` to analyze failures and choose between:
+
+- **RETRY**: increase timeout and add failure context
+- **SPLIT**: break an oversized item into smaller sub-items with dependencies
+- **SKIP**: mark failed and move on
+- **ABSORB**: merge the failed item's scope into a downstream item
+
+This prevents cascade failures — when a critical phase fails, downstream items that
+depend on it are detected as blocked and replanned rather than running against missing code.
+See the supervised loop workflow for the full pattern.

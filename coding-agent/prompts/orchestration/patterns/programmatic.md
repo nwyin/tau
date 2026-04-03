@@ -59,3 +59,30 @@ Use py_repl when:
 Use direct thread/query tool calls when:
 - You have 1-3 independent parallel tasks with no conditional logic
 - Simple fan-out with straightforward result consumption
+
+### Checkpoint pattern (for adaptive loops)
+
+After each phase in a long-running loop, evaluate actual state and decide next action:
+
+```python
+# Check real state, not plan assumptions
+state = tau.tool("bash", command="cargo build 2>&1 | tail -3; python3 test_runner.py --summary 2>&1")
+
+# Ask the reasoning model to decide
+decision = json.loads(tau.query(f"""
+Phase '{item_id}' failed: {reason}
+Project state: {state}
+Choose: RETRY (more time), SPLIT (smaller items), SKIP, or ABSORB (merge into downstream).
+Respond with JSON: {{"action": "...", "reason": "...", ...}}
+""", model="reasoning"))
+
+# Apply the decision
+if decision["action"] == "SPLIT":
+    # Insert sub-items into workqueue with dependencies
+    ...
+elif decision["action"] == "RETRY":
+    item["timeout"] += 120
+    item["status"] = "pending"
+```
+
+See the supervised loop workflow for the full implementation.
