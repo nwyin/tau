@@ -98,10 +98,14 @@ fn ensure_gitignore(repo_root: &Path) {
 ///
 /// Branch naming: `tau/{sanitized_alias}`.
 /// Worktree directory: `{repo_root}/.tau-worktrees/{alias}-{thread_id}/`
+///
+/// If `base_alias` is provided, the worktree branches from `tau/{base_alias}`
+/// instead of HEAD. This lets verifier threads run against a worker's changes.
 pub fn create_worktree(
     repo_root: &Path,
     alias: &str,
     thread_id: &str,
+    base_alias: Option<&str>,
 ) -> Result<WorktreeInfo> {
     let sanitized = sanitize_alias(alias);
     let branch = format!("tau/{}", sanitized);
@@ -113,6 +117,21 @@ pub fn create_worktree(
     ensure_gitignore(repo_root);
 
     let reused = branch_exists(repo_root, &branch);
+
+    // Determine the base ref: another thread's branch, or HEAD
+    let base_ref = if let Some(base) = base_alias {
+        let base_branch = format!("tau/{}", sanitize_alias(base));
+        if !branch_exists(repo_root, &base_branch) {
+            anyhow::bail!(
+                "worktree_base '{}' refers to branch '{}' which does not exist",
+                base,
+                base_branch
+            );
+        }
+        base_branch
+    } else {
+        head_ref(repo_root)?
+    };
 
     let output = if reused {
         // Existing branch — create worktree from it
@@ -129,8 +148,7 @@ pub fn create_worktree(
             .output()
             .context("failed to create worktree from existing branch")?
     } else {
-        // New branch from HEAD
-        let base = head_ref(repo_root)?;
+        // New branch from base_ref
         std::process::Command::new("git")
             .args([
                 "worktree",
@@ -138,7 +156,7 @@ pub fn create_worktree(
                 "-b",
                 &branch,
                 &wt_path.to_string_lossy(),
-                &base,
+                &base_ref,
             ])
             .current_dir(repo_root)
             .stdout(std::process::Stdio::piped())

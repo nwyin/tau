@@ -128,6 +128,10 @@ impl AgentTool for ThreadTool {
                     "worktree": {
                         "type": "boolean",
                         "description": "If true, run in an isolated git worktree on its own branch. Use for write-heavy threads to prevent conflicts with other parallel threads. Default: false."
+                    },
+                    "worktree_base": {
+                        "type": "string",
+                        "description": "Alias of a prior worktree thread whose branch to use as the base for this thread's worktree. E.g. worktree_base='worker-1' bases this thread on branch tau/worker-1. Default: branch from HEAD."
                     }
                 },
                 "required": ["alias", "task"]
@@ -195,6 +199,10 @@ impl AgentTool for ThreadTool {
                 .get("worktree")
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
+            let worktree_base = params
+                .get("worktree_base")
+                .and_then(|v| v.as_str())
+                .map(String::from);
 
             // Resolve model: slot name → slot config → find_model, or raw ID → find_model.
             // Important: when the resolved ID matches the default model, use default_model
@@ -236,7 +244,12 @@ impl AgentTool for ThreadTool {
             let worktree_info: Option<worktree::WorktreeInfo> = if use_worktree {
                 match worktree::find_repo_root(&main_cwd) {
                     Ok(repo_root) => {
-                        match worktree::create_worktree(&repo_root, &alias, &thread_id) {
+                        match worktree::create_worktree(
+                            &repo_root,
+                            &alias,
+                            &thread_id,
+                            worktree_base.as_deref(),
+                        ) {
                             Ok(info) => Some(info),
                             Err(e) => {
                                 eprintln!(
