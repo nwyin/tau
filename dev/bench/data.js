@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1775170556263,
+  "lastUpdate": 1775185213917,
   "repoUrl": "https://github.com/nwyin/tau",
   "entries": {
     "tau benchmarks": [
@@ -5165,6 +5165,132 @@ window.BENCHMARK_DATA = {
             "name": "sse_parsing/events/1000",
             "value": 375008,
             "range": "± 1747",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "tommynguyen0512@gmail.com",
+            "name": "Tommy Bui Nguyen",
+            "username": "nwyin"
+          },
+          "committer": {
+            "email": "tommynguyen0512@gmail.com",
+            "name": "Tommy Bui Nguyen",
+            "username": "nwyin"
+          },
+          "distinct": true,
+          "id": "d9cad76e5d727da87361b309f4aad892f11fc6b1",
+          "message": "feat: add structured thread results and workflow templates to DSL\n\nThreadResult wrapper in py_kernel.py gives programmatic access to\nthread outcomes (status, output, completed, reason) while remaining\nstring-compatible. Threads dispatched via RPC now return structured\nJSON (status, output, trace) instead of raw text.\n\nAdds workflow templates (feature, bugfix, refactor, research,\nsupervised, session_init) to the orchestration system prompt.",
+          "timestamp": "2026-04-03T08:45:02+09:00",
+          "tree_id": "beb1997df37286dce102e569da143319f0adf466",
+          "url": "https://github.com/nwyin/tau/commit/d9cad76e5d727da87361b309f4aad892f11fc6b1"
+        },
+        "date": 1775185213315,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "agent_construction/new_agent",
+            "value": 2057,
+            "range": "± 7",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/10",
+            "value": 3667,
+            "range": "± 89",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/50",
+            "value": 13021,
+            "range": "± 124",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/100",
+            "value": 21462,
+            "range": "± 110",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/500",
+            "value": 95326,
+            "range": "± 610",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/10",
+            "value": 3408,
+            "range": "± 9",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/50",
+            "value": 17168,
+            "range": "± 43",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/100",
+            "value": 34242,
+            "range": "± 168",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/10",
+            "value": 13339,
+            "range": "± 40",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/50",
+            "value": 77017,
+            "range": "± 686",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/100",
+            "value": 151114,
+            "range": "± 551",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/10",
+            "value": 17219,
+            "range": "± 138",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/50",
+            "value": 94901,
+            "range": "± 240",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/100",
+            "value": 187087,
+            "range": "± 679",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/10",
+            "value": 2636,
+            "range": "± 7",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/100",
+            "value": 36032,
+            "range": "± 204",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/1000",
+            "value": 340896,
+            "range": "± 1899",
             "unit": "ns/iter"
           }
         ]
