@@ -177,20 +177,24 @@ pub fn create_worktree(
         );
     }
 
-    // Copy included paths into the worktree
+    // Copy included paths into the worktree.
+    // We copy into the parent directory so `cp -a src parent/` yields `parent/src_name/...`
+    // instead of the buggy `parent/src_name/src_name/...`.
     for rel_path in include_paths {
         let src = repo_root.join(rel_path);
         let dst = wt_path.join(rel_path);
         if src.exists() {
-            // Use cp -a for directories, cp for files (preserves structure)
-            let status = std::process::Command::new("cp")
-                .args(["-a", &src.to_string_lossy(), &dst.to_string_lossy()])
-                .output();
-            if let Err(e) = status {
-                eprintln!(
-                    "[worktree] failed to copy include path '{}': {}",
-                    rel_path, e
-                );
+            if let Some(parent) = dst.parent() {
+                let _ = std::fs::create_dir_all(parent);
+                let status = std::process::Command::new("cp")
+                    .args(["-a", &src.to_string_lossy(), &parent.to_string_lossy()])
+                    .output();
+                if let Err(e) = status {
+                    eprintln!(
+                        "[worktree] failed to copy include path '{}': {}",
+                        rel_path, e
+                    );
+                }
             }
         }
     }
