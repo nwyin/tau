@@ -101,11 +101,16 @@ fn ensure_gitignore(repo_root: &Path) {
 ///
 /// If `base_alias` is provided, the worktree branches from `tau/{base_alias}`
 /// instead of HEAD. This lets verifier threads run against a worker's changes.
+///
+/// If `include_paths` is provided, those paths (relative to repo_root) are copied
+/// into the worktree after creation. Use for untracked directories like test suites
+/// that aren't in git but need to be visible to the thread.
 pub fn create_worktree(
     repo_root: &Path,
     alias: &str,
     thread_id: &str,
     base_alias: Option<&str>,
+    include_paths: &[String],
 ) -> Result<WorktreeInfo> {
     let sanitized = sanitize_alias(alias);
     let branch = format!("tau/{}", sanitized);
@@ -170,6 +175,24 @@ pub fn create_worktree(
             "git worktree add failed: {}",
             String::from_utf8_lossy(&output.stderr)
         );
+    }
+
+    // Copy included paths into the worktree
+    for rel_path in include_paths {
+        let src = repo_root.join(rel_path);
+        let dst = wt_path.join(rel_path);
+        if src.exists() {
+            // Use cp -a for directories, cp for files (preserves structure)
+            let status = std::process::Command::new("cp")
+                .args(["-a", &src.to_string_lossy(), &dst.to_string_lossy()])
+                .output();
+            if let Err(e) = status {
+                eprintln!(
+                    "[worktree] failed to copy include path '{}': {}",
+                    rel_path, e
+                );
+            }
+        }
     }
 
     Ok(WorktreeInfo {
@@ -311,8 +334,52 @@ pub fn list_branches(repo_root: &Path) -> Result<Vec<String>> {
     Ok(text.lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect())
 }
 
-/// Try to merge a branch into the current branch. Returns (success, conflicts, message).
+/// Detect the main/default branch name (main, master, etc.)
+fn detect_main_branch(repo_root: &Path) -> Result<String> {
+    // First check current branch
+    let output = std::process::Command::new("git")
+        .args(["branch", "--show-current"])
+        .current_dir(repo_root)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .output()
+        .context("failed to detect current branch")?;
+    let current = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+    // If we're on a non-tau branch, that's likely our target
+    if !current.is_empty() && !current.starts_with("tau/") {
+        return Ok(current);
+    }
+
+    // Otherwise, try common names
+    for name in &["main", "master"] {
+        if branch_exists(repo_root, name) {
+            return Ok(name.to_string());
+        }
+    }
+
+    anyhow::bail!("could not detect main branch")
+}
+
+/// Try to merge a branch into the main branch. Returns (success, conflicts, message).
+///
+/// Ensures the repo is on the main branch before merging. This is critical because
+/// worktree operations can leave HEAD in an unexpected state.
 pub fn merge_branch(repo_root: &Path, branch: &str) -> Result<(bool, Vec<String>, String)> {
+    // Ensure we're on the main branch before merging
+    let main_branch = detect_main_branch(repo_root)?;
+    let checkout = std::process::Command::new("git")
+        .args(["checkout", &main_branch])
+        .current_dir(repo_root)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .output()
+        .context("failed to checkout main branch for merge")?;
+    if !checkout.status.success() {
+        let err = String::from_utf8_lossy(&checkout.stderr);
+        anyhow::bail!("failed to checkout {}: {}", main_branch, err);
+    }
+
     let output = std::process::Command::new("git")
         .args(["merge", branch, "--no-edit"])
         .current_dir(repo_root)

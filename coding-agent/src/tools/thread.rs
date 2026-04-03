@@ -132,6 +132,11 @@ impl AgentTool for ThreadTool {
                     "worktree_base": {
                         "type": "string",
                         "description": "Alias of a prior worktree thread whose branch to use as the base for this thread's worktree. E.g. worktree_base='worker-1' bases this thread on branch tau/worker-1. Default: branch from HEAD."
+                    },
+                    "worktree_include": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Paths (relative to repo root) to copy into the worktree. Use for untracked directories like test suites that aren't in git. E.g. ['_reference/test', 'fixtures']."
                     }
                 },
                 "required": ["alias", "task"]
@@ -203,6 +208,15 @@ impl AgentTool for ThreadTool {
                 .get("worktree_base")
                 .and_then(|v| v.as_str())
                 .map(String::from);
+            let worktree_include: Vec<String> = params
+                .get("worktree_include")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect()
+                })
+                .unwrap_or_default();
 
             // Resolve model: slot name → slot config → find_model, or raw ID → find_model.
             // Important: when the resolved ID matches the default model, use default_model
@@ -249,6 +263,7 @@ impl AgentTool for ThreadTool {
                             &alias,
                             &thread_id,
                             worktree_base.as_deref(),
+                            &worktree_include,
                         ) {
                             Ok(info) => Some(info),
                             Err(e) => {

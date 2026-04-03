@@ -165,7 +165,7 @@ class TauProxy:
         return self._rpc("tool", {"name": name, "args": kwargs})
 
     def thread(self, alias, task, tools=None, model=None, episodes=None,
-               timeout=None, worktree=None, worktree_base=None):
+               timeout=None, worktree=None, worktree_base=None, worktree_include=None):
         """Spawn a thread. Blocks until complete. Returns a ThreadResult."""
         params = {"alias": alias, "task": task}
         if tools is not None:
@@ -180,6 +180,8 @@ class TauProxy:
             params["worktree"] = worktree
         if worktree_base is not None:
             params["worktree_base"] = worktree_base
+        if worktree_include is not None:
+            params["worktree_include"] = worktree_include
         return ThreadResult(self._rpc("thread", params))
 
     def query(self, prompt, alias=None, model=None):
