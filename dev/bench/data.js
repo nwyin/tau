@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1775212860284,
+  "lastUpdate": 1775218731593,
   "repoUrl": "https://github.com/nwyin/tau",
   "entries": {
     "tau benchmarks": [
@@ -5417,6 +5417,132 @@ window.BENCHMARK_DATA = {
             "name": "sse_parsing/events/1000",
             "value": 352050,
             "range": "± 1039",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "tommynguyen0512@gmail.com",
+            "name": "Tommy Bui Nguyen",
+            "username": "nwyin"
+          },
+          "committer": {
+            "email": "tommynguyen0512@gmail.com",
+            "name": "Tommy Bui Nguyen",
+            "username": "nwyin"
+          },
+          "distinct": true,
+          "id": "4f1210a11bc31ad1c1123f79325e8eef4ae32013",
+          "message": "fix: worktree_include path doubling; add parallel phases + resume\n\nThree improvements from stress test observations:\n\n1. Fix worktree_include cp -a creating doubled paths (_reference/_reference/).\n   Now copies into parent directory so paths resolve correctly.\n\n2. Supervised loop dispatches independent items in parallel via\n   tau.parallel(). Workers run concurrently in separate worktrees,\n   verifiers run after workers complete, merges are serial.\n\n3. Checkpoint saves last_episode_summary to workqueue for session resume.\n   On --resume, loop re-reads queue and injects prior attempt context.",
+          "timestamp": "2026-04-03T20:23:17+09:00",
+          "tree_id": "463e77b998e32f6f005c3a53323f702804f5c702",
+          "url": "https://github.com/nwyin/tau/commit/4f1210a11bc31ad1c1123f79325e8eef4ae32013"
+        },
+        "date": 1775218731116,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "agent_construction/new_agent",
+            "value": 2096,
+            "range": "± 60",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/10",
+            "value": 3722,
+            "range": "± 22",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/50",
+            "value": 12907,
+            "range": "± 57",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/100",
+            "value": 23145,
+            "range": "± 128",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/500",
+            "value": 96536,
+            "range": "± 498",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/10",
+            "value": 3429,
+            "range": "± 47",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/50",
+            "value": 17546,
+            "range": "± 104",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/100",
+            "value": 34805,
+            "range": "± 280",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/10",
+            "value": 12959,
+            "range": "± 94",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/50",
+            "value": 76375,
+            "range": "± 274",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/100",
+            "value": 152699,
+            "range": "± 354",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/10",
+            "value": 17176,
+            "range": "± 138",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/50",
+            "value": 93070,
+            "range": "± 708",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/100",
+            "value": 183786,
+            "range": "± 811",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/10",
+            "value": 2693,
+            "range": "± 32",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/100",
+            "value": 36867,
+            "range": "± 203",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/1000",
+            "value": 341473,
+            "range": "± 1742",
             "unit": "ns/iter"
           }
         ]
