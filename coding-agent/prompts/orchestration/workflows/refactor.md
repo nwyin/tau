@@ -18,15 +18,18 @@ plan = tau.thread("plan", f"Design a step-by-step refactoring plan for: {goal}",
                    episodes=["usages", "deps", "tests"], tools=["read"])
 tau.document("write", name="refactor_plan", content=str(plan))
 
-# Phase 3: execute (parallel independent areas if possible)
+# Phase 3: execute in isolated worktree
 tau.thread("refactor", f"Execute refactoring per document 'refactor_plan'",
-            episodes=["usages", "deps", "plan"], tools=["full"])
+            episodes=["usages", "deps", "plan"], tools=["full"], worktree=True)
 
 # Phase 4: verify nothing broke
 result = tau.thread("verify", f"Run full test suite, check imports, verify no regressions",
                      episodes=["tests", "refactor"], tools=["full"])
 
-if not result:
+if result.completed:
+    tau.merge("refactor")
+else:
     tau.thread("fixup", f"Fix regressions: {result.reason}",
-               episodes=["refactor", "verify"], tools=["full"])
+               episodes=["refactor", "verify"], tools=["full"], worktree=True)
+    tau.merge("fixup")
 ```

@@ -4,10 +4,11 @@
 //! an OrchestratorState. Named threads support reuse (appending to existing
 //! conversation history). Episodes are the primary sync mechanism.
 
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use agent::completion_tools::{self, AbortTool, CompleteTool, EscalateTool};
-use agent::episode::generate_episode;
+use agent::episode::{generate_episode, EpisodeWorktreeInfo};
 use agent::orchestrator::OrchestratorState;
 use agent::thread::ThreadOutcome;
 use agent::types::{AgentEvent, AgentTool, AgentToolResult, BoxFuture, GetApiKeyFn};
@@ -18,6 +19,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::config::ModelSlots;
 use crate::tools;
+use crate::tools::worktree;
 
 const THREAD_IDENTITY: &str = include_str!("../../prompts/thread_identity.md");
 
@@ -121,7 +123,11 @@ impl AgentTool for ThreadTool {
                     },
                     "timeout": {
                         "type": "integer",
-                        "description": "Timeout in seconds (default: 120)."
+                        "description": "Timeout in seconds (default: 300)."
+                    },
+                    "worktree": {
+                        "type": "boolean",
+                        "description": "If true, run in an isolated git worktree on its own branch. Use for write-heavy threads to prevent conflicts with other parallel threads. Default: false."
                     }
                 },
                 "required": ["alias", "task"]
@@ -184,7 +190,11 @@ impl AgentTool for ThreadTool {
             let timeout_secs = params
                 .get("timeout")
                 .and_then(|v| v.as_u64())
-                .unwrap_or(120);
+                .unwrap_or(300);
+            let use_worktree = params
+                .get("worktree")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
 
             // Resolve model: slot name → slot config → find_model, or raw ID → find_model.
             // Important: when the resolved ID matches the default model, use default_model
@@ -218,12 +228,44 @@ impl AgentTool for ThreadTool {
             // Generate thread ID
             let thread_id = orchestrator.next_thread_id();
 
+            // Resolve the main working directory
+            let main_cwd =
+                std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"));
+
+            // Create worktree if requested
+            let worktree_info: Option<worktree::WorktreeInfo> = if use_worktree {
+                match worktree::find_repo_root(&main_cwd) {
+                    Ok(repo_root) => {
+                        match worktree::create_worktree(&repo_root, &alias, &thread_id) {
+                            Ok(info) => Some(info),
+                            Err(e) => {
+                                eprintln!(
+                                    "[thread] worktree creation failed: {}, running without isolation",
+                                    e
+                                );
+                                None
+                            }
+                        }
+                    }
+                    Err(_) => {
+                        eprintln!("[thread] not in a git repo, skipping worktree isolation");
+                        None
+                    }
+                }
+            } else {
+                None
+            };
+
+            // Resolve effective CWD (worktree path or main cwd)
+            let effective_cwd = worktree_info
+                .as_ref()
+                .map(|wt| wt.path.clone())
+                .unwrap_or_else(|| main_cwd.clone());
+            let cwd = effective_cwd.to_string_lossy().to_string();
+
             // Build thread system prompt
-            let cwd = std::env::current_dir()
-                .unwrap_or_else(|_| std::path::PathBuf::from("/"))
-                .to_string_lossy()
-                .to_string();
-            let mut system_prompt = build_thread_system_prompt(&tool_names, &cwd);
+            let mut system_prompt =
+                build_thread_system_prompt(&tool_names, &cwd, worktree_info.as_ref());
 
             // Resolve event forwarder early so we can emit EpisodeInject
             let forward_fn = event_forwarder.lock().ok().and_then(|g| g.clone());
@@ -252,9 +294,13 @@ impl AgentTool for ThreadTool {
             }
 
             // Build tool list: requested tools + completion tools
+            // Use cwd-overridden tools when running in a worktree
             let (outcome_signal, mut outcome_rx) = completion_tools::outcome_channel();
-            let mut thread_tools: Vec<Arc<dyn AgentTool>> =
-                tools::tools_from_allowlist(&tool_names);
+            let mut thread_tools: Vec<Arc<dyn AgentTool>> = if worktree_info.is_some() {
+                tools::tools_from_allowlist_with_cwd(&tool_names, effective_cwd.clone())
+            } else {
+                tools::tools_from_allowlist(&tool_names)
+            };
             thread_tools.push(CompleteTool::arc(outcome_signal.clone()));
             thread_tools.push(AbortTool::arc(outcome_signal.clone()));
             thread_tools.push(EscalateTool::arc(outcome_signal));
@@ -430,8 +476,34 @@ impl AgentTool for ThreadTool {
                 });
             }
 
+            // Worktree cleanup: auto-commit, capture diff, remove worktree
+            let mut worktree_branch: Option<String> = None;
+            let mut worktree_diff_stat: Option<String> = None;
+
+            if let Some(ref wt) = worktree_info {
+                worktree_branch = Some(wt.branch.clone());
+
+                if let Ok(repo_root) = worktree::find_repo_root(&main_cwd) {
+                    // Auto-commit any changes made by the thread
+                    match worktree::auto_commit(&wt.path, &alias, &thread_id) {
+                        Ok(true) => {
+                            worktree_diff_stat =
+                                worktree::diff_stat(&repo_root, &wt.branch).ok();
+                        }
+                        Ok(false) => {} // no changes
+                        Err(e) => eprintln!("[thread] auto-commit failed: {}", e),
+                    }
+                    // Remove the worktree directory (keep the branch)
+                    worktree::remove_worktree(&repo_root, &wt.path);
+                }
+            }
+
             // Extract messages and generate episode
             let final_messages = agent.with_state(|s| s.messages.clone());
+            let ep_worktree = worktree_branch.as_ref().map(|branch| EpisodeWorktreeInfo {
+                branch: branch.clone(),
+                diff_summary: worktree_diff_stat.clone(),
+            });
             let episode = generate_episode(
                 thread_id.clone(),
                 &alias,
@@ -439,27 +511,35 @@ impl AgentTool for ThreadTool {
                 &final_messages,
                 &outcome,
                 duration_ms,
+                ep_worktree,
             );
 
             // Record in orchestrator state
             orchestrator.record_episode(episode.clone(), final_messages);
 
             // Build tool result
+            let mut details = json!({
+                "thread_id": thread_id,
+                "alias": alias,
+                "outcome": {
+                    "kind": outcome.status_str(),
+                    "text": outcome.result_text(),
+                },
+                "duration_ms": duration_ms,
+                "turns": episode.turn_count,
+                "is_reuse": lookup.is_reuse,
+            });
+            if let Some(ref branch) = worktree_branch {
+                details["branch"] = json!(branch);
+                details["diff_stat"] =
+                    json!(worktree_diff_stat.as_deref().unwrap_or("(no changes)"));
+            }
+
             Ok(AgentToolResult {
                 content: vec![UserBlock::Text {
                     text: episode.full_trace,
                 }],
-                details: Some(json!({
-                    "thread_id": thread_id,
-                    "alias": alias,
-                    "outcome": {
-                        "kind": outcome.status_str(),
-                        "text": outcome.result_text(),
-                    },
-                    "duration_ms": duration_ms,
-                    "turns": episode.turn_count,
-                    "is_reuse": lookup.is_reuse,
-                })),
+                details: Some(details),
             })
         })
     }
@@ -485,10 +565,25 @@ async fn run_thread(
 }
 
 /// Build the thread's system prompt from identity + tool descriptions + env.
-fn build_thread_system_prompt(tool_names: &[String], cwd: &str) -> String {
+fn build_thread_system_prompt(
+    tool_names: &[String],
+    cwd: &str,
+    wt: Option<&worktree::WorktreeInfo>,
+) -> String {
     let mut parts = Vec::new();
 
     parts.push(THREAD_IDENTITY.to_string());
+
+    // Worktree isolation notice
+    if let Some(wt) = wt {
+        parts.push(format!(
+            "# Worktree isolation\n\
+             You are working in an isolated git worktree on branch `{}`.\n\
+             Your changes are isolated from other threads — there is no risk of conflict.\n\
+             Changes are auto-committed when you call complete.",
+            wt.branch
+        ));
+    }
 
     // Tool usage hints
     let has = |name: &str| tool_names.iter().any(|n| n == name);

@@ -16,15 +16,18 @@ rca = tau.thread("rca", f"Identify root cause given investigation: {bug}",
                   episodes=["repro", "context"], tools=["read"])
 tau.document("write", name="root_cause", content=str(rca))
 
-# Phase 3: fix (has full context chain)
+# Phase 3: fix in isolated worktree
 fix = tau.thread("fix", f"Fix the root cause described in document 'root_cause'",
-                  episodes=["repro", "rca"], tools=["full"])
+                  episodes=["repro", "rca"], tools=["full"], worktree=True)
 
-# Phase 4: verify the fix
+# Phase 4: verify and merge
 result = tau.thread("verify", f"Run tests and confirm the fix for: {bug}",
                      episodes=["rca", "fix"], tools=["full"])
 
-if not result:
+if result.completed:
+    tau.merge("fix")
+else:
     tau.thread("fix", f"Tests still failing: {result.reason}",
-               episodes=["fix", "verify"], tools=["full"])
+               episodes=["fix", "verify"], tools=["full"], worktree=True)
+    tau.merge("fix")
 ```

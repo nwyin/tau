@@ -34,3 +34,22 @@ Before spawning threads, plan the execution:
 Multiple thread calls in the same turn run concurrently. Threads in separate
 turns run sequentially — the second turn's threads can receive the first
 turn's episodes. Use this to express dependencies.
+
+## Worktree isolation
+
+When spawning multiple threads that write to files in parallel, use `worktree=True`
+to give each thread its own git worktree and branch. This prevents write conflicts.
+
+```python
+worker = tau.thread("impl-auth", "Implement auth module",
+                     tools=["full"], worktree=True)
+# worker.branch → "tau/impl-auth"
+# worker.diff_stat → "3 files changed, 45 insertions(+), 12 deletions(-)"
+```
+
+With worktree isolation:
+- Each thread works on branch `tau/{alias}` in its own directory
+- Changes are auto-committed when the thread completes
+- After completion, use `tau.diff(alias)` to inspect and `tau.merge(alias)` to integrate
+
+Read-only threads (research, scanning) do not need worktrees.

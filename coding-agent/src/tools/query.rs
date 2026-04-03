@@ -250,6 +250,8 @@ impl AgentTool for QueryTool {
                 ),
                 duration_ms,
                 turn_count: 1,
+                branch: None,
+                diff_summary: None,
             };
             orchestrator.record_episode(episode, vec![]);
 

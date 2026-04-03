@@ -5,6 +5,12 @@ use ai::types::{ContentBlock, Message};
 use crate::thread::{Episode, ThreadId, ThreadOutcome};
 use crate::types::AgentMessage;
 
+/// Options for enriching an episode with worktree metadata.
+pub struct EpisodeWorktreeInfo {
+    pub branch: String,
+    pub diff_summary: Option<String>,
+}
+
 /// Generate an Episode from a completed thread's message history.
 pub fn generate_episode(
     thread_id: ThreadId,
@@ -13,10 +19,29 @@ pub fn generate_episode(
     messages: &[AgentMessage],
     outcome: &ThreadOutcome,
     duration_ms: u64,
+    worktree: Option<EpisodeWorktreeInfo>,
 ) -> Episode {
     let turn_count = count_turns(messages);
-    let full_trace = format_full_trace(alias, task, messages, outcome, duration_ms, turn_count);
-    let compact_trace = format_compact_trace(alias, task, messages, outcome);
+    let full_trace = format_full_trace(
+        alias,
+        task,
+        messages,
+        outcome,
+        duration_ms,
+        turn_count,
+        worktree.as_ref().map(|w| w.branch.as_str()),
+    );
+    let compact_trace = format_compact_trace(
+        alias,
+        task,
+        messages,
+        outcome,
+        worktree.as_ref().map(|w| w.branch.as_str()),
+    );
+    let (branch, diff_summary) = match worktree {
+        Some(wt) => (Some(wt.branch), wt.diff_summary),
+        None => (None, None),
+    };
     Episode {
         thread_id,
         alias: alias.to_string(),
@@ -26,6 +51,8 @@ pub fn generate_episode(
         compact_trace,
         duration_ms,
         turn_count,
+        branch,
+        diff_summary,
     }
 }
 
@@ -43,14 +70,24 @@ fn format_full_trace(
     outcome: &ThreadOutcome,
     duration_ms: u64,
     turn_count: u32,
+    branch: Option<&str>,
 ) -> String {
     let mut out = String::new();
     let secs = duration_ms as f64 / 1000.0;
-    out.push_str(&format!(
-        "--- Thread: {} [{}] ---\n",
-        alias,
-        outcome.status_str()
-    ));
+    if let Some(b) = branch {
+        out.push_str(&format!(
+            "--- Thread: {} [{}] (branch: {}) ---\n",
+            alias,
+            outcome.status_str(),
+            b
+        ));
+    } else {
+        out.push_str(&format!(
+            "--- Thread: {} [{}] ---\n",
+            alias,
+            outcome.status_str()
+        ));
+    }
     out.push_str(&format!("TASK: {}\n", task));
     out.push_str(&format!(
         "DURATION: {:.1}s | {} turns\n\n",
@@ -125,13 +162,23 @@ fn format_compact_trace(
     task: &str,
     messages: &[AgentMessage],
     outcome: &ThreadOutcome,
+    branch: Option<&str>,
 ) -> String {
     let mut out = String::new();
-    out.push_str(&format!(
-        "--- Thread: {} [{}] ---\n",
-        alias,
-        outcome.status_str()
-    ));
+    if let Some(b) = branch {
+        out.push_str(&format!(
+            "--- Thread: {} [{}] (branch: {}) ---\n",
+            alias,
+            outcome.status_str(),
+            b
+        ));
+    } else {
+        out.push_str(&format!(
+            "--- Thread: {} [{}] ---\n",
+            alias,
+            outcome.status_str()
+        ));
+    }
     out.push_str(&format!("TASK: {}\n", task));
 
     // Pair tool calls with their results for one-liners
@@ -359,7 +406,7 @@ mod tests {
             result: "Found /login and /logout".to_string(),
             evidence: vec![],
         };
-        let trace = format_compact_trace("scanner", "Find auth endpoints", &messages, &outcome);
+        let trace = format_compact_trace("scanner", "Find auth endpoints", &messages, &outcome, None);
 
         assert!(trace.contains("--- Thread: scanner [completed] ---"));
         assert!(trace.contains("TASK: Find auth endpoints"));
@@ -383,7 +430,7 @@ mod tests {
             result: "Found 1 TODO".to_string(),
             evidence: vec![],
         };
-        let trace = format_full_trace("finder", "Find TODOs", &messages, &outcome, 1500, 1);
+        let trace = format_full_trace("finder", "Find TODOs", &messages, &outcome, 1500, 1, None);
 
         assert!(trace.contains("--- Thread: finder [completed] ---"));
         assert!(trace.contains("DURATION: 1.5s | 1 turns"));
@@ -410,6 +457,7 @@ mod tests {
             &messages,
             &outcome,
             500,
+            None,
         );
 
         assert_eq!(ep.thread_id, "t-001");
@@ -435,7 +483,7 @@ mod tests {
             result: "Found 1 TODO".to_string(),
             evidence: vec!["tc1".to_string()],
         };
-        let trace = format_full_trace("finder", "Find TODOs", &messages, &outcome, 1500, 1);
+        let trace = format_full_trace("finder", "Find TODOs", &messages, &outcome, 1500, 1, None);
         assert!(trace.contains("RESULT: Found 1 TODO"));
         assert!(trace.contains("EVIDENCE: [tc1]"));
     }
@@ -460,7 +508,7 @@ mod tests {
             result: "Found routes".to_string(),
             evidence: vec!["tc1".to_string(), "tc2".to_string()],
         };
-        let trace = format_compact_trace("scanner", "Find endpoints", &messages, &outcome);
+        let trace = format_compact_trace("scanner", "Find endpoints", &messages, &outcome, None);
         assert!(trace.contains("EVIDENCE: [tc1, tc2]"));
 
         // Without evidence — no EVIDENCE line
@@ -468,7 +516,7 @@ mod tests {
             result: "Found routes".to_string(),
             evidence: vec![],
         };
-        let trace2 = format_compact_trace("scanner", "Find endpoints", &messages, &outcome_no_ev);
+        let trace2 = format_compact_trace("scanner", "Find endpoints", &messages, &outcome_no_ev, None);
         assert!(!trace2.contains("EVIDENCE"));
     }
 

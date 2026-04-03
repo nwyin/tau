@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use agent::types::{AgentTool, AgentToolResult, BoxFuture};
@@ -7,7 +8,9 @@ use serde_json::{json, Value};
 use tokio::io::AsyncReadExt;
 use tokio_util::sync::CancellationToken;
 
-pub struct GrepTool;
+pub struct GrepTool {
+    cwd: Option<PathBuf>,
+}
 
 impl AgentTool for GrepTool {
     fn name(&self) -> &str {
@@ -46,13 +49,16 @@ impl AgentTool for GrepTool {
         params: Value,
         signal: Option<CancellationToken>,
     ) -> BoxFuture<Result<AgentToolResult>> {
+        let cwd_override = self.cwd.clone();
         Box::pin(async move {
             let pattern = params["pattern"]
                 .as_str()
                 .ok_or_else(|| anyhow::anyhow!("missing 'pattern' parameter"))?
                 .to_string();
 
-            let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/"));
+            let cwd = cwd_override.unwrap_or_else(|| {
+                std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"))
+            });
 
             let search_path = if let Some(path_str) = params["path"].as_str() {
                 if std::path::Path::new(path_str).is_absolute() {
@@ -234,7 +240,15 @@ impl AgentTool for GrepTool {
 }
 
 impl GrepTool {
+    pub fn new() -> Self {
+        GrepTool { cwd: None }
+    }
+
     pub fn arc() -> Arc<dyn AgentTool> {
-        Arc::new(GrepTool)
+        Arc::new(Self::new())
+    }
+
+    pub fn arc_with_cwd(cwd: PathBuf) -> Arc<dyn AgentTool> {
+        Arc::new(GrepTool { cwd: Some(cwd) })
     }
 }

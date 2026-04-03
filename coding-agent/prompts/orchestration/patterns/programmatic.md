@@ -37,6 +37,13 @@ if not result:     # __bool__ returns completed
 # Logging
 tau.log("Processing complete, found 5 issues")
 
+# Worktree isolation and merge (for parallel write threads)
+worker = tau.thread("impl", "Build the feature", tools=["full"], worktree=True)
+# worker.branch → "tau/impl", worker.diff_stat, worker.files_changed
+diff = tau.diff("impl")           # DiffResult: stat, diff, files_changed
+merged = tau.merge("impl")        # MergeResult: success, conflicts
+branches = tau.branches()         # list active tau/* branches
+
 # Environment
 print(tau.cwd, tau.home_dir, tau.tmp_dir)
 ```

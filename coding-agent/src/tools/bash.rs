@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use agent::types::{AgentTool, AgentToolResult, BoxFuture};
@@ -7,7 +8,9 @@ use serde_json::{json, Value};
 use tokio::io::AsyncReadExt;
 use tokio_util::sync::CancellationToken;
 
-pub struct BashTool;
+pub struct BashTool {
+    cwd: Option<PathBuf>,
+}
 
 impl AgentTool for BashTool {
     fn name(&self) -> &str {
@@ -42,6 +45,7 @@ impl AgentTool for BashTool {
         params: Value,
         signal: Option<CancellationToken>,
     ) -> BoxFuture<Result<AgentToolResult>> {
+        let cwd_override = self.cwd.clone();
         Box::pin(async move {
             let command = params["command"]
                 .as_str()
@@ -49,7 +53,9 @@ impl AgentTool for BashTool {
                 .to_string();
 
             let timeout_secs = params["timeout"].as_f64().unwrap_or(120.0) as u64;
-            let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/"));
+            let cwd = cwd_override.unwrap_or_else(|| {
+                std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"))
+            });
             let start = std::time::Instant::now();
 
             let mut child = tokio::process::Command::new("sh")
@@ -209,7 +215,15 @@ impl AgentTool for BashTool {
 }
 
 impl BashTool {
+    pub fn new() -> Self {
+        BashTool { cwd: None }
+    }
+
     pub fn arc() -> Arc<dyn AgentTool> {
-        Arc::new(BashTool)
+        Arc::new(Self::new())
+    }
+
+    pub fn arc_with_cwd(cwd: PathBuf) -> Arc<dyn AgentTool> {
+        Arc::new(BashTool { cwd: Some(cwd) })
     }
 }

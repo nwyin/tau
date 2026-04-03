@@ -60,4 +60,10 @@ pub struct Episode {
     pub compact_trace: String,
     pub duration_ms: u64,
     pub turn_count: u32,
+    /// Branch name if thread used worktree isolation.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub branch: Option<String>,
+    /// Diff summary (--stat output) if thread made changes.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub diff_summary: Option<String>,
 }

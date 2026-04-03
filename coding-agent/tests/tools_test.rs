@@ -21,7 +21,7 @@ fn text_content(result: &agent::types::AgentToolResult) -> String {
 // INV-1: BashTool executes "echo hello" and returns output
 #[tokio::test]
 async fn test_bash_echo() {
-    let tool = BashTool;
+    let tool = BashTool::new();
     let result: AgentToolResult = tool
         .execute("id1".into(), json!({"command": "echo hello"}), None)
         .await
@@ -36,7 +36,7 @@ async fn test_bash_echo() {
 // INV-2: BashTool returns exit code info for failing commands
 #[tokio::test]
 async fn test_bash_exit_code() {
-    let tool = BashTool;
+    let tool = BashTool::new();
     let result: AgentToolResult = tool
         .execute("id2".into(), json!({"command": "exit 1"}), None)
         .await
@@ -51,7 +51,7 @@ async fn test_bash_exit_code() {
 // INV-3: BashTool respects timeout
 #[tokio::test]
 async fn test_bash_timeout() {
-    let tool = BashTool;
+    let tool = BashTool::new();
     let result: AgentToolResult = tool
         .execute(
             "id3".into(),
@@ -70,7 +70,7 @@ async fn test_bash_timeout() {
 // INV-4: BashTool respects CancellationToken
 #[tokio::test]
 async fn test_bash_cancellation() {
-    let tool = BashTool;
+    let tool = BashTool::new();
     let ct = CancellationToken::new();
     let ct_clone = ct.clone();
 
@@ -201,7 +201,7 @@ async fn test_file_write_creates_file() {
     let dir = TempDir::new().unwrap();
     let path = dir.path().join("output.txt");
 
-    let tool = FileWriteTool;
+    let tool = FileWriteTool::new();
     let result: AgentToolResult = tool
         .execute(
             "id9".into(),
@@ -224,7 +224,7 @@ async fn test_file_write_creates_parents() {
     let dir = TempDir::new().unwrap();
     let path = dir.path().join("a").join("b").join("c").join("file.txt");
 
-    let tool = FileWriteTool;
+    let tool = FileWriteTool::new();
     let result: AgentToolResult = tool
         .execute(
             "id10".into(),
@@ -248,7 +248,7 @@ async fn test_file_write_overwrites() {
     let path = dir.path().join("existing.txt");
     std::fs::write(&path, "original content").unwrap();
 
-    let tool = FileWriteTool;
+    let tool = FileWriteTool::new();
     let result: AgentToolResult = tool
         .execute(
             "id11".into(),

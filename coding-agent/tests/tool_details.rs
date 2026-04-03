@@ -93,7 +93,7 @@ async fn file_write_details_create() {
     let dir = TempDir::new().unwrap();
     let path = dir.path().join("new.txt");
 
-    let result = FileWriteTool
+    let result = (FileWriteTool::new())
         .execute(
             "id".into(),
             json!({"path": path.to_str().unwrap(), "content": "hello world"}),
@@ -118,7 +118,7 @@ async fn file_write_details_overwrite() {
     let path = dir.path().join("existing.txt");
     std::fs::write(&path, "old").unwrap();
 
-    let result = FileWriteTool
+    let result = (FileWriteTool::new())
         .execute(
             "id".into(),
             json!({"path": path.to_str().unwrap(), "content": "new content"}),
@@ -199,7 +199,7 @@ async fn glob_details_correct_result_count() {
     std::fs::write(dir.path().join("b.txt"), "").unwrap();
     std::fs::write(dir.path().join("c.rs"), "").unwrap();
 
-    let result = GlobTool
+    let result = (GlobTool::new())
         .execute(
             "id".into(),
             json!({"pattern": "*.txt", "path": dir.path().to_str().unwrap()}),
@@ -226,7 +226,7 @@ async fn glob_details_correct_result_count() {
 async fn glob_details_zero_matches() {
     let dir = TempDir::new().unwrap();
 
-    let result = GlobTool
+    let result = (GlobTool::new())
         .execute(
             "id".into(),
             json!({"pattern": "*.nonexistent", "path": dir.path().to_str().unwrap()}),
@@ -248,7 +248,7 @@ async fn glob_details_zero_matches() {
 // INV-1/2/3: bash details on successful command
 #[tokio::test]
 async fn bash_details_success() {
-    let result = BashTool
+    let result = (BashTool::new())
         .execute("id".into(), json!({"command": "echo hello"}), None)
         .await
         .unwrap();
@@ -274,7 +274,7 @@ async fn bash_details_success() {
 // INV-3: exit_code reflects actual non-zero exit
 #[tokio::test]
 async fn bash_details_nonzero_exit() {
-    let result = BashTool
+    let result = (BashTool::new())
         .execute("id".into(), json!({"command": "exit 42"}), None)
         .await
         .unwrap();
@@ -289,7 +289,7 @@ async fn bash_details_nonzero_exit() {
 // INV-3: stdout_lines and stderr_lines are accurate
 #[tokio::test]
 async fn bash_details_line_counts() {
-    let result = BashTool
+    let result = (BashTool::new())
         .execute(
             "id".into(),
             json!({"command": "echo line1; echo line2; echo line3 >&2"}),

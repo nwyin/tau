@@ -29,6 +29,24 @@ reasoning = "claude-opus-4-6"
 
 Each thread must call `complete`, `abort`, or `escalate` when done. The thread's result becomes its episode — a compressed trace of what it did and concluded. Pass `evidence` (a list of tool_call_ids) to `complete` to mark which tool results support your conclusion.
 
+## Worktree isolation
+
+Threads that modify files can use `worktree=True` for git-level isolation:
+```python
+worker = tau.thread("impl", "Implement feature X", tools=["full"], worktree=True)
+# worker.branch → "tau/impl"
+# worker.diff_stat → "3 files changed, 45 insertions(+), 12 deletions(-)"
+```
+
+After a worktree thread completes, use the merge API:
+```python
+diff = tau.diff("impl")          # Inspect changes before merging
+print(diff.stat)                  # "3 files changed, 45(+), 12(-)"
+result = tau.merge("impl")       # Merge tau/impl into current branch
+if not result:
+    tau.log(f"Conflicts: {result.conflicts}")
+```
+
 ## Helper tools
 
 **Logging:** Record progress notes between orchestration steps.
@@ -40,4 +58,11 @@ log(message="Scanned 3 modules, found 5 issues. Proceeding to fix phase.")
 ```
 from_id(alias="scanner")
 // Returns the compact trace of the scanner thread's last run
+```
+
+**Worktree management:**
+```python
+tau.diff(alias)       # DiffResult: stat, diff, files_changed
+tau.merge(alias)      # MergeResult: success, conflicts
+tau.branches()        # List active tau/* branches
 ```

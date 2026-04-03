@@ -40,6 +40,9 @@ class ThreadResult:
             self.alias = None
             self.duration_ms = None
             self.turns = None
+            self.branch = None
+            self.diff_stat = None
+            self.files_changed = 0
         else:
             self.status = data.get("status", "completed")
             self.output = data.get("output", "")
@@ -47,6 +50,9 @@ class ThreadResult:
             self.alias = data.get("alias")
             self.duration_ms = data.get("duration_ms")
             self.turns = data.get("turns")
+            self.branch = data.get("branch")
+            self.diff_stat = data.get("diff_stat")
+            self.files_changed = data.get("files_changed", 0)
 
     @property
     def completed(self):
@@ -79,6 +85,48 @@ class ThreadResult:
 
     def __contains__(self, item):
         return item in self.trace
+
+
+class DiffResult:
+    """Result from tau.diff(). Contains diff info for a thread's worktree branch."""
+
+    def __init__(self, data):
+        self.branch = data.get("branch", "")
+        self.stat = data.get("stat", "")
+        self.diff = data.get("diff", "")
+        self.files_changed = data.get("files_changed", 0)
+        self.insertions = data.get("insertions", 0)
+        self.deletions = data.get("deletions", 0)
+
+    def __str__(self):
+        return self.stat
+
+    def __repr__(self):
+        return f"DiffResult(branch={self.branch!r}, files_changed={self.files_changed})"
+
+    def __bool__(self):
+        return self.files_changed > 0
+
+
+class MergeResult:
+    """Result from tau.merge(). Indicates success or conflict."""
+
+    def __init__(self, data):
+        self.success = data.get("success", False)
+        self.conflicts = data.get("conflicts", [])
+        self.message = data.get("message", "")
+        self.branch = data.get("branch", "")
+
+    def __str__(self):
+        if self.success:
+            return f"Merged {self.branch}"
+        return f"Conflicts in: {', '.join(self.conflicts)}"
+
+    def __repr__(self):
+        return f"MergeResult(success={self.success!r}, conflicts={self.conflicts!r})"
+
+    def __bool__(self):
+        return self.success
 
 
 class TauProxy:
@@ -116,7 +164,7 @@ class TauProxy:
         """Call a tau tool by name. Returns the tool result text."""
         return self._rpc("tool", {"name": name, "args": kwargs})
 
-    def thread(self, alias, task, tools=None, model=None, episodes=None, timeout=None):
+    def thread(self, alias, task, tools=None, model=None, episodes=None, timeout=None, worktree=None):
         """Spawn a thread. Blocks until complete. Returns a ThreadResult."""
         params = {"alias": alias, "task": task}
         if tools is not None:
@@ -127,6 +175,8 @@ class TauProxy:
             params["episodes"] = episodes
         if timeout is not None:
             params["timeout"] = timeout
+        if worktree is not None:
+            params["worktree"] = worktree
         return ThreadResult(self._rpc("thread", params))
 
     def query(self, prompt, alias=None, model=None):
@@ -170,6 +220,18 @@ class TauProxy:
     def log(self, message):
         """Record a message in the orchestration trace."""
         self._rpc("log", {"message": str(message)})
+
+    def diff(self, alias):
+        """Get diff for a thread's worktree branch. Returns a DiffResult."""
+        return DiffResult(self._rpc("diff", {"alias": alias}))
+
+    def merge(self, alias):
+        """Merge a thread's worktree branch into the current branch. Returns a MergeResult."""
+        return MergeResult(self._rpc("merge", {"alias": alias}))
+
+    def branches(self):
+        """List active tau thread branches."""
+        return self._rpc("branches", {})
 
     # --- Spec factories for tau.parallel() ---
 
@@ -226,7 +288,13 @@ def exec_cell(code, namespace):
 
 
 def main():
-    namespace = {"tau": TauProxy(), "ThreadResult": ThreadResult, "__name__": "__main__"}
+    namespace = {
+        "tau": TauProxy(),
+        "ThreadResult": ThreadResult,
+        "DiffResult": DiffResult,
+        "MergeResult": MergeResult,
+        "__name__": "__main__",
+    }
 
     for line in sys.stdin:
         line = line.strip()

@@ -1,3 +1,4 @@
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use agent::types::{AgentTool, AgentToolResult, BoxFuture};
@@ -8,11 +9,13 @@ use tokio_util::sync::CancellationToken;
 
 pub struct FileEditTool {
     schema: Value,
+    cwd: Option<PathBuf>,
 }
 
 impl FileEditTool {
     pub fn new() -> Self {
         Self {
+            cwd: None,
             schema: json!({
                 "type": "object",
                 "properties": {
@@ -36,6 +39,12 @@ impl FileEditTool {
 
     pub fn arc() -> Arc<dyn AgentTool> {
         Arc::new(Self::new())
+    }
+
+    pub fn arc_with_cwd(cwd: PathBuf) -> Arc<dyn AgentTool> {
+        let mut tool = Self::new();
+        tool.cwd = Some(cwd);
+        Arc::new(tool)
     }
 }
 
@@ -68,6 +77,7 @@ impl AgentTool for FileEditTool {
         params: Value,
         _signal: Option<CancellationToken>,
     ) -> BoxFuture<Result<AgentToolResult>> {
+        let cwd_override = self.cwd.clone();
         Box::pin(async move {
             let path_str = params["path"]
                 .as_str()
@@ -89,7 +99,10 @@ impl AgentTool for FileEditTool {
                 });
             }
 
-            let path = resolve_path(path_str);
+            let cwd = cwd_override.unwrap_or_else(|| {
+                std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"))
+            });
+            let path = resolve_path(path_str, &cwd);
 
             if !path.exists() {
                 return Ok(AgentToolResult {
@@ -369,13 +382,11 @@ fn fuzzy_find_unique(content: &str, old_string: &str) -> Option<FuzzyMatch> {
 // Shared helpers
 // ---------------------------------------------------------------------------
 
-fn resolve_path(path_str: &str) -> std::path::PathBuf {
-    if std::path::Path::new(path_str).is_absolute() {
-        std::path::PathBuf::from(path_str)
+fn resolve_path(path_str: &str, cwd: &Path) -> PathBuf {
+    if Path::new(path_str).is_absolute() {
+        PathBuf::from(path_str)
     } else {
-        std::env::current_dir()
-            .unwrap_or_else(|_| std::path::PathBuf::from("/"))
-            .join(path_str)
+        cwd.join(path_str)
     }
 }
 

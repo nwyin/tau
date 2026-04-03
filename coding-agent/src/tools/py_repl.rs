@@ -355,6 +355,9 @@ impl RpcDispatcher {
             "query" => self.dispatch_to_tool(&self.query_tool, params).await,
             "document" => self.dispatch_to_tool(&self.document_tool, params).await,
             "parallel" => self.dispatch_parallel(params).await,
+            "diff" => self.dispatch_diff(params).await,
+            "merge" => self.dispatch_merge(params).await,
+            "branches" => self.dispatch_branches(params).await,
             "log" => {
                 if let Some(msg) = params.get("message").and_then(|v| v.as_str()) {
                     eprintln!("[py_repl:log] {}", msg);
@@ -471,6 +474,88 @@ impl RpcDispatcher {
         }
 
         Ok(Value::Array(values))
+    }
+
+    async fn dispatch_diff(&self, params: &Value) -> Result<Value, String> {
+        let alias = params
+            .get("alias")
+            .and_then(|v| v.as_str())
+            .ok_or("missing 'alias' in diff RPC")?;
+
+        let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
+        let repo_root =
+            crate::tools::worktree::find_repo_root(&cwd).map_err(|e| e.to_string())?;
+
+        let sanitized = alias
+            .chars()
+            .map(|c| {
+                if c.is_alphanumeric() || c == '-' || c == '_' {
+                    c
+                } else {
+                    '-'
+                }
+            })
+            .collect::<String>();
+        let branch = format!("tau/{}", sanitized);
+
+        let stat = crate::tools::worktree::diff_stat(&repo_root, &branch)
+            .map_err(|e| e.to_string())?;
+        let diff = crate::tools::worktree::diff_full(&repo_root, &branch, 50_000)
+            .map_err(|e| e.to_string())?;
+        let (files_changed, insertions, deletions) =
+            crate::tools::worktree::parse_stat_summary(&stat);
+
+        Ok(json!({
+            "branch": branch,
+            "stat": stat,
+            "diff": diff,
+            "files_changed": files_changed,
+            "insertions": insertions,
+            "deletions": deletions,
+        }))
+    }
+
+    async fn dispatch_merge(&self, params: &Value) -> Result<Value, String> {
+        let alias = params
+            .get("alias")
+            .and_then(|v| v.as_str())
+            .ok_or("missing 'alias' in merge RPC")?;
+
+        let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
+        let repo_root =
+            crate::tools::worktree::find_repo_root(&cwd).map_err(|e| e.to_string())?;
+
+        let sanitized = alias
+            .chars()
+            .map(|c| {
+                if c.is_alphanumeric() || c == '-' || c == '_' {
+                    c
+                } else {
+                    '-'
+                }
+            })
+            .collect::<String>();
+        let branch = format!("tau/{}", sanitized);
+
+        let (success, conflicts, message) =
+            crate::tools::worktree::merge_branch(&repo_root, &branch)
+                .map_err(|e| e.to_string())?;
+
+        Ok(json!({
+            "success": success,
+            "conflicts": conflicts,
+            "message": message,
+            "branch": branch,
+        }))
+    }
+
+    async fn dispatch_branches(&self, _params: &Value) -> Result<Value, String> {
+        let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
+        let repo_root =
+            crate::tools::worktree::find_repo_root(&cwd).map_err(|e| e.to_string())?;
+        let branches = crate::tools::worktree::list_branches(&repo_root)
+            .map_err(|e| e.to_string())?;
+        Ok(json!(branches))
     }
 }
 

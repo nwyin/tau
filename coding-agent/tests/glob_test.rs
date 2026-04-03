@@ -30,7 +30,7 @@ async fn test_glob_finds_rust_files_in_nested_dirs() {
     // A non-.rs file that should NOT match
     std::fs::write(root.join("README.md"), "readme").unwrap();
 
-    let tool = GlobTool;
+    let tool = GlobTool::new();
     let result = tool
         .execute(
             "id1".into(),
@@ -69,7 +69,7 @@ async fn test_glob_results_sorted_by_mtime_newest_first() {
     std::thread::sleep(std::time::Duration::from_millis(20));
     std::fs::write(root.join("third.txt"), "c").unwrap();
 
-    let tool = GlobTool;
+    let tool = GlobTool::new();
     let result = tool
         .execute(
             "id2".into(),
@@ -110,7 +110,7 @@ async fn test_glob_respects_gitignore() {
     std::fs::write(root.join("debug.log"), "also ignored").unwrap();
     std::fs::write(root.join("main.rs"), "not ignored").unwrap();
 
-    let tool = GlobTool;
+    let tool = GlobTool::new();
     let result = tool
         .execute(
             "id3".into(),
@@ -142,7 +142,7 @@ async fn test_glob_no_matches_returns_helpful_message() {
     let root = dir.path();
     std::fs::write(root.join("readme.md"), "hello").unwrap();
 
-    let tool = GlobTool;
+    let tool = GlobTool::new();
     let result = tool
         .execute(
             "id4".into(),
@@ -173,7 +173,7 @@ async fn test_glob_explicit_path_scopes_search() {
     std::fs::write(root.join("root_file.txt"), "root").unwrap();
     std::fs::write(root.join("subdir/sub_file.txt"), "sub").unwrap();
 
-    let tool = GlobTool;
+    let tool = GlobTool::new();
     // Search only within subdir
     let result = tool
         .execute(
@@ -204,7 +204,7 @@ async fn test_glob_single_file_pattern_finds_exact_match() {
     std::fs::write(root.join("Cargo.toml"), "[package]").unwrap();
     std::fs::write(root.join("Cargo.lock"), "lock contents").unwrap();
 
-    let tool = GlobTool;
+    let tool = GlobTool::new();
     let result = tool
         .execute(
             "id6".into(),

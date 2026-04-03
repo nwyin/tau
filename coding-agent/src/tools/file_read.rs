@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use agent::types::{AgentTool, AgentToolResult, BoxFuture};
@@ -8,11 +9,13 @@ use tokio_util::sync::CancellationToken;
 
 pub struct FileReadTool {
     schema: Value,
+    cwd: Option<PathBuf>,
 }
 
 impl FileReadTool {
     pub fn new() -> Self {
         Self {
+            cwd: None,
             schema: json!({
                 "type": "object",
                 "properties": {
@@ -27,6 +30,12 @@ impl FileReadTool {
 
     pub fn arc() -> Arc<dyn AgentTool> {
         Arc::new(Self::new())
+    }
+
+    pub fn arc_with_cwd(cwd: PathBuf) -> Arc<dyn AgentTool> {
+        let mut tool = Self::new();
+        tool.cwd = Some(cwd);
+        Arc::new(tool)
     }
 }
 
@@ -59,17 +68,19 @@ impl AgentTool for FileReadTool {
         params: Value,
         _signal: Option<CancellationToken>,
     ) -> BoxFuture<Result<AgentToolResult>> {
+        let cwd_override = self.cwd.clone();
         Box::pin(async move {
             let path_str = params["path"]
                 .as_str()
                 .ok_or_else(|| anyhow::anyhow!("missing 'path' parameter"))?;
 
+            let cwd = cwd_override.unwrap_or_else(|| {
+                std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"))
+            });
             let path = if std::path::Path::new(path_str).is_absolute() {
-                std::path::PathBuf::from(path_str)
+                PathBuf::from(path_str)
             } else {
-                std::env::current_dir()
-                    .unwrap_or_else(|_| std::path::PathBuf::from("/"))
-                    .join(path_str)
+                cwd.join(path_str)
             };
 
             if !path.exists() {

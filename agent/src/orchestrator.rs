@@ -325,6 +325,8 @@ mod tests {
             ),
             duration_ms: 1000,
             turn_count: 2,
+            branch: None,
+            diff_summary: None,
         }
     }
 

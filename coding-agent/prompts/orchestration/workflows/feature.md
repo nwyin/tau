@@ -16,16 +16,20 @@ tau.parallel(
 plan = tau.query(f"Given the architecture and test patterns, outline an implementation plan for: {spec}")
 tau.document("write", name="plan", content=plan)
 
-# Phase 3: implement (receives architecture context)
+# Phase 3: implement in isolated worktree
 impl = tau.thread("impl", f"Implement per document 'plan': {spec}",
-                   episodes=["arch"], tools=["full"])
+                   episodes=["arch"], tools=["full"], worktree=True)
 
-# Phase 4: verify (receives all prior context)
-result = tau.thread("verify", f"Write and run tests for: {spec}",
+# Phase 4: review + verify
+diff = tau.diff("impl")
+result = tau.thread("verify", f"Review this diff and run tests for: {spec}\n\nChanges:\n{diff.stat}",
                      episodes=["arch", "tests", "impl"], tools=["full"])
 
-# Phase 5: retry if needed
-if not result:
+# Phase 5: merge or fix
+if result.completed:
+    tau.merge("impl")
+else:
     tau.thread("fix", f"Fix failing tests: {result.reason}",
-               episodes=["impl", "verify"], tools=["full"])
+               episodes=["impl", "verify"], tools=["full"], worktree=True)
+    tau.merge("fix")
 ```

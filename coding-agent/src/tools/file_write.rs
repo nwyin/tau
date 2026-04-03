@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use agent::types::{AgentTool, AgentToolResult, BoxFuture};
@@ -6,7 +7,9 @@ use anyhow::Result;
 use serde_json::{json, Value};
 use tokio_util::sync::CancellationToken;
 
-pub struct FileWriteTool;
+pub struct FileWriteTool {
+    cwd: Option<PathBuf>,
+}
 
 impl AgentTool for FileWriteTool {
     fn name(&self) -> &str {
@@ -41,6 +44,7 @@ impl AgentTool for FileWriteTool {
         params: Value,
         _signal: Option<CancellationToken>,
     ) -> BoxFuture<Result<AgentToolResult>> {
+        let cwd_override = self.cwd.clone();
         Box::pin(async move {
             let path_str = params["path"]
                 .as_str()
@@ -49,12 +53,13 @@ impl AgentTool for FileWriteTool {
                 .as_str()
                 .ok_or_else(|| anyhow::anyhow!("missing 'content' parameter"))?;
 
+            let cwd = cwd_override.unwrap_or_else(|| {
+                std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"))
+            });
             let path = if std::path::Path::new(path_str).is_absolute() {
-                std::path::PathBuf::from(path_str)
+                PathBuf::from(path_str)
             } else {
-                std::env::current_dir()
-                    .unwrap_or_else(|_| std::path::PathBuf::from("/"))
-                    .join(path_str)
+                cwd.join(path_str)
             };
 
             let path_existed_before = path.exists();
@@ -105,7 +110,15 @@ impl AgentTool for FileWriteTool {
 }
 
 impl FileWriteTool {
+    pub fn new() -> Self {
+        FileWriteTool { cwd: None }
+    }
+
     pub fn arc() -> Arc<dyn AgentTool> {
-        Arc::new(FileWriteTool)
+        Arc::new(Self::new())
+    }
+
+    pub fn arc_with_cwd(cwd: PathBuf) -> Arc<dyn AgentTool> {
+        Arc::new(FileWriteTool { cwd: Some(cwd) })
     }
 }

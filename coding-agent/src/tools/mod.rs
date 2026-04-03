@@ -14,6 +14,7 @@ pub mod thread;
 pub mod todo;
 pub mod web_fetch;
 pub mod web_search;
+pub mod worktree;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -112,6 +113,43 @@ pub fn orchestration_tools(
 /// Resolve an allowlist of tool names against the registry.
 pub fn tools_from_allowlist(names: &[String]) -> Vec<Arc<dyn AgentTool>> {
     let registry = all_known_tools();
+    names
+        .iter()
+        .filter_map(|name| match registry.get(name.as_str()) {
+            Some(tool) => Some(Arc::clone(tool)),
+            None => {
+                eprintln!("Warning: unknown tool '{}', skipping", name);
+                None
+            }
+        })
+        .collect()
+}
+
+/// Returns all known tools with a custom working directory for filesystem tools.
+pub fn all_known_tools_with_cwd(cwd: std::path::PathBuf) -> HashMap<String, Arc<dyn AgentTool>> {
+    let mut map: HashMap<String, Arc<dyn AgentTool>> = HashMap::new();
+    map.insert("bash".into(), BashTool::arc_with_cwd(cwd.clone()));
+    map.insert("file_read".into(), FileReadTool::arc_with_cwd(cwd.clone()));
+    map.insert("file_edit".into(), FileEditTool::arc_with_cwd(cwd.clone()));
+    map.insert(
+        "file_write".into(),
+        FileWriteTool::arc_with_cwd(cwd.clone()),
+    );
+    map.insert("glob".into(), GlobTool::arc_with_cwd(cwd.clone()));
+    map.insert("grep".into(), GrepTool::arc_with_cwd(cwd));
+    map.insert("web_fetch".into(), WebFetchTool::arc());
+    map.insert("web_search".into(), WebSearchTool::arc());
+    map.insert("subagent".into(), SubagentTool::arc());
+    map.insert("todo".into(), TodoTool::arc());
+    map
+}
+
+/// Resolve an allowlist of tool names with a custom working directory.
+pub fn tools_from_allowlist_with_cwd(
+    names: &[String],
+    cwd: std::path::PathBuf,
+) -> Vec<Arc<dyn AgentTool>> {
+    let registry = all_known_tools_with_cwd(cwd);
     names
         .iter()
         .filter_map(|name| match registry.get(name.as_str()) {
