@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1775185213917,
+  "lastUpdate": 1775212860284,
   "repoUrl": "https://github.com/nwyin/tau",
   "entries": {
     "tau benchmarks": [
@@ -5291,6 +5291,132 @@ window.BENCHMARK_DATA = {
             "name": "sse_parsing/events/1000",
             "value": 340896,
             "range": "± 1899",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "tommynguyen0512@gmail.com",
+            "name": "Tommy Bui Nguyen",
+            "username": "nwyin"
+          },
+          "committer": {
+            "email": "tommynguyen0512@gmail.com",
+            "name": "Tommy Bui Nguyen",
+            "username": "nwyin"
+          },
+          "distinct": true,
+          "id": "5c0d685ec4cfefea60ac803f54388693960b912b",
+          "message": "feat: adaptive supervised loop with checkpoint/replan\n\nReplace the fixed supervised loop with an adaptive version that detects\ncascade failures and replans mid-flight. After each phase, a checkpoint\nevaluates actual project state and uses the reasoning model to decide:\nRETRY (more time), SPLIT (smaller items), SKIP, or ABSORB.\n\nWorkqueue items now support depends_on, max_retries, and attempts fields.",
+          "timestamp": "2026-04-03T15:54:11+09:00",
+          "tree_id": "f5af2b98fafb57f34ef398a580c2053ec73bf3fe",
+          "url": "https://github.com/nwyin/tau/commit/5c0d685ec4cfefea60ac803f54388693960b912b"
+        },
+        "date": 1775212860007,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "agent_construction/new_agent",
+            "value": 2084,
+            "range": "± 66",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/10",
+            "value": 3650,
+            "range": "± 31",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/50",
+            "value": 12892,
+            "range": "± 44",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/100",
+            "value": 23051,
+            "range": "± 67",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "agent_construction/replace_messages/500",
+            "value": 93846,
+            "range": "± 1901",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/10",
+            "value": 3526,
+            "range": "± 40",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/50",
+            "value": 17265,
+            "range": "± 114",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/serialize/100",
+            "value": 34483,
+            "range": "± 139",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/10",
+            "value": 12947,
+            "range": "± 157",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/50",
+            "value": 73618,
+            "range": "± 184",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/deserialize/100",
+            "value": 151071,
+            "range": "± 710",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/10",
+            "value": 17151,
+            "range": "± 42",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/50",
+            "value": 92502,
+            "range": "± 355",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "message_serde/roundtrip/100",
+            "value": 182827,
+            "range": "± 678",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/10",
+            "value": 2710,
+            "range": "± 6",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/100",
+            "value": 37122,
+            "range": "± 115",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sse_parsing/events/1000",
+            "value": 352050,
+            "range": "± 1039",
             "unit": "ns/iter"
           }
         ]
