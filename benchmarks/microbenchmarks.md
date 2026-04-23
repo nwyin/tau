@@ -18,6 +18,7 @@ conventions. Each benchmark has a detailed `SPEC.md` in its directory.
 | 5 | Parallel file ops | [parallel-ops/](parallel-ops/) | 2 | online | $2-3 | synthetic | Does parallel tool execution save enough time? |
 | 6 | Sub-agent decomposition | [subagent-decomposition/](subagent-decomposition/) | 4 | online | ~$18 | synthetic | Single-agent vs sub-agents vs Hive? |
 | 7 | Todo/plan tracking | [todo-tracking/](todo-tracking/) | 3 | online | $5-15 | hand-crafted | Mandatory plan injection vs optional tool? |
+| 8 | Coordination routing | [coordination-routing/](coordination-routing/) | 2 | online | $2-6 | hand-crafted | Prompting vs orchestration shape for cross-thread coordination? |
 
 Shared infrastructure: [shared/](shared/) — TauSession, BenchConfig, TaskResult,
 Reporter, ResultStore, commit miner. Ported from [edit-bench](~/projects/edit-bench/).
@@ -39,7 +40,8 @@ Small, focused tasks written by hand to test specific scenarios. High quality
 but labor-intensive and may miss edge cases.
 
 Used by: post-edit-diagnostics (4 refactoring tasks), todo-tracking (3 multi-step
-tasks with error injection), compaction-efficiency (5 complexity-graded tasks).
+tasks with error injection), compaction-efficiency (5 complexity-graded tasks),
+coordination-routing (1 orchestration stress task).
 
 ### Mined from open source commits
 
@@ -75,12 +77,13 @@ Build corpus, run offline. No API spend.
 
 1. Fuzzy match — accuracy + adversarial corpora, 6 matchers
 
-### Phase 2: Cheap A/B tests ($5-10, 1-2 days)
+### Phase 2: Cheap A/B tests ($7-16, 1-2 days)
 
 First online benchmarks. `shared/` infrastructure built.
 
 2. Post-edit diagnostics — A/B test of compiler feedback
 3. Parallel file operations — sequential vs parallel tool calls
+4. Coordination routing — prompt vs pipeline coordination behavior
 
 ### Phase 3: Feature builds + evaluation ($20-40, 3-5 days)
 
@@ -100,7 +103,7 @@ Expensive, run last. Depends on Phase 1-3 narrowing the design space.
 | Phase | Cost | Time |
 |-------|------|------|
 | Phase 1 | $0 | 1 day |
-| Phase 2 | $5-10 | 1-2 days |
+| Phase 2 | $7-16 | 1-2 days |
 | Phase 3 | $20-40 | 3-5 days |
 | Phase 4 | ~$18 | 2-3 days |
-| **Total** | **$43-68** | **~2 weeks** |
+| **Total** | **$45-74** | **~2 weeks** |

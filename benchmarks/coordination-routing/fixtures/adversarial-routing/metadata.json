@@ -1,0 +1,16 @@
+{
+  "category": "coordination-routing",
+  "pro_alias": "position-for",
+  "con_alias": "position-against",
+  "critic_alias": "critic",
+  "pro_doc": "pro_case_notes",
+  "con_doc": "con_case_notes",
+  "pro_markers": [
+    "PRO_ANCHOR_SOLAR_17",
+    "PRO_ANCHOR_REBATE_41"
+  ],
+  "con_markers": [
+    "CON_ANCHOR_LEAKAGE_29",
+    "CON_ANCHOR_REGRESSIVE_63"
+  ]
+}

@@ -35,6 +35,9 @@ class TauSession:
         tools: Comma-separated tool names, or a list of tool names.
             ``None`` means let tau use its defaults.
         edit_mode: Edit strategy — ``"replace"`` or ``"hashline"``.
+        trace_output: Directory for tau trace output (``run.json`` + ``trace.jsonl``).
+            ``None`` uses tau's default trace location.
+        task_id: Optional benchmark task identifier passed to tau for trace metadata.
         timeout: Default timeout in seconds for :meth:`send`.
         tau_binary: Path or name of the tau binary.
     """
@@ -45,6 +48,8 @@ class TauSession:
         cwd: Path,
         tools: list[str] | None = None,
         edit_mode: str = "replace",
+        trace_output: Path | None = None,
+        task_id: str | None = None,
         timeout: int = 120,
         tau_binary: str = "tau",
     ) -> None:
@@ -52,6 +57,8 @@ class TauSession:
         self._cwd = str(cwd)
         self._tools = ",".join(tools) if tools else None
         self._edit_mode = edit_mode
+        self._trace_output = str(trace_output) if trace_output is not None else None
+        self._task_id = task_id
         self._timeout = timeout
         self._tau_binary = tau_binary
         self._proc: subprocess.Popen[str] | None = None
@@ -65,8 +72,13 @@ class TauSession:
         cmd = [self._tau_binary, "serve", "--cwd", self._cwd, "--model", self._model]
         if self._tools:
             cmd.extend(["--tools", self._tools])
-        if self._edit_mode:
-            cmd.extend(["--edit-mode", self._edit_mode])
+        # NOTE: `tau serve` currently does not expose an `--edit-mode` flag.
+        # Keep the constructor parameter for API compatibility across benchmarks,
+        # but do not pass it to the serve subprocess.
+        if self._trace_output:
+            cmd.extend(["--trace-output", self._trace_output])
+        if self._task_id:
+            cmd.extend(["--task-id", self._task_id])
 
         self._proc = subprocess.Popen(
             cmd,
@@ -98,7 +110,7 @@ class TauSession:
         output_tokens = 0
         tool_calls = 0
 
-        while time.time() < deadline:
+        while time.monotonic() < deadline:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 break
