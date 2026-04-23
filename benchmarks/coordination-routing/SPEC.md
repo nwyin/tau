@@ -44,6 +44,8 @@ The final answer must include at least one anchor from each family.
 4. `document-polling`
    - Launch all three in parallel
    - Critic must poll/read docs and not complete early
+   - Uses a higher per-variant timeout (`240s`) because polling loops can
+     legitimately run longer than the other variants
 
 ## Scoring
 

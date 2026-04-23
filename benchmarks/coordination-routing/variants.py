@@ -30,6 +30,10 @@ VARIANTS: dict[str, Variant] = {
     "document-polling": Variant(
         name="document-polling",
         description="Launch critic in parallel, but force polling shared docs before completion.",
+        tau_config_overrides={
+            # Polling variants can legitimately run longer than other orchestration shapes.
+            "timeout": 240,
+        },
     ),
 }
 

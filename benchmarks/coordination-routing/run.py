@@ -118,6 +118,7 @@ def run_task(task: dict[str, Any], variant: Variant, run_index: int, config: Ben
     """Run a single task/variant/run combination."""
     start = time.monotonic()
     prompt = build_variant_prompt(task["prompt"], variant.name, task["expectations"])
+    session_timeout = int(variant.tau_config_overrides.get("timeout", config.timeout))
 
     session_result: SessionResult | None = None
     session_turns = 0
@@ -137,7 +138,7 @@ def run_task(task: dict[str, Any], variant: Variant, run_index: int, config: Ben
                 edit_mode=variant.edit_mode or config.edit_mode,
                 trace_output=trace_dir,
                 task_id=task_id,
-                timeout=config.timeout,
+                timeout=session_timeout,
                 tau_binary=config.tau_binary,
             ) as session:
                 session_result = session.send(prompt)
