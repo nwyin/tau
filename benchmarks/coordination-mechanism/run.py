@@ -8,7 +8,6 @@ import json
 import sys
 import tempfile
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -16,16 +15,41 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from shared.config import BenchConfig
 from shared.coordination import CoordinationExpectations, load_coordination_tasks
-from shared.reporter import Reporter
+from shared.coordination_runner import (
+    CoordinationReportColumn,
+    avg_score,
+    ratio_score,
+    run_coordination_benchmark,
+)
 from shared.result import TaskResult
 from shared.session import SessionResult, TauSession
-from shared.store import ResultStore
 from shared.variants import Variant
 
 from mechanism_score import score_from_trace_file
 from variants import get_variants
 
 BENCHMARK_NAME = "coordination-mechanism"
+
+EXTRA_METRICS = {
+    "scaffold_fidelity_pass_rate": ratio_score("scaffold_fidelity_success"),
+    "final_doc_written_rate": ratio_score("final_doc_written"),
+    "avg_top_level_tool_count": avg_score("top_level_tool_count"),
+}
+
+REPORT_COLUMNS = [
+    CoordinationReportColumn("Runs", "runs", "int"),
+    CoordinationReportColumn("Official", "official_pass_rate"),
+    CoordinationReportColumn("Session", "session_pass_rate"),
+    CoordinationReportColumn("Coordination", "coordination_pass_rate"),
+    CoordinationReportColumn("Scaffold", "scaffold_fidelity_pass_rate"),
+    CoordinationReportColumn("Mechanism", "mechanism_pass_rate"),
+    CoordinationReportColumn("Timing", "timing_pass_rate"),
+    CoordinationReportColumn("Synthesis", "synthesis_pass_rate"),
+    CoordinationReportColumn("Final Doc", "final_doc_written_rate"),
+    CoordinationReportColumn("Top-Level Tools (avg)", "avg_top_level_tool_count", "float2"),
+    CoordinationReportColumn("Episode(2-src)", "episode_with_both_sources_rate"),
+    CoordinationReportColumn("Doc Reads After Write (avg)", "avg_critic_required_doc_reads_after_write", "float2"),
+]
 
 EXECUTION_SYSTEM_PROMPT = """You are executing a benchmark-owned orchestration scaffold.
 
@@ -130,7 +154,7 @@ def build_variant_scaffold(expectations: CoordinationExpectations, variant_name:
                 "    synthesis_task",
                 "    + \"\\n\\nPrimary artifact:\\n\" + tau.document('read', name=pro_doc)",
                 "    + \"\\n\\nSecondary artifact:\\n\" + tau.document('read', name=con_doc)",
-                "    + \"\\n\\nCritic output:\\n\" + critic_result.output",
+                '    + "\\n\\nCritic output:\\n" + critic_result.output',
                 ")",
             ]
         )
@@ -149,7 +173,7 @@ def build_variant_scaffold(expectations: CoordinationExpectations, variant_name:
 def build_execution_prompt(task: dict[str, Any], variant_name: str, scaffold: str) -> str:
     """Build the main-agent prompt for a scaffold-owned benchmark run."""
     return f"""Benchmark: `{BENCHMARK_NAME}`
-Fixture: `{task['id']}`
+Fixture: `{task["id"]}`
 Variant: `{variant_name}`
 
 Execute the following Python scaffold in a single `py_repl` tool call.
@@ -168,7 +192,7 @@ def run_task(task: dict[str, Any], variant: Variant, run_index: int, config: Ben
     start = time.monotonic()
     scaffold = build_variant_scaffold(task["expectations"], variant.name)
     prompt = build_execution_prompt(task, variant.name, scaffold)
-    session_timeout = int(variant.tau_config_overrides.get("timeout", config.timeout))
+    session_timeout = variant.timeout(config.timeout)
 
     session_result: SessionResult | None = None
     session_turns = 0
@@ -185,7 +209,7 @@ def run_task(task: dict[str, Any], variant: Variant, run_index: int, config: Ben
                 model=config.model,
                 cwd=work_dir,
                 tools=variant.tools,
-                edit_mode=variant.edit_mode or config.edit_mode,
+                edit_mode=config.edit_mode,
                 trace_output=trace_dir,
                 task_id=task_id,
                 timeout=session_timeout,
@@ -214,16 +238,14 @@ def run_task(task: dict[str, Any], variant: Variant, run_index: int, config: Ben
             error = session_result.output
 
         elapsed_ms = int((time.monotonic() - start) * 1000)
-        return TaskResult(
+        return TaskResult.from_session(
             task_id=task["id"],
             variant=variant.name,
             run_index=run_index,
             success=success,
             wall_clock_ms=elapsed_ms,
-            input_tokens=session_result.input_tokens if session_result else 0,
-            output_tokens=session_result.output_tokens if session_result else 0,
+            session_result=session_result,
             turns=session_turns,
-            tool_calls=session_result.tool_calls if session_result else 0,
             error=error,
             metadata={
                 "category": BENCHMARK_NAME,
@@ -234,94 +256,23 @@ def run_task(task: dict[str, Any], variant: Variant, run_index: int, config: Ben
         )
 
 
-def build_coordination_summary(results: list[TaskResult]) -> dict[str, Any]:
-    """Build variant-level coordination metrics beyond generic pass/fail stats."""
-    by_variant: dict[str, list[TaskResult]] = {}
-    for result in results:
-        by_variant.setdefault(result.variant, []).append(result)
-
-    summary: dict[str, Any] = {}
-    for variant, items in sorted(by_variant.items()):
-        scores = [item.metadata.get("score", {}) for item in items]
-        total = len(items)
-
-        def avg_numeric(key: str) -> float:
-            if total == 0:
-                return 0.0
-            return round(sum(float(score.get(key, 0.0)) for score in scores) / total, 3)
-
-        def ratio_true(key: str) -> float:
-            if total == 0:
-                return 0.0
-            return round(sum(1 for score in scores if score.get(key) is True) / total, 3)
-
-        summary[variant] = {
-            "runs": total,
-            "official_pass_rate": round(sum(1 for item in items if item.success) / total, 3) if total else 0.0,
-            "session_pass_rate": round(
-                sum(1 for item in items if item.metadata.get("session_success") is True) / total,
-                3,
-            )
-            if total
-            else 0.0,
-            "coordination_pass_rate": ratio_true("coordination_success"),
-            "scaffold_fidelity_pass_rate": ratio_true("scaffold_fidelity_success"),
-            "mechanism_pass_rate": ratio_true("mechanism_success"),
-            "timing_pass_rate": ratio_true("timing_success"),
-            "synthesis_pass_rate": ratio_true("synthesis_success"),
-            "final_doc_written_rate": ratio_true("final_doc_written"),
-            "avg_top_level_tool_count": avg_numeric("top_level_tool_count"),
-            "avg_episode_inject_to_critic": avg_numeric("episode_inject_count_to_critic"),
-            "episode_with_both_sources_rate": ratio_true("episode_inject_has_both_sources"),
-            "avg_critic_required_doc_reads_after_write": avg_numeric("critic_doc_reads_after_required_writes"),
-        }
-    return summary
-
-
-def write_coordination_reports(
-    output_dir: Path,
-    benchmark_name: str,
-    config: BenchConfig,
-    summary: dict[str, Any],
-) -> None:
-    """Write benchmark-specific coordination metric reports."""
-    payload = {
-        "benchmark": benchmark_name,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "config": {
-            "model": config.model,
-            "runs_per_task": config.runs_per_task,
-            "timeout": config.timeout,
-        },
-        "by_variant": summary,
-    }
-    (output_dir / "coordination.json").write_text(json.dumps(payload, indent=2) + "\n")
-
-    lines: list[str] = []
-    lines.append(f"# {benchmark_name} Coordination Metrics")
-    lines.append("")
-    lines.append("| Variant | Runs | Official | Session | Coordination | Scaffold | Mechanism | Timing | Synthesis | Final Doc | Top-Level Tools (avg) | Episode(2-src) | Doc Reads After Write (avg) |")
-    lines.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
-    for variant, metrics in summary.items():
-        lines.append(
-            "| {variant} | {runs} | {official:.1%} | {session:.1%} | {coordination:.1%} | {scaffold:.1%} | {mechanism:.1%} | {timing:.1%} | {synthesis:.1%} | {final_doc:.1%} | {top_tools:.2f} | {episode_rate:.1%} | {doc_reads_after:.2f} |".format(
-                variant=variant,
-                runs=metrics["runs"],
-                official=metrics["official_pass_rate"],
-                session=metrics["session_pass_rate"],
-                coordination=metrics["coordination_pass_rate"],
-                scaffold=metrics["scaffold_fidelity_pass_rate"],
-                mechanism=metrics["mechanism_pass_rate"],
-                timing=metrics["timing_pass_rate"],
-                synthesis=metrics["synthesis_pass_rate"],
-                final_doc=metrics["final_doc_written_rate"],
-                top_tools=metrics["avg_top_level_tool_count"],
-                episode_rate=metrics["episode_with_both_sources_rate"],
-                doc_reads_after=metrics["avg_critic_required_doc_reads_after_write"],
-            )
-        )
-    lines.append("")
-    (output_dir / "coordination.md").write_text("\n".join(lines))
+def status_line(result: TaskResult) -> str:
+    """Format per-run progress for stderr."""
+    status = "PASS" if result.success else "FAIL"
+    score = result.metadata.get("score", {})
+    return (
+        "  -> {status} | session_ok={session_ok} | scaffold_ok={scaffold_ok} | mechanism_ok={mechanism_ok} | "
+        "timing_ok={timing_ok} | synthesis_ok={synthesis_ok} | final_doc={final_doc} | top_level_tools={top_tools}"
+    ).format(
+        status=status,
+        session_ok=result.metadata.get("session_success", False),
+        scaffold_ok=score.get("scaffold_fidelity_success", False),
+        mechanism_ok=score.get("mechanism_success", False),
+        timing_ok=score.get("timing_success", False),
+        synthesis_ok=score.get("synthesis_success", False),
+        final_doc=score.get("final_doc_written", False),
+        top_tools=score.get("top_level_tool_count", 0),
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -352,60 +303,17 @@ def main() -> None:
     variant_names = args.variants.split(",") if args.variants else None
     variants = get_variants(variant_names)
 
-    total_runs = len(tasks) * len(variants) * config.runs_per_task
-    print(f"Running {BENCHMARK_NAME}", file=sys.stderr)
-    print(f"  Tasks: {[task['id'] for task in tasks]}", file=sys.stderr)
-    print(f"  Variants: {[variant.name for variant in variants]}", file=sys.stderr)
-    print(f"  Total runs: {total_runs}", file=sys.stderr)
-
-    results: list[TaskResult] = []
-    run_counter = 0
-    for variant in variants:
-        for task in tasks:
-            for run_index in range(config.runs_per_task):
-                run_counter += 1
-                label = f"[{run_counter}/{total_runs}] {task['id']} / {variant.name} / run {run_index + 1}"
-                print(label, file=sys.stderr)
-                result = run_task(task, variant, run_index, config)
-                results.append(result)
-                status = "PASS" if result.success else "FAIL"
-                score = result.metadata.get("score", {})
-                print(
-                    "  -> {status} | session_ok={session_ok} | scaffold_ok={scaffold_ok} | mechanism_ok={mechanism_ok} | timing_ok={timing_ok} | synthesis_ok={synthesis_ok} | final_doc={final_doc} | top_level_tools={top_tools}".format(
-                        status=status,
-                        session_ok=result.metadata.get("session_success", False),
-                        scaffold_ok=score.get("scaffold_fidelity_success", False),
-                        mechanism_ok=score.get("mechanism_success", False),
-                        timing_ok=score.get("timing_success", False),
-                        synthesis_ok=score.get("synthesis_success", False),
-                        final_doc=score.get("final_doc_written", False),
-                        top_tools=score.get("top_level_tool_count", 0),
-                    ),
-                    file=sys.stderr,
-                )
-
-    reporter = Reporter(BENCHMARK_NAME, results, config)
-
-    if args.json:
-        print(reporter.json())
-        return
-
-    output_dir = config.output_dir
-    output_dir.mkdir(parents=True, exist_ok=True)
-    reporter.write(output_dir)
-
-    summary = build_coordination_summary(results)
-    write_coordination_reports(output_dir, BENCHMARK_NAME, config, summary)
-
-    print(f"Reports written to {output_dir}", file=sys.stderr)
-    print("  - report.md / report.json", file=sys.stderr)
-    print("  - coordination.md / coordination.json", file=sys.stderr)
-
-    report_dict = json.loads(reporter.json())
-    report_dict["coordination_summary"] = summary
-    store = ResultStore(BENCHMARK_NAME)
-    run_id = store.save(report_dict)
-    print(f"Stored as run: {run_id}", file=sys.stderr)
+    run_coordination_benchmark(
+        benchmark_name=BENCHMARK_NAME,
+        tasks=tasks,
+        variants=variants,
+        config=config,
+        json_output=args.json,
+        run_task=run_task,
+        status_line=status_line,
+        extra_metrics=EXTRA_METRICS,
+        report_columns=REPORT_COLUMNS,
+    )
 
 
 if __name__ == "__main__":

@@ -335,8 +335,7 @@ def main() -> None:
         print(f"\nResults written to {args.output}/", file=sys.stderr)
 
         store = ResultStore(benchmark="todo-tracking")
-        report = json.loads(reporter.json())
-        run_id = store.save(report)
+        run_id = store.save(reporter.json_dict())
         print(f"Stored as run: {run_id}", file=sys.stderr)
 
 

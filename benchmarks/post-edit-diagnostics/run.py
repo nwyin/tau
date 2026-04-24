@@ -170,6 +170,7 @@ def run_task(task: dict, variant: Variant, run_index: int, config: BenchConfig) 
         error: str | None = None
         success = False
         session_result: SessionResult | None = None
+        session_turns = 0
 
         try:
             tools = variant.tools if variant.tools else None
@@ -177,10 +178,11 @@ def run_task(task: dict, variant: Variant, run_index: int, config: BenchConfig) 
                 model=config.model,
                 cwd=workspace,
                 tools=tools,
-                edit_mode=variant.edit_mode or config.edit_mode,
+                edit_mode=config.edit_mode,
                 timeout=config.timeout,
             ) as session:
                 session_result = session.send(prompt)
+                session_turns = session.turns
 
             # Verify output
             success, verify_error = verify_output(workspace, task["expected_dir"])
@@ -194,16 +196,14 @@ def run_task(task: dict, variant: Variant, run_index: int, config: BenchConfig) 
         wall_clock_ms = (time.monotonic_ns() // 1_000_000) - start_ms
         cycles = count_cycles(session_result) if session_result else 0
 
-        return TaskResult(
+        return TaskResult.from_session(
             task_id=task_id,
             variant=variant.name,
             run_index=run_index,
             success=success,
             wall_clock_ms=wall_clock_ms,
-            input_tokens=session_result.input_tokens if session_result else 0,
-            output_tokens=session_result.output_tokens if session_result else 0,
-            turns=cycles,  # use cycle count as the turns metric
-            tool_calls=session_result.tool_calls if session_result else 0,
+            session_result=session_result,
+            turns=session_turns,
             error=error,
             metadata={
                 "language": task["language"],
@@ -313,8 +313,7 @@ def main() -> None:
     # Save to store
     try:
         store = ResultStore(BENCHMARK_NAME)
-        report = reporter.json()
-        run_id = store.save(report)
+        run_id = store.save(reporter.json_dict())
         print(f"Saved as run {run_id}")
     except Exception as exc:
         print(f"Warning: could not save to store: {exc}", file=sys.stderr)

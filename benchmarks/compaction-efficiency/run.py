@@ -145,6 +145,7 @@ def run_single(
         total_output_tokens = 0
         total_tool_calls = 0
         turn_count = 0
+        session_result: SessionResult | None = None
         compaction_overhead_ms = 0
         tokens_before_compaction = 0
         tokens_after_compaction = 0
@@ -161,11 +162,11 @@ def run_single(
                 timeout=config.timeout,
             ) as session:
                 # Send the task prompt
-                result: SessionResult = session.send(task["prompt"])
-                total_input_tokens += result.input_tokens
-                total_output_tokens += result.output_tokens
-                total_tool_calls += result.tool_calls
-                turn_count += 1
+                session_result = session.send(task["prompt"])
+                total_input_tokens += session_result.input_tokens
+                total_output_tokens += session_result.output_tokens
+                total_tool_calls += session_result.tool_calls
+                turn_count = session.turns
 
                 # TODO: requires compaction feature in tau
                 # The model will work through the task, potentially triggering
@@ -183,16 +184,14 @@ def run_single(
 
             compression_ratio = tokens_after_compaction / tokens_before_compaction if tokens_before_compaction > 0 else 1.0
 
-            return TaskResult(
+            return TaskResult.from_session(
                 task_id=task_id,
                 variant=variant.name,
                 run_index=run_index,
                 success=success,
                 wall_clock_ms=elapsed_ms,
-                input_tokens=total_input_tokens,
-                output_tokens=total_output_tokens,
+                session_result=session_result,
                 turns=turn_count,
-                tool_calls=total_tool_calls,
                 metadata={
                     "complexity": task["complexity"],
                     "compression_ratio": round(compression_ratio, 4),
@@ -320,8 +319,7 @@ def main() -> None:
         print(f"\nResults written to {args.output}/", file=sys.stderr)
 
         store = ResultStore(benchmark="compaction-efficiency")
-        report = json.loads(reporter.json())
-        run_id = store.save(report)
+        run_id = store.save(reporter.json_dict())
         print(f"Stored as run: {run_id}", file=sys.stderr)
 
 

@@ -106,6 +106,7 @@ def run_task(workspace: dict, variant: Variant, run_index: int, config: BenchCon
         error: str | None = None
         success = False
         session_result: SessionResult | None = None
+        session_turns = 0
 
         try:
             tools = variant.tools if variant.tools else None
@@ -113,10 +114,11 @@ def run_task(workspace: dict, variant: Variant, run_index: int, config: BenchCon
                 model=config.model,
                 cwd=work_dir,
                 tools=tools,
-                edit_mode=variant.edit_mode or config.edit_mode,
+                edit_mode=config.edit_mode,
                 timeout=config.timeout,
             ) as session:
                 session_result = session.send(prompt)
+                session_turns = session.turns
 
             success = check_found_target(session_result)
             if not success:
@@ -128,16 +130,14 @@ def run_task(workspace: dict, variant: Variant, run_index: int, config: BenchCon
 
         wall_clock_ms = (time.monotonic_ns() // 1_000_000) - start_ms
 
-        return TaskResult(
+        return TaskResult.from_session(
             task_id=workspace["id"],
             variant=variant.name,
             run_index=run_index,
             success=success,
             wall_clock_ms=wall_clock_ms,
-            input_tokens=session_result.input_tokens if session_result else 0,
-            output_tokens=session_result.output_tokens if session_result else 0,
-            turns=session_result.tool_calls if session_result else 0,
-            tool_calls=session_result.tool_calls if session_result else 0,
+            session_result=session_result,
+            turns=session_turns,
             error=error,
             metadata={
                 "file_count": workspace["file_count"],
@@ -233,8 +233,7 @@ def main() -> None:
     # Save to store
     try:
         store = ResultStore(BENCHMARK_NAME)
-        report = reporter.json()
-        run_id = store.save(report)
+        run_id = store.save(reporter.json_dict())
         print(f"Saved as run {run_id}")
     except Exception as exc:
         print(f"Warning: could not save to store: {exc}", file=sys.stderr)

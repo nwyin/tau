@@ -86,12 +86,17 @@ class ResultStore:
         self.benchmark = benchmark
         self.results_dir = BENCHMARKS_DIR / benchmark / "results"
 
-    def save(self, report: dict) -> str:
+    def save(self, report: dict | str) -> str:
         """Save a report locally. Returns the run_id.
 
         Enriches the report with standard metadata (run_id, timestamp, host,
         git info) if not already present.
         """
+        if isinstance(report, str):
+            report = json.loads(report)
+        if not isinstance(report, dict):
+            raise TypeError("report must be a dict or JSON object string")
+
         self.results_dir.mkdir(parents=True, exist_ok=True)
 
         now = datetime.now(timezone.utc)

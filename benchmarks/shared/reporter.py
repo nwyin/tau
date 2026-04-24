@@ -84,9 +84,9 @@ class Reporter:
 
     # ── output formats ───────────────────────────────────────────────
 
-    def json(self) -> str:
-        """Serialize the full report to a JSON string."""
-        report = {
+    def json_dict(self, extra_fields: dict | None = None) -> dict:
+        """Build the full report payload as a dictionary."""
+        report: dict = {
             "benchmark": self.benchmark_name,
             "timestamp": self._timestamp,
             "config": {
@@ -99,23 +99,15 @@ class Reporter:
             },
             "summary": self.summary(),
             "by_variant": self.by_variant(),
-            "results": [
-                {
-                    "task_id": r.task_id,
-                    "variant": r.variant,
-                    "run_index": r.run_index,
-                    "success": r.success,
-                    "wall_clock_ms": r.wall_clock_ms,
-                    "input_tokens": r.input_tokens,
-                    "output_tokens": r.output_tokens,
-                    "turns": r.turns,
-                    "tool_calls": r.tool_calls,
-                    "error": r.error,
-                    "metadata": r.metadata,
-                }
-                for r in self.results
-            ],
+            "results": [r.to_dict() for r in self.results],
         }
+        if extra_fields:
+            report.update(extra_fields)
+        return report
+
+    def json(self) -> str:
+        """Serialize the full report to a JSON string."""
+        report = self.json_dict()
         return json.dumps(report, indent=2, ensure_ascii=False)
 
     def markdown(self) -> str:
@@ -210,8 +202,9 @@ class Reporter:
 
         return "\n".join(lines)
 
-    def write(self, output_dir: Path) -> None:
+    def write(self, output_dir: Path, extra_fields: dict | None = None) -> None:
         """Write ``report.md`` and ``report.json`` to *output_dir*."""
         output_dir.mkdir(parents=True, exist_ok=True)
         (output_dir / "report.md").write_text(self.markdown())
-        (output_dir / "report.json").write_text(self.json() + "\n")
+        payload = self.json_dict(extra_fields=extra_fields)
+        (output_dir / "report.json").write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n")

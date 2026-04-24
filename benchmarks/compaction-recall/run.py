@@ -271,8 +271,7 @@ def main() -> None:
 
         # Also save to the result store
         store = ResultStore(benchmark="compaction-recall")
-        report = json.loads(reporter.json())
-        run_id = store.save(report)
+        run_id = store.save(reporter.json_dict())
         print(f"Stored as run: {run_id}", file=sys.stderr)
 
 
