@@ -1,0 +1,5 @@
+Execute Python code in a persistent REPL with the tau orchestration API. The namespace persists
+across calls. Available APIs include tau.tool(), tau.thread(), tau.launch()/tau.poll()/tau.wait(),
+tau.query(), tau.parallel(), tau.document(), tau.log(), tau.diff(), tau.merge(), and tau.branches().
+Use for programmatic orchestration with control flow, loops, data processing, phased dependencies,
+and reactive fan-out/gather patterns.

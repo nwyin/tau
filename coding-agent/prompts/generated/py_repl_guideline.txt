@@ -1,0 +1,6 @@
+Use py_repl for programmatic orchestration: complex control flow, loops, data aggregation, phased
+dependencies, and reactive coordination. The Python namespace persists across calls. Access tau
+tools via tau.tool(), blocking threads via tau.thread(), reactive launches via
+tau.launch()/tau.poll()/tau.wait(), queries via tau.query(), concurrent execution via
+tau.parallel(), shared documents via tau.document(), progress logging via tau.log(), and worktree
+review/merge via tau.diff(), tau.merge(), and tau.branches().

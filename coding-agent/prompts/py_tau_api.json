@@ -1,0 +1,228 @@
+{
+  "description": "Execute Python code in a persistent REPL with the tau orchestration API. The namespace persists across calls. Available APIs include tau.tool(), tau.thread(), tau.launch()/tau.poll()/tau.wait(), tau.query(), tau.parallel(), tau.document(), tau.log(), tau.diff(), tau.merge(), and tau.branches(). Use for programmatic orchestration with control flow, loops, data processing, phased dependencies, and reactive fan-out/gather patterns.",
+  "guideline": "Use py_repl for programmatic orchestration: complex control flow, loops, data aggregation, phased dependencies, and reactive coordination. The Python namespace persists across calls. Access tau tools via tau.tool(), blocking threads via tau.thread(), reactive launches via tau.launch()/tau.poll()/tau.wait(), queries via tau.query(), concurrent execution via tau.parallel(), shared documents via tau.document(), progress logging via tau.log(), and worktree review/merge via tau.diff(), tau.merge(), and tau.branches().",
+  "environment": [
+    {"name": "cwd", "description": "Current working directory."},
+    {"name": "home_dir", "description": "User home directory."},
+    {"name": "tmp_dir", "description": "Temporary directory path."}
+  ],
+  "thread_params": [
+    {"name": "alias", "required": true},
+    {"name": "task", "required": true},
+    {"name": "tools"},
+    {"name": "model"},
+    {"name": "episodes"},
+    {"name": "timeout"},
+    {"name": "max_turns"},
+    {"name": "worktree"},
+    {"name": "worktree_base"},
+    {"name": "worktree_include"}
+  ],
+  "result_types": [
+    {
+      "name": "ThreadResult",
+      "doc": "Structured result from tau.thread(), tau.launch(), tau.poll(), and tau.wait(). Provides attribute access to outcome fields while remaining string-compatible via __str__ and __contains__.",
+      "string_fallback": {
+        "status": "completed",
+        "output": "$data",
+        "trace": "$data",
+        "alias": null,
+        "duration_ms": null,
+        "turns": null,
+        "branch": null,
+        "diff_stat": null,
+        "files_changed": 0
+      },
+      "fields": [
+        {"name": "status", "default": "completed"},
+        {"name": "output", "default": ""},
+        {"name": "trace", "default": ""},
+        {"name": "alias", "default": null},
+        {"name": "duration_ms", "default": null},
+        {"name": "turns", "default": null},
+        {"name": "branch", "default": null},
+        {"name": "diff_stat", "default": null},
+        {"name": "files_changed", "default": 0}
+      ],
+      "properties": [
+        {"name": "completed", "expression": "self.status == \"completed\""},
+        {"name": "aborted", "expression": "self.status == \"aborted\""},
+        {"name": "escalated", "expression": "self.status == \"escalated\""},
+        {"name": "timed_out", "expression": "self.status == \"timed_out\""},
+        {"name": "running", "expression": "self.status == \"running\""},
+        {"name": "reason", "expression": "self.output"}
+      ],
+      "str": "self.trace",
+      "repr": "f\"ThreadResult(status={self.status!r}, output={self.output[:60]!r})\"",
+      "bool": "self.completed",
+      "contains": "item in self.trace"
+    },
+    {
+      "name": "DiffResult",
+      "doc": "Result from tau.diff(). Contains diff info for a thread's worktree branch.",
+      "fields": [
+        {"name": "branch", "default": ""},
+        {"name": "stat", "default": ""},
+        {"name": "diff", "default": ""},
+        {"name": "files_changed", "default": 0},
+        {"name": "insertions", "default": 0},
+        {"name": "deletions", "default": 0}
+      ],
+      "str": "self.stat",
+      "repr": "f\"DiffResult(branch={self.branch!r}, files_changed={self.files_changed})\"",
+      "bool": "self.files_changed > 0"
+    },
+    {
+      "name": "MergeResult",
+      "doc": "Result from tau.merge(). Indicates success or conflict.",
+      "fields": [
+        {"name": "success", "default": false},
+        {"name": "conflicts", "default": []},
+        {"name": "message", "default": ""},
+        {"name": "branch", "default": ""}
+      ],
+      "str": "f\"Merged {self.branch}\" if self.success else f\"Conflicts in: {', '.join(self.conflicts)}\"",
+      "repr": "f\"MergeResult(success={self.success!r}, conflicts={self.conflicts!r})\"",
+      "bool": "self.success"
+    }
+  ],
+  "methods": [
+    {
+      "name": "tool",
+      "signature": "tool(self, name, **kwargs)",
+      "rpc": "tool",
+      "return": "str",
+      "summary": "Call a tau tool by name. Returns the tool result text.",
+      "example": "result = tau.tool(\"grep\", pattern=\"TODO\", path=\"src/\")",
+      "kind": "tool"
+    },
+    {
+      "name": "thread",
+      "signature": "thread(self, alias, task, tools=None, model=None, episodes=None, timeout=None, max_turns=None, worktree=None, worktree_base=None, worktree_include=None)",
+      "rpc": "thread",
+      "return": "ThreadResult",
+      "summary": "Spawn a thread. Blocks until complete. Returns a ThreadResult.",
+      "example": "result = tau.thread(\"scanner\", \"Find all auth endpoints\", tools=[\"read\"])",
+      "kind": "thread",
+      "wrapper": "ThreadResult"
+    },
+    {
+      "name": "launch",
+      "signature": "launch(self, alias, task, tools=None, model=None, episodes=None, timeout=None, max_turns=None, worktree=None, worktree_base=None, worktree_include=None)",
+      "rpc": "launch",
+      "return": "ThreadResult",
+      "summary": "Launch a thread without blocking. Returns a ThreadResult with status='running'.",
+      "example": "worker = tau.launch(\"producer\", \"Write findings incrementally\", tools=[\"read\"])",
+      "kind": "thread",
+      "wrapper": "ThreadResult"
+    },
+    {
+      "name": "poll",
+      "signature": "poll(self, alias)",
+      "rpc": "poll",
+      "return": "ThreadResult",
+      "summary": "Inspect the current status of a launched thread.",
+      "example": "status = tau.poll(worker)",
+      "kind": "poll",
+      "wrapper": "ThreadResult"
+    },
+    {
+      "name": "wait",
+      "signature": "wait(self, aliases, timeout=None)",
+      "rpc": "wait",
+      "return": "list[ThreadResult]",
+      "summary": "Wait for launched threads to finish, returning partial results on timeout.",
+      "example": "batch = tau.wait([worker], timeout=30)",
+      "kind": "wait"
+    },
+    {
+      "name": "query",
+      "signature": "query(self, prompt, alias=None, model=None)",
+      "rpc": "query",
+      "return": "str",
+      "summary": "Single-shot LLM query. Returns response text.",
+      "example": "answer = tau.query(\"Is this a Flask or Django project?\")",
+      "kind": "query"
+    },
+    {
+      "name": "parallel",
+      "signature": "parallel(self, *specs)",
+      "rpc": "parallel",
+      "return": "list",
+      "summary": "Execute multiple operations concurrently. Specs should be created with tau.Thread(), tau.Query(), or tau.Tool().",
+      "example": "results = tau.parallel(tau.Thread(\"scan\", \"Find issues\"), tau.Query(\"Summarize README\"))",
+      "kind": "parallel"
+    },
+    {
+      "name": "document",
+      "signature": "document(self, operation, name=None, content=None)",
+      "rpc": "document",
+      "return": "str",
+      "summary": "Access shared virtual documents. Operations: read, write, append, list.",
+      "example": "content = tau.document(\"read\", name=\"spec\")",
+      "kind": "document"
+    },
+    {
+      "name": "log",
+      "signature": "log(self, message)",
+      "rpc": "log",
+      "return": "None",
+      "summary": "Record a message in the orchestration trace.",
+      "example": "tau.log(\"Processing complete, found 5 issues\")",
+      "kind": "log"
+    },
+    {
+      "name": "diff",
+      "signature": "diff(self, alias)",
+      "rpc": "diff",
+      "return": "DiffResult",
+      "summary": "Get diff for a thread's worktree branch. Returns a DiffResult.",
+      "example": "diff = tau.diff(\"impl\")",
+      "kind": "alias_result",
+      "wrapper": "DiffResult"
+    },
+    {
+      "name": "merge",
+      "signature": "merge(self, alias)",
+      "rpc": "merge",
+      "return": "MergeResult",
+      "summary": "Merge a thread's worktree branch into the current branch. Returns a MergeResult.",
+      "example": "merged = tau.merge(\"impl\")",
+      "kind": "alias_result",
+      "wrapper": "MergeResult"
+    },
+    {
+      "name": "branches",
+      "signature": "branches(self)",
+      "rpc": "branches",
+      "return": "list[str]",
+      "summary": "List active tau thread branches.",
+      "example": "branches = tau.branches()",
+      "kind": "no_params"
+    }
+  ],
+  "factories": [
+    {
+      "name": "Thread",
+      "signature": "Thread(alias, task, **kwargs)",
+      "summary": "Create a thread spec for use with tau.parallel().",
+      "method": "thread",
+      "fields": ["alias", "task"]
+    },
+    {
+      "name": "Query",
+      "signature": "Query(prompt, **kwargs)",
+      "summary": "Create a query spec for use with tau.parallel().",
+      "method": "query",
+      "fields": ["prompt"]
+    },
+    {
+      "name": "Tool",
+      "signature": "Tool(name, **kwargs)",
+      "summary": "Create a tool spec for use with tau.parallel().",
+      "method": "tool",
+      "fields": ["name"],
+      "args_field": "args"
+    }
+  ]
+}

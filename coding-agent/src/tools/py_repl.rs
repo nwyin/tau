@@ -19,6 +19,7 @@ use tokio_util::sync::CancellationToken;
 use crate::orchestration::{OrchestrationRpcFacade, OrchestrationRuntime};
 
 const PY_KERNEL_SOURCE: &str = include_str!("../../prompts/py_kernel.py");
+const PY_REPL_DESCRIPTION: &str = include_str!("../../prompts/generated/py_repl_description.txt");
 
 /// Default timeout for py_repl cells (seconds).
 const DEFAULT_TIMEOUT_SECS: u64 = 300;
@@ -140,13 +141,7 @@ impl AgentTool for PyReplTool {
     }
 
     fn description(&self) -> &str {
-        "Execute Python code in a persistent REPL with the tau orchestration API. \
-         The namespace persists across calls. Use tau.tool(name, **args) to call \
-         any tau tool, tau.thread(alias, task) for blocking threads, tau.launch()/tau.poll()/tau.wait() \
-         for reactive coordination, tau.query(prompt) for LLM queries, tau.parallel(...) for \
-         concurrent execution, and tau.document(op, name, content) for shared documents. Use for: \
-         programmatic orchestration with control flow, loops, data processing, \
-         phased dependencies, and reactive fan-out/gather patterns."
+        PY_REPL_DESCRIPTION
     }
 
     fn parameters(&self) -> &Value {
