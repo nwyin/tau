@@ -265,10 +265,7 @@ mod tests {
         let (signal, rx) = outcome_channel();
         let tool = CompleteTool::new(signal);
         let params = json!({"result": "Found 3 endpoints", "evidence": ["tc1", "tc2"]});
-        let result = tool
-            .execute("call1".into(), params, None)
-            .await
-            .unwrap();
+        let result = tool.execute("call1".into(), params, None).await.unwrap();
 
         assert_eq!(result.content.len(), 1);
         let outcome = rx.await.unwrap();
@@ -286,9 +283,7 @@ mod tests {
         let (signal, rx) = outcome_channel();
         let tool = AbortTool::new(signal);
         let params = json!({"reason": "No access"});
-        tool.execute("call1".into(), params, None)
-            .await
-            .unwrap();
+        tool.execute("call1".into(), params, None).await.unwrap();
 
         let outcome = rx.await.unwrap();
         match outcome {
@@ -302,9 +297,7 @@ mod tests {
         let (signal, rx) = outcome_channel();
         let tool = EscalateTool::new(signal);
         let params = json!({"problem": "Which database?"});
-        tool.execute("call1".into(), params, None)
-            .await
-            .unwrap();
+        tool.execute("call1".into(), params, None).await.unwrap();
 
         let outcome = rx.await.unwrap();
         match outcome {

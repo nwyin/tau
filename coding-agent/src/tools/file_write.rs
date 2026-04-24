@@ -53,9 +53,8 @@ impl AgentTool for FileWriteTool {
                 .as_str()
                 .ok_or_else(|| anyhow::anyhow!("missing 'content' parameter"))?;
 
-            let cwd = cwd_override.unwrap_or_else(|| {
-                std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"))
-            });
+            let cwd = cwd_override
+                .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/")));
             let path = if std::path::Path::new(path_str).is_absolute() {
                 PathBuf::from(path_str)
             } else {

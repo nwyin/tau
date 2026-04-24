@@ -15,10 +15,7 @@ fn make_temp_file(dir: &TempDir, name: &str, content: &str) -> std::path::PathBu
 
 async fn grep(params: serde_json::Value) -> String {
     let tool = GrepTool::new();
-    let result = tool
-        .execute("id".to_string(), params, None)
-        .await
-        .unwrap();
+    let result = tool.execute("id".to_string(), params, None).await.unwrap();
     match &result.content[0] {
         ai::types::UserBlock::Text { text } => text.clone(),
         _ => panic!("expected text block"),

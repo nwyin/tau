@@ -99,9 +99,8 @@ impl AgentTool for FileEditTool {
                 });
             }
 
-            let cwd = cwd_override.unwrap_or_else(|| {
-                std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"))
-            });
+            let cwd = cwd_override
+                .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/")));
             let path = resolve_path(path_str, &cwd);
 
             if !path.exists() {

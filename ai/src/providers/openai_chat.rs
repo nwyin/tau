@@ -149,7 +149,11 @@ fn stream_openai_chat(
         if !response.status().is_success() {
             let status = response.status();
             let body_text = response.text().await.unwrap_or_default();
-            emit_error(&mut output, &mut tx, format!("HTTP {}: {}", status, body_text));
+            emit_error(
+                &mut output,
+                &mut tx,
+                format!("HTTP {}: {}", status, body_text),
+            );
             return;
         }
 
@@ -157,14 +161,14 @@ fn stream_openai_chat(
             partial: output.clone(),
         });
 
-        let sse_events =
-            match sse::collect_sse_events(response, SseStop::RawMarker("[DONE]")).await {
-                Ok(events) => events,
-                Err(e) => {
-                    emit_error(&mut output, &mut tx, e.to_string());
-                    return;
-                }
-            };
+        let sse_events = match sse::collect_sse_events(response, SseStop::RawMarker("[DONE]")).await
+        {
+            Ok(events) => events,
+            Err(e) => {
+                emit_error(&mut output, &mut tx, e.to_string());
+                return;
+            }
+        };
 
         if let Err(e) = process_chat_sse_events(sse_events, &mut output, &mut tx, &model).await {
             emit_error(&mut output, &mut tx, e.to_string());

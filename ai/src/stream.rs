@@ -107,7 +107,10 @@ pub fn assistant_message_event_stream() -> (AssistantMessageEventSender, Assista
 ///
 /// Used by provider implementations when setup fails before streaming starts
 /// (e.g. missing API key, request build error).
-pub fn error_stream(model: &crate::types::Model, error: impl std::fmt::Display) -> AssistantMessageEventStream {
+pub fn error_stream(
+    model: &crate::types::Model,
+    error: impl std::fmt::Display,
+) -> AssistantMessageEventStream {
     let (mut tx, stream) = assistant_message_event_stream();
     let err_msg = AssistantMessage {
         role: "assistant".into(),

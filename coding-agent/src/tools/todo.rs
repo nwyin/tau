@@ -185,10 +185,7 @@ mod tests {
                 {"content": "Edit file", "status": "pending"}
             ]
         });
-        let result = tool
-            .execute("call-1".into(), params, None)
-            .await
-            .unwrap();
+        let result = tool.execute("call-1".into(), params, None).await.unwrap();
 
         // Check details contain the todos
         let details = result.details.unwrap();
@@ -201,10 +198,7 @@ mod tests {
     async fn test_execute_empty_todos() {
         let tool = TodoTool;
         let params = json!({ "todos": [] });
-        let result = tool
-            .execute("call-1".into(), params, None)
-            .await
-            .unwrap();
+        let result = tool.execute("call-1".into(), params, None).await.unwrap();
 
         let text = match &result.content[0] {
             UserBlock::Text { text } => text.as_str(),

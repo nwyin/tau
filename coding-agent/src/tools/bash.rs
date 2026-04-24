@@ -53,9 +53,8 @@ impl AgentTool for BashTool {
                 .to_string();
 
             let timeout_secs = params["timeout"].as_f64().unwrap_or(120.0) as u64;
-            let cwd = cwd_override.unwrap_or_else(|| {
-                std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"))
-            });
+            let cwd = cwd_override
+                .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/")));
             let start = std::time::Instant::now();
 
             let mut child = tokio::process::Command::new("sh")

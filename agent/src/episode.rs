@@ -406,7 +406,8 @@ mod tests {
             result: "Found /login and /logout".to_string(),
             evidence: vec![],
         };
-        let trace = format_compact_trace("scanner", "Find auth endpoints", &messages, &outcome, None);
+        let trace =
+            format_compact_trace("scanner", "Find auth endpoints", &messages, &outcome, None);
 
         assert!(trace.contains("--- Thread: scanner [completed] ---"));
         assert!(trace.contains("TASK: Find auth endpoints"));
@@ -516,7 +517,8 @@ mod tests {
             result: "Found routes".to_string(),
             evidence: vec![],
         };
-        let trace2 = format_compact_trace("scanner", "Find endpoints", &messages, &outcome_no_ev, None);
+        let trace2 =
+            format_compact_trace("scanner", "Find endpoints", &messages, &outcome_no_ev, None);
         assert!(!trace2.contains("EVIDENCE"));
     }
 

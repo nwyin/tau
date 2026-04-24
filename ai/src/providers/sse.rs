@@ -25,10 +25,7 @@ pub enum SseStop {
 ///
 /// Reads bytes incrementally, splits on newlines, parses `data: {...}` lines
 /// into JSON, and stops according to the given [`SseStop`] condition.
-pub async fn collect_sse_events(
-    response: reqwest::Response,
-    stop: SseStop,
-) -> Result<Vec<Value>> {
+pub async fn collect_sse_events(response: reqwest::Response, stop: SseStop) -> Result<Vec<Value>> {
     let mut stream = response.bytes_stream();
     let mut buffer = String::new();
     let mut events: Vec<Value> = Vec::new();
@@ -59,8 +56,7 @@ pub async fn collect_sse_events(
                 Ok(v) => {
                     // Check JSON-type stop condition after parsing
                     if let SseStop::JsonType(type_val) = &stop {
-                        let is_stop =
-                            v.get("type").and_then(|t| t.as_str()) == Some(*type_val);
+                        let is_stop = v.get("type").and_then(|t| t.as_str()) == Some(*type_val);
                         events.push(v);
                         if is_stop {
                             return Ok(events);

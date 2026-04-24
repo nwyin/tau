@@ -9,11 +9,7 @@ use serde_json::json;
 async fn invalid_url_no_scheme_returns_error() {
     let tool = WebFetchTool;
     let result = tool
-        .execute(
-            "id1".to_string(),
-            json!({"url": "example.com/page"}),
-            None,
-        )
+        .execute("id1".to_string(), json!({"url": "example.com/page"}), None)
         .await
         .expect("execute should not panic");
 

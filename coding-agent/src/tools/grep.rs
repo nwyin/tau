@@ -56,9 +56,8 @@ impl AgentTool for GrepTool {
                 .ok_or_else(|| anyhow::anyhow!("missing 'pattern' parameter"))?
                 .to_string();
 
-            let cwd = cwd_override.unwrap_or_else(|| {
-                std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"))
-            });
+            let cwd = cwd_override
+                .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/")));
 
             let search_path = if let Some(path_str) = params["path"].as_str() {
                 if std::path::Path::new(path_str).is_absolute() {

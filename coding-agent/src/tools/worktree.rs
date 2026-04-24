@@ -69,7 +69,13 @@ fn head_ref(repo_root: &Path) -> Result<String> {
 fn sanitize_alias(alias: &str) -> String {
     alias
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '-' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
         .collect()
 }
 
@@ -141,12 +147,7 @@ pub fn create_worktree(
     let output = if reused {
         // Existing branch — create worktree from it
         std::process::Command::new("git")
-            .args([
-                "worktree",
-                "add",
-                &wt_path.to_string_lossy(),
-                &branch,
-            ])
+            .args(["worktree", "add", &wt_path.to_string_lossy(), &branch])
             .current_dir(repo_root)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
@@ -209,12 +210,7 @@ pub fn create_worktree(
 /// Remove a worktree directory (but keep the branch).
 pub fn remove_worktree(repo_root: &Path, wt_path: &Path) {
     let result = std::process::Command::new("git")
-        .args([
-            "worktree",
-            "remove",
-            "--force",
-            &wt_path.to_string_lossy(),
-        ])
+        .args(["worktree", "remove", "--force", &wt_path.to_string_lossy()])
         .current_dir(repo_root)
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -335,7 +331,11 @@ pub fn list_branches(repo_root: &Path) -> Result<Vec<String>> {
         .output()
         .context("failed to list branches")?;
     let text = String::from_utf8_lossy(&output.stdout);
-    Ok(text.lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect())
+    Ok(text
+        .lines()
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty())
+        .collect())
 }
 
 /// Detect the main/default branch name (main, master, etc.)

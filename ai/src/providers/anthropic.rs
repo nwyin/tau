@@ -723,7 +723,11 @@ fn stream_anthropic_messages(
         }
 
         let response = match crate::retry::retry_request(|| {
-            client.post(&url).headers(headers.clone()).json(&body).send()
+            client
+                .post(&url)
+                .headers(headers.clone())
+                .json(&body)
+                .send()
         })
         .await
         {
@@ -737,7 +741,11 @@ fn stream_anthropic_messages(
         if !response.status().is_success() {
             let status = response.status();
             let body_text = response.text().await.unwrap_or_default();
-            emit_error(&mut output, &mut tx, format!("HTTP {}: {}", status, body_text));
+            emit_error(
+                &mut output,
+                &mut tx,
+                format!("HTTP {}: {}", status, body_text),
+            );
             return;
         }
 
@@ -745,15 +753,14 @@ fn stream_anthropic_messages(
             partial: output.clone(),
         });
 
-        let events = match sse::collect_sse_events(response, SseStop::JsonType("message_stop"))
-            .await
-        {
-            Ok(events) => events,
-            Err(e) => {
-                emit_error(&mut output, &mut tx, e.to_string());
-                return;
-            }
-        };
+        let events =
+            match sse::collect_sse_events(response, SseStop::JsonType("message_stop")).await {
+                Ok(events) => events,
+                Err(e) => {
+                    emit_error(&mut output, &mut tx, e.to_string());
+                    return;
+                }
+            };
 
         if let Err(e) = process_anthropic_events(events, &mut output, &mut tx, &model).await {
             emit_error(&mut output, &mut tx, e.to_string());

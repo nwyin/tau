@@ -23,11 +23,7 @@ async fn test_missing_api_key_returns_helpful_error() {
 
     let tool = WebSearchTool;
     let result = tool
-        .execute(
-            "id1".into(),
-            json!({"query": "rust programming"}),
-            None,
-        )
+        .execute("id1".into(), json!({"query": "rust programming"}), None)
         .await
         .unwrap();
 

@@ -27,11 +27,7 @@ async fn file_read_details_correct_line_counts() {
     std::fs::write(&path, "a\nb\nc\nd\ne\n").unwrap(); // 5 lines
 
     let result = FileReadTool::default()
-        .execute(
-            "id".into(),
-            json!({"path": path.to_str().unwrap()}),
-            None,
-        )
+        .execute("id".into(), json!({"path": path.to_str().unwrap()}), None)
         .await
         .unwrap();
 
@@ -73,11 +69,7 @@ async fn file_read_details_limited_lines_returned() {
 #[tokio::test]
 async fn file_read_nonexistent_details_none() {
     let result = FileReadTool::default()
-        .execute(
-            "id".into(),
-            json!({"path": "/nonexistent/xyz.txt"}),
-            None,
-        )
+        .execute("id".into(), json!({"path": "/nonexistent/xyz.txt"}), None)
         .await
         .unwrap();
     // No assertion on details — None is acceptable for error paths

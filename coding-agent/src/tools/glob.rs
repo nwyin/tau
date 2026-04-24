@@ -52,9 +52,8 @@ impl AgentTool for GlobTool {
                 .ok_or_else(|| anyhow::anyhow!("missing 'pattern' parameter"))?
                 .to_string();
 
-            let cwd = cwd_override.unwrap_or_else(|| {
-                std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"))
-            });
+            let cwd = cwd_override
+                .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/")));
             let path_str = params["path"].as_str().unwrap_or(".").to_string();
             let path = if std::path::Path::new(&path_str).is_absolute() {
                 PathBuf::from(&path_str)

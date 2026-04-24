@@ -100,11 +100,7 @@ async fn test_file_read_numbered_lines() {
 
     let tool = FileReadTool::default();
     let result: AgentToolResult = tool
-        .execute(
-            "id5".into(),
-            json!({"path": path.to_str().unwrap()}),
-            None,
-        )
+        .execute("id5".into(), json!({"path": path.to_str().unwrap()}), None)
         .await
         .unwrap();
     let out = text_content(&result);
@@ -181,11 +177,7 @@ async fn test_file_read_binary() {
 
     let tool = FileReadTool::default();
     let result: AgentToolResult = tool
-        .execute(
-            "id8".into(),
-            json!({"path": path.to_str().unwrap()}),
-            None,
-        )
+        .execute("id8".into(), json!({"path": path.to_str().unwrap()}), None)
         .await
         .unwrap();
     let out = text_content(&result);
