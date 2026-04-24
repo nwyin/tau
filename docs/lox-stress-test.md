@@ -13,7 +13,7 @@ structured orchestration back to the main agent for the final long tail.
 Related local references:
 
 - `README.md` summarizes tau's thread/query/document/py_repl orchestration surface.
-- `docs/design-orchestration.md` gives the original py_repl and orchestration design.
+- `docs/slate-gap-analysis.md` gives the current thread, episode, and routing analysis.
 - `docs/trace-analysis.md` documents the JSONL event types used in this analysis.
 - `coding-agent/prompts/orchestration/overview.md` defines when to use threads,
   queries, and adaptive checkpoints.
@@ -309,7 +309,7 @@ should exist:
 
 ```text
 README.md
-docs/design-orchestration.md
+docs/slate-gap-analysis.md
 docs/trace-analysis.md
 coding-agent/prompts/orchestration/overview.md
 coding-agent/prompts/orchestration/workflows/supervised.md

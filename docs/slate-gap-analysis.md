@@ -7,9 +7,9 @@
 This document maps the architectural delta between Slate's episode/thread
 system and tau's current implementation, identifies gaps worth closing, and
 frames everything against the blog's thesis about routing behavior and
-knowledge overhang. It supersedes the gap table in `design-orchestration.md`
-section 9 (which was written pre-implementation; much of it has since been
-addressed).
+knowledge overhang. It supersedes the earlier orchestration brainstorm notes,
+which were written pre-implementation; much of that design has since been
+addressed or deliberately dropped.
 
 ---
 

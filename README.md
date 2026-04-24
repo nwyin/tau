@@ -201,7 +201,6 @@ benchmarks/              # eval adapters, microbenchmarks, fixtures
 
 - [Architecture overview](docs/overview.md)
 - [Benchmarking strategy](docs/benchmarking.md)
-- [Orchestration design](docs/design-orchestration.md)
 - [Context management](docs/context-management.md)
 - [Trace analysis](docs/trace-analysis.md)
 - [Release and container install](docs/releases.md)

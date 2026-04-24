@@ -2,7 +2,7 @@
 
 Feature-level comparison across 9 harnesses: **tau**, **kimi-cli**, **pi-mono**, **oh-my-pi**, **pi_agent_rust**, **codex**, **crush**, **opencode**, and **slate**.
 
-Data collected 2026-03-19 by reading each harness's source code. tau column updated 2026-03-25.
+Snapshot document. Data was collected 2026-03-19 by reading each harness's source code, and the tau column was last updated 2026-03-25. Treat this as historical comparison data, not a current-source contract.
 
 ---
 
