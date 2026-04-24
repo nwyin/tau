@@ -20,10 +20,15 @@ from __future__ import annotations
 import json
 import select
 import subprocess
+import threading
 import time
+from collections import deque
 from pathlib import Path
+from typing import Any, Callable
 
 from .result import SessionResult
+
+STDERR_TAIL_LINES = 200
 
 
 class TauSession:
@@ -64,6 +69,10 @@ class TauSession:
         self._proc: subprocess.Popen[str] | None = None
         self._next_id = 1
         self._turns = 0
+        self._pending_messages: list[dict[str, Any]] = []
+        self._stderr_tail: deque[str] = deque(maxlen=STDERR_TAIL_LINES)
+        self._stderr_lock = threading.Lock()
+        self._stderr_thread: threading.Thread | None = None
 
     # ── lifecycle ────────────────────────────────────────────────────
 
@@ -87,6 +96,7 @@ class TauSession:
             stderr=subprocess.PIPE,
             text=True,
         )
+        self._start_stderr_drain()
 
         resp = self._call("initialize")
         if "error" in resp:
@@ -113,7 +123,15 @@ class TauSession:
         if model is not None:
             params["model"] = model
 
-        self._call("session/send", params)
+        response = self._call("session/send", params)
+        if "error" in response:
+            return SessionResult(
+                output=f"error: {self._format_error(response['error'])}",
+                input_tokens=0,
+                output_tokens=0,
+                tool_calls=0,
+                wall_clock_ms=0,
+            )
         self._turns += 1
 
         start = time.monotonic()
@@ -127,10 +145,11 @@ class TauSession:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 break
-            line = self._read_line(timeout=min(1.0, remaining))
-            if line is None:
+            msg = self._pop_pending_message(lambda item: item.get("method") == "session.status")
+            if msg is None:
+                msg = self._read_message(timeout=min(1.0, remaining), use_pending=False)
+            if msg is None:
                 continue
-            msg = json.loads(line)
             method = msg.get("method")
             if method == "session.status":
                 params = msg.get("params", {})
@@ -152,6 +171,10 @@ class TauSession:
                     )
                 if status_type == "error":
                     error_msg = params.get("error", "unknown error")
+                    usage = params.get("usage", {})
+                    input_tokens = usage.get("input_tokens", input_tokens)
+                    output_tokens = usage.get("output_tokens", output_tokens)
+                    tool_calls = usage.get("tool_calls", tool_calls)
                     elapsed_ms = int((time.monotonic() - start) * 1000)
                     return SessionResult(
                         output=f"error: {error_msg}",
@@ -160,11 +183,18 @@ class TauSession:
                         tool_calls=tool_calls,
                         wall_clock_ms=elapsed_ms,
                     )
+            else:
+                self._pending_messages.append(msg)
 
         # Timeout
+        self._best_effort_abort()
         elapsed_ms = int((time.monotonic() - start) * 1000)
+        stderr_tail = self._stderr_tail_text()
+        output = "error: timeout"
+        if stderr_tail:
+            output += f"\nstderr tail:\n{stderr_tail}"
         return SessionResult(
-            output="error: timeout",
+            output=output,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             tool_calls=tool_calls,
@@ -211,18 +241,37 @@ class TauSession:
 
         deadline = time.time() + 10
         while time.time() < deadline:
-            line = self._read_line(timeout=1.0)
-            if line is None:
+            parsed = self._pop_pending_message(lambda msg: msg.get("id") == req_id)
+            if parsed is None:
+                parsed = self._read_message(timeout=1.0, use_pending=False)
+            if parsed is None:
                 continue
-            parsed = json.loads(line)
             if parsed.get("id") == req_id:
+                if "error" in parsed:
+                    return {"error": parsed["error"]}
                 return parsed.get("result", {})
-        return {"error": "timeout waiting for response"}
+            self._pending_messages.append(parsed)
+        error = "timeout waiting for response"
+        stderr_tail = self._stderr_tail_text()
+        if stderr_tail:
+            error += f"; stderr tail:\n{stderr_tail}"
+        return {"error": error}
 
     def _write_line(self, line: str) -> None:
         assert self._proc and self._proc.stdin
         self._proc.stdin.write(line + "\n")
         self._proc.stdin.flush()
+
+    def _read_message(self, timeout: float = 1.0, *, use_pending: bool = True) -> dict[str, Any] | None:
+        if use_pending:
+            pending = self._pop_pending_message(lambda _msg: True)
+            if pending is not None:
+                return pending
+
+        line = self._read_line(timeout=timeout)
+        if line is None:
+            return None
+        return json.loads(line)
 
     def _read_line(self, timeout: float = 1.0) -> str | None:
         assert self._proc and self._proc.stdout
@@ -231,3 +280,42 @@ class TauSession:
             line = self._proc.stdout.readline().strip()
             return line if line else None
         return None
+
+    def _pop_pending_message(self, predicate: Callable[[dict[str, Any]], bool]) -> dict[str, Any] | None:
+        for index, message in enumerate(self._pending_messages):
+            if predicate(message):
+                return self._pending_messages.pop(index)
+        return None
+
+    def _start_stderr_drain(self) -> None:
+        assert self._proc and self._proc.stderr
+        stderr = self._proc.stderr
+
+        def drain() -> None:
+            for line in stderr:
+                with self._stderr_lock:
+                    self._stderr_tail.append(line.rstrip())
+
+        self._stderr_thread = threading.Thread(target=drain, name="tau-stderr-drain", daemon=True)
+        self._stderr_thread.start()
+
+    def _stderr_tail_text(self) -> str:
+        with self._stderr_lock:
+            return "\n".join(line for line in self._stderr_tail if line)
+
+    def _best_effort_abort(self) -> None:
+        if self._proc is None:
+            return
+        try:
+            self._call("session/abort")
+        except Exception:
+            pass
+
+    @staticmethod
+    def _format_error(error: object) -> str:
+        if isinstance(error, dict):
+            message = error.get("message")
+            if message:
+                return str(message)
+            return json.dumps(error)
+        return str(error)

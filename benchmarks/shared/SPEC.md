@@ -181,12 +181,19 @@ Estimated LOC: ~800 total
 
 ## Dependencies
 
-Zero external dependencies beyond Python stdlib. Formatters (ruff, rustfmt, etc.)
-are optional and detected at runtime.
+Runtime benchmark infrastructure uses the Python stdlib. Tests use the
+`test` optional dependency group from `benchmarks/pyproject.toml`:
+
+```bash
+cd benchmarks
+uv run --extra test pytest
+```
+
+Formatters (ruff, rustfmt, etc.) are optional and detected at runtime.
 
 ## Import pattern
 
-Benchmarks import shared code via path manipulation:
+Benchmark scripts currently import shared code via path manipulation:
 
 ```python
 import sys
@@ -199,9 +206,10 @@ from shared.result import TaskResult
 from shared.reporter import Reporter
 ```
 
-Alternative: install `tau-benchmarks` in dev mode (`uv pip install -e .`) and
-restructure as a proper package. Defer this until we have 3+ online benchmarks
-actually using the shared code.
+Tests run with `pythonpath = ["."]` from `pyproject.toml`, so shared modules can
+be imported from the benchmark project root without requiring `uvx` or global
+pytest installs. A broader script import cleanup can happen with benchmark
+runner deduplication.
 
 ## Build order
 

@@ -8,6 +8,11 @@ dependencies = []
 [project.optional-dependencies]
 harbor = ["harbor>=0.1.0"]
 terminal-bench = ["terminal-bench>=0.1.0"]
+test = ["pytest>=9.0.0"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["shared", "coordination-routing", "coordination-mechanism"]
 
 [tool.ruff]
 line-length = 144
