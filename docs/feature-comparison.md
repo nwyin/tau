@@ -15,7 +15,7 @@ Snapshot document. Data was collected 2026-03-19 by reading each harness's sourc
 | file write | yes | yes | yes | yes | yes | via shell | yes | yes | yes (file write) |
 | file edit (exact match) | yes | yes | yes | yes | yes | -- | yes | yes | yes (search/replace) |
 | multi-edit | -- | yes | -- | -- | -- | -- | yes | yes | yes (sequential batch) |
-| hashline edit | yes | -- | -- | yes (invented it) | yes (default) | -- | -- | -- | -- |
+| hash-anchored line edit | no | -- | -- | yes | yes (default) | -- | -- | -- | -- |
 | apply_patch (unified diff) | -- | -- | -- | yes (patch mode) | -- | yes (primary) | -- | yes (GPT models) | -- |
 | grep/rg | yes | yes | yes | yes | yes | yes | yes | yes | yes (ripgrep) |
 | glob/find | yes | yes | yes | yes | yes | -- | yes | yes | yes (search file mode) |
@@ -70,10 +70,10 @@ Every harness converges on the same six core tools: shell execution, file read, 
 |---------|-----|----------|---------|----------|---------------|-------|-------|----------|-------|
 | Exact string replace | yes | yes | yes | yes | yes | -- | yes | yes | yes |
 | Fuzzy match fallback | yes (trimmed-cascade) | -- | yes | -- | -- | yes (context matching) | -- | yes (9 strategies) | yes (3-tier: exact, whitespace-normalized, line-by-line trimmed) |
-| Hashline (hash-anchored) | yes | -- | -- | yes (default) | yes (default) | -- | -- | -- | -- |
+| Hash-anchored line edit | no | -- | -- | yes (default) | yes (default) | -- | -- | -- | -- |
 | Unified diff / patch | -- | -- | -- | yes (patch mode) | -- | yes (primary) | -- | yes (GPT models) | -- (returns unified diff as result, not input) |
 | Multi-edit (batch) | -- | yes | -- | -- | -- | -- | yes | yes | yes (sequential batch) |
-| Switchable edit mode | yes | -- | -- | yes | -- | -- | -- | -- | -- |
+| Switchable edit mode | no | -- | -- | yes | -- | -- | -- | -- | -- |
 | LSP format-on-write | -- | -- | -- | yes | -- | -- | -- | -- | -- |
 | LSP diagnostics-on-edit | -- | -- | -- | yes | -- | -- | yes | yes | -- |
 | Ghost snapshot (per-turn git commit) | -- | -- | -- | -- | -- | yes | -- | -- | -- |
@@ -86,7 +86,7 @@ The most interesting divergence across harnesses. Same model, different edit for
 
 **Unified diff / patch** (codex, opencode for GPT): More expressive — multi-hunk edits in one call. Models frequently produce malformed patches (wrong line numbers, missing context). opencode uses a custom patch DSL with function signatures as context anchors instead of line numbers, plus multi-file operations (add, delete, move) in one call. Higher expressiveness, higher fragility.
 
-**Hash-anchored lines** (oh-my-pi, tau): Every line tagged with a short content hash anchor. The model references lines by position+hash, which the tool validates. Eliminates ambiguity (no string matching), but requires re-read after every edit (hashes change). +8% avg across 16 models, 10x improvement for weak models.
+**Hash-anchored lines** (oh-my-pi, pi_agent_rust): Every line is tagged with a short content hash anchor. The model references lines by position+hash, which the tool validates. This can eliminate string-match ambiguity, but it requires re-reading after edits because hashes change. tau investigated this approach and did not adopt it after local results failed to generalize across Python, Rust, and other non-JS/TS tasks.
 
 **AST-aware edit** (oh-my-pi only): `ast_grep` and `ast_edit` tools operate on syntax tree patterns. Structural matching eliminates whitespace sensitivity entirely. Most precise mechanism, but only works for languages with ast-grep support.
 
@@ -511,7 +511,6 @@ Based on the table above, here are the features that appear across 4+ harnesses 
 
 ### tau's unique advantages to preserve
 
-- **Hashline edit** — Only oh-my-pi and pi_agent_rust share this. Switchable edit mode for A/B comparison is unique to tau.
 - **Three-crate layered architecture** — Clean separation of LLM primitives, agent loop, and coding harness. Most harnesses are monolithic.
 - **Property-based testing** — Only tau and pi_agent_rust have proptest coverage.
 - **Minimal footprint** — Easier to fork, hack, and understand than any other harness.
@@ -521,7 +520,7 @@ Based on the table above, here are the features that appear across 4+ harnesses 
 1. **Minimize the model's decision surface.** Fewer tools = fewer wrong choices = more predictable behavior. The model should spend tokens on the *task*, not on deciding *which tool to use*.
 2. **Bash is the escape hatch.** Anything not worth a dedicated tool goes through bash. The threshold for adding a tool: it must be measurably better than the bash equivalent across benchmarks.
 3. **Lightweight delegation, heavy orchestration outside.** A simple `subagent` tool handles the common case (parallel research, isolated subtasks). Full multi-agent coordination (process pools, message routing, partial failure) lives in the Hive orchestrator.
-4. **Edit strategy as a variable, not a constant.** Both exact-match and hashline editing as switchable modes. The bet is that having both in one harness enables direct A/B comparison — and that better edit reliability matters more than more tool variety.
+4. **Edit strategy should be benchmarked, not assumed.** tau currently uses exact-match editing with fuzzy fallback. Hash-anchored line editing was investigated but not adopted because the strongest results did not generalize across languages in local tests.
 5. **Benchmarking decides.** The toolset should grow based on measured impact, not feature parity with other harnesses.
 
 ### What to consider adding next

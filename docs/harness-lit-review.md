@@ -42,7 +42,7 @@ Who is thinking about this problem, what have they figured out, and where can we
 
 **Paul Gauthier (Aider)** — 36K+ stars. Key innovations: repository map (function signatures for whole-codebase context), multiple edit formats (whole, diff, search/replace, udiff), architect/editor two-model approach. His blog posts contain some of the most practical empirical work in the field. Showed udiff raised GPT-4 Turbo from 20% to 61%.
 
-**Can Boluk (oh-my-pi)** — Created hashline editing. Content-hash-based line addressing that achieves 10x improvement for weak models and +8% average across 16 models. Being adopted by other projects.
+**Can Boluk (oh-my-pi)** — Explored hash-anchored line addressing for code edits, with strong reported results in the original JavaScript/TypeScript-heavy benchmark setting. tau investigated the approach but did not adopt it because local results did not generalize cleanly across Python, Rust, and other languages.
 
 **Saoud Rizwan (Cline)** — Created at an Anthropic hackathon. Plan+Act workflow, AST analysis, MCP support. Apache 2.0, model-agnostic.
 
@@ -123,13 +123,13 @@ The single most impactful area for harness engineering. No universally reliable 
 - Search/replace: 70-84% accuracy, fails on whitespace, ambiguous matches
 - Unified diff: 80-85%, complex format errors
 - Patch (Codex): 50%+ failure on non-OpenAI models
-- Hashline: +8% avg across 16 models, 10x for weak models
+- Hash-anchored line edits: strong reported results in the original benchmark setting, but tau's local follow-up did not reproduce a broad cross-language advantage.
 
-**Where tau can contribute:** We already have hashline. The open questions are:
-- Does hashline's re-read-after-edit overhead net out vs. its accuracy gains on multi-step tasks?
-- Can hashline be combined with multi-edit (batch several edits before re-reading)?
-- Head-to-head benchmark: hashline vs exact-match vs patch across models and task types on SWE-bench
-- What's the right granularity for hash anchors — per-line, per-block, per-function?
+**Where tau can contribute:** tau should focus edit reliability work on strategies that survive cross-language benchmarks:
+- Improve exact replacement failure recovery without making edits ambiguous.
+- Test batched multi-edit for common multi-hunk changes.
+- Compare exact replace, unified diff/patch, and post-edit diagnostics across models and task types.
+- Measure whether validation loops matter more than edit format for near-miss tasks.
 
 ### 2. Context management (HIGH tractability)
 
@@ -193,7 +193,7 @@ SWE-Gym showed fine-tuning on 491 trajectories gives +14%. But training is scaff
 
 **Where tau can contribute long-term:**
 - Generate agent trajectories using tau's scaffold on SWE-Gym tasks
-- Fine-tune open models (Qwen 32B) on tau-specific trajectories — do they learn hashline editing?
+- Fine-tune open models (Qwen 32B) on tau-specific trajectories — do they learn tau's exact-replace and validation workflow?
 - The scaffold generalization problem: models trained on OpenHands don't work well with other harnesses. Is this fundamental or just insufficient training data?
 
 ---
@@ -204,7 +204,7 @@ The field is converging on several truths:
 
 1. **"The harness is the product."** The model is increasingly commodity. Same model, different scaffold, 22-point score swing. Harness engineering is what matters.
 
-2. **Simpler often wins.** Observation masking > summarization. Hashline > complex diff formats. Six tools > thirty tools. The pattern holds across every dimension.
+2. **Simpler often wins, but only when benchmarks generalize.** Observation masking looks more robust than summarization. Edit-format gains are much more benchmark-sensitive, so tau should prefer simple exact replacement plus measured recovery paths until alternatives prove out across languages.
 
 3. **Edit reliability is the bottleneck.** Models can reason about code. They struggle to express changes to files reliably. Every harness that invests in edit strategy sees outsized returns.
 

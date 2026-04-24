@@ -9,7 +9,7 @@ Ported from edit-bench's ``rpc.py`` (TauRpcClient).  The protocol:
 5. Read usage from notification payload
 
 Key additions over the edit-bench client:
-- Accepts optional tool list and edit-mode arguments.
+- Accepts optional tool list and historical edit-mode metadata.
 - Returns :class:`SessionResult` with token usage, tool-call count,
   and wall-clock timing.
 - Tracks turn count (number of send/receive cycles).
@@ -34,7 +34,7 @@ class TauSession:
         cwd: Working directory for the tau subprocess.
         tools: Comma-separated tool names, or a list of tool names.
             ``None`` means let tau use its defaults.
-        edit_mode: Edit strategy — ``"replace"`` or ``"hashline"``.
+        edit_mode: Historical result metadata. Tau currently supports only ``"replace"``.
         trace_output: Directory for tau trace output (``run.json`` + ``trace.jsonl``).
             ``None`` uses tau's default trace location.
         task_id: Optional benchmark task identifier passed to tau for trace metadata.
@@ -72,9 +72,9 @@ class TauSession:
         cmd = [self._tau_binary, "serve", "--cwd", self._cwd, "--model", self._model]
         if self._tools:
             cmd.extend(["--tools", self._tools])
-        # NOTE: `tau serve` currently does not expose an `--edit-mode` flag.
-        # Keep the constructor parameter for API compatibility across benchmarks,
-        # but do not pass it to the serve subprocess.
+        # NOTE: `tau serve` does not expose an `--edit-mode` flag. Keep the
+        # constructor parameter for historical result-schema compatibility, but
+        # do not pass it to the serve subprocess.
         if self._trace_output:
             cmd.extend(["--trace-output", self._trace_output])
         if self._task_id:

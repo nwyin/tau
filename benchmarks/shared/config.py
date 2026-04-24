@@ -18,7 +18,7 @@ class BenchConfig:
 
     Attributes:
         model: Model identifier passed to ``tau serve --model``.
-        edit_mode: Edit strategy — ``"replace"`` or ``"hashline"``.
+        edit_mode: Historical result field. Tau currently supports only ``"replace"``.
         runs_per_task: Number of independent runs per task per variant.
         timeout: Seconds allowed per task before it is killed.
         concurrency: Maximum number of parallel task executions.
@@ -44,7 +44,7 @@ class BenchConfig:
         all runners expose the same knobs.
         """
         parser.add_argument("--model", default="claude-sonnet-4-6", help="Model identifier (default: claude-sonnet-4-6)")
-        parser.add_argument("--edit-mode", default="replace", choices=["replace", "hashline"], help="Edit strategy (default: replace)")
+        parser.add_argument("--edit-mode", default="replace", choices=["replace"], help="Edit strategy metadata; only replace is currently supported")
         parser.add_argument("--runs", type=int, default=1, help="Runs per task per variant (default: 1)")
         parser.add_argument("--timeout", type=int, default=120, help="Seconds per task (default: 120)")
         parser.add_argument("--concurrency", "-j", type=int, default=4, help="Parallel task execution (default: 4)")

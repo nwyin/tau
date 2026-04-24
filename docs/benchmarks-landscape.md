@@ -162,7 +162,7 @@ These are the results that should inform harness design decisions:
 - **22-point swing** from scaffolding alone on SWE-bench Pro (same model, different scaffold)
 - **13.7-point gain** on Terminal-Bench from harness-only changes (LangChain)
 - **6-point swing** from infrastructure configuration on Terminal-Bench (Anthropic)
-- **10x improvement** in edit accuracy from hashline format (Grok: 6.7% → 68.3%)
+- **Edit-format gains can be large but benchmark-sensitive**; tau's local follow-up on hash-anchored line editing did not reproduce a broad cross-language advantage.
 - **3x reduction** in lazy coding from unified diff format (Aider)
 - **6.6-point boost** from context management alone (CCA ablation)
 - **+14% absolute** from fine-tuning on 491 agent trajectories (SWE-Gym)

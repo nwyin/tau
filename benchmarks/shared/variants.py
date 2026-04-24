@@ -16,7 +16,7 @@ class Variant:
     Attributes:
         name: Short identifier used in results and reports (e.g. "baseline", "with-diagnostics").
         description: Human-readable explanation of what this variant tests.
-        edit_mode: Edit strategy override ("replace" or "hashline").
+        edit_mode: Historical edit strategy metadata. Only "replace" is currently supported.
         tools: Tool list override. None means use default tools.
         system_prompt_suffix: Extra text appended to the system prompt for this variant.
         tau_config_overrides: Arbitrary tau config key-value overrides.

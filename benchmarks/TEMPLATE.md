@@ -298,7 +298,7 @@ uv run python run.py fixtures/ \
 
 Standard flags across all online runners:
 - `--model`: Model identifier
-- `--edit-mode`: `replace` | `hashline`
+- `--edit-mode`: historical metadata; only `replace` is currently supported
 - `--runs`: Runs per task per variant (default: 1)
 - `--timeout`: Seconds per task (default: 120)
 - `--concurrency`: Parallel tasks (default: 4)

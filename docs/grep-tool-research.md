@@ -111,7 +111,7 @@ Recommended default:
 - Keep `limit`, but implement it as a global streaming cap rather than `rg --max-count`.
 - Truncate long lines to a fixed width, around 500-2000 chars.
 - Include a final notice that says what cap was hit and how to refine or raise the limit.
-- Do not add hashline annotations to grep output. Grep output is navigation evidence; the model should still call `file_read` before editing. Hashes belong in `file_read`/`file_edit`, not search snippets.
+- Do not add edit anchors to grep output. Grep output is navigation evidence; the model should still call `file_read` before editing.
 
 ### Tool descriptions
 

@@ -1,20 +1,20 @@
 # Codebase Overview
 
-tau is a Rust agent harness inspired by pi-mono's architecture. It ports the foundational layers (`packages/ai` and `packages/agent`) and adds a minimal `coding-agent` harness on top.
+tau is a Rust agent harness inspired by pi-mono's architecture. It keeps LLM provider code, the generic agent runtime, and the coding harness in separate crates.
 
 The design is intentionally layered so that `agent` stays generic — different harnesses can be built on top for different agent types (coding, data, research, etc.).
 
 ```
-ai             LLM streaming primitives (providers, models, event streams)
-agent          generic agent loop (tools, steering, follow-ups, events)
-coding-agent   built-in tools (bash, file read/write) + REPL/CLI
+ai             LLM streaming primitives: providers, model catalog, auth, streams
+agent          generic agent loop: tools, events, compaction, stats, orchestration state
+coding-agent   tau binary: TUI, CLI, serve mode, tools, sessions, traces
 ```
 
 ## Current state
 
 - **ai**: OpenAI Responses, OpenAI-compatible Chat Completions, and Anthropic Messages providers implemented. Model catalog covers direct OpenAI/Anthropic plus OpenRouter families. Property-based tests (proptest) for SSE parser and type serde.
 - **agent**: Feature-complete port of pi-mono's agent loop. `stream_fn` injection for testing, tool wiring to LLM context, full event system. Performance instrumentation via `AgentStats` subscriber.
-- **coding-agent**: Six tools (BashTool, FileReadTool, FileWriteTool, FileEditTool, GrepTool, GlobTool), interactive REPL, headless `--prompt` mode, JSONL session persistence (`--session`/`--resume`). FileReadTool and FileEditTool are mode-aware — a single `file_read`/`file_edit` tool name with behavior controlled by `edit_mode` config (replace or hashline).
+- **coding-agent**: Full-screen TUI, headless `--prompt` mode, JSON-RPC `serve` mode, sessions, traces, permissions, skills, filesystem/search/web tools, and orchestration tools (`thread`, `query`, `document`, `log`, `from_id`, `py_repl`).
 
 ---
 
@@ -89,18 +89,21 @@ Wraps the loop with state management:
 
 ---
 
-## `coding-agent` — minimal coding harness
+## `coding-agent` — coding harness
 
 ### Tools
 
 - **BashTool** — runs shell commands via `sh -c`. Timeout support, cancellation, output truncation (2000 lines / 30KB), exit code reporting.
-- **FileReadTool** — reads text files with offset/limit. Mode-aware: replace mode uses `{num}\t{line}` format, hashline mode uses hash-anchored lines.
+- **FileReadTool** — reads text files with numbered lines plus offset/limit support.
 - **FileWriteTool** — writes files, creates parent dirs.
-- **FileEditTool** — mode-aware. Replace mode: exact-match string replacement (`old_string` → `new_string`). Hashline mode: hash-anchored positional edits (`{op, pos, end, lines}`).
+- **FileEditTool** — exact-match string replacement (`old_string` → `new_string`) with a trimmed/unicode fuzzy fallback when exact matching fails.
 - **GrepTool** — searches file contents by regex pattern.
 - **GlobTool** — searches for files by name pattern.
+- **WebFetchTool / WebSearchTool** — fetch pages and run Exa-backed web search.
+- **SubagentTool / TodoTool** — subprocess delegation and full-replace progress tracking.
+- **ThreadTool / QueryTool / DocumentTool / LogTool / FromIdTool / PyReplTool** — in-process orchestration, shared virtual documents, reusable worker threads, single-shot queries, and persistent Python orchestration.
 
-All implement `AgentTool` and are collected via `coding_agent::tools::tools_for_edit_mode()`.
+All implement `AgentTool`. The default direct tool set is defined in `coding_agent::tools::default_tools()`, and agent construction adds the orchestration tools backed by shared `OrchestratorState`.
 
 ### CLI modes
 
@@ -141,3 +144,5 @@ OPENROUTER_API_KEY=sk-... cargo run -p coding-agent -- --model moonshotai/kimi-k
 **No proxy, no web UI.** pi-mono supports browser-based agents via a CORS proxy (`streamProxy`) and a Lit web component library. tau is local-only — agents run on the machine, call providers directly. This is a deliberate scope cut.
 
 **Benchmarking as a first-class concern.** tau is designed to be benchmarked — `--prompt` mode, `--stats` instrumentation, and the `benchmarks/` directory exist from early on. The goal is not just to build a harness but to measure how harness design affects model performance. See `docs/benchmarking.md`.
+
+**Edit format discipline.** tau currently uses exact string replacement with a limited fuzzy fallback. Hash-anchored line editing was investigated but not adopted because local benchmark results did not generalize beyond the JavaScript/TypeScript-style cases where the technique was originally reported to perform well.

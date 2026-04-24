@@ -34,7 +34,8 @@ Context manager wrapping `tau serve` JSON-RPC 2.0.
 
 Key differences from edit-bench's TauRpcClient:
 - Supports **variant configuration**: accepts a `Variant` object that can
-  override model, edit_mode, tools, system prompt additions, and feature flags
+  override model, historical edit_mode metadata, tools, system prompt additions,
+  and feature flags
 - Adds **turn counting**: tracks number of send/receive cycles
 - Adds **tool call counting**: parsed from session notifications
 
