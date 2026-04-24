@@ -34,6 +34,7 @@ pub struct BuiltAgent {
     pub model_id: String,
     pub model_provider: String,
     pub system_prompt_text: String,
+    pub tool_names: Vec<String>,
     pub skills: Vec<Skill>,
     pub permission_service: Arc<PermissionService>,
     pub orchestrator: Arc<OrchestratorState>,
@@ -299,6 +300,10 @@ pub async fn build_agent(build_config: AgentBuildConfig) -> Result<BuiltAgent> {
     let thinking_level: agent::types::ThinkingLevel =
         serde_json::from_value(serde_json::Value::String(thinking_level_str)).unwrap_or_default();
 
+    let tool_names = tool_list
+        .iter()
+        .map(|tool| tool.name().to_string())
+        .collect();
     let model_provider = model.provider.clone();
     let model_for_compact = model.clone();
     let agent = Agent::new(AgentOptions {
@@ -351,6 +356,7 @@ pub async fn build_agent(build_config: AgentBuildConfig) -> Result<BuiltAgent> {
         model_id,
         model_provider,
         system_prompt_text,
+        tool_names,
         skills: loaded_skills.skills,
         permission_service,
         orchestrator,

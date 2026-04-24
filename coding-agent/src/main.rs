@@ -12,7 +12,7 @@ use clap::Parser;
 use coding_agent::agent_builder::{build_agent, AgentBuildConfig};
 use coding_agent::cli::{Cli, Command};
 use coding_agent::session::{SessionFile, SessionManager};
-use coding_agent::tools::default_tools;
+use coding_agent::tools::summarize_tool_call;
 use coding_agent::trace::{sha256_prefix, TraceConfig, TraceSubscriber};
 
 fn print_models(filter_provider: Option<&str>) {
@@ -143,6 +143,7 @@ async fn main() -> Result<()> {
     let skills = built.skills;
     let model_id = built.model_id;
     let model_provider = built.model_provider;
+    let tool_names = built.tool_names;
     let system_prompt_hash = sha256_prefix(&built.system_prompt_text);
     let max_turns = std::env::var("TAU_MAX_TURNS")
         .ok()
@@ -202,10 +203,6 @@ async fn main() -> Result<()> {
     };
 
     // Set up trace output (always-on; explicit --trace-output overrides default path)
-    let tool_names: Vec<String> = default_tools()
-        .iter()
-        .map(|t| t.name().to_string())
-        .collect();
     let trace_dir_path = if let Some(ref explicit_dir) = trace_output {
         PathBuf::from(explicit_dir)
     } else {
@@ -272,84 +269,11 @@ async fn main() -> Result<()> {
             AgentEvent::ToolExecutionStart {
                 tool_name, args, ..
             } => {
-                let detail = match tool_name.as_str() {
-                    "file_read" | "file_write" | "file_edit" => args
-                        .get("path")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string()),
-                    "glob" | "grep" => args
-                        .get("pattern")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string()),
-                    "bash" => args.get("command").and_then(|v| v.as_str()).map(|s| {
-                        let line = s.lines().next().unwrap_or(s);
-                        if line.len() > 80 {
-                            format!("{}…", &line[..79])
-                        } else if s.lines().count() > 1 {
-                            format!("{}…", line)
-                        } else {
-                            line.to_string()
-                        }
-                    }),
-                    "web_fetch" => args
-                        .get("url")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string()),
-                    "web_search" => args
-                        .get("query")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string()),
-                    "thread" => {
-                        let alias = args.get("alias").and_then(|v| v.as_str()).unwrap_or("?");
-                        let task = args.get("task").and_then(|v| v.as_str()).unwrap_or("");
-                        let preview = if task.len() > 50 {
-                            format!("{}...", &task[..47])
-                        } else {
-                            task.to_string()
-                        };
-                        Some(format!("{} — {}", alias, preview))
-                    }
-                    "query" => args.get("prompt").and_then(|v| v.as_str()).map(|s| {
-                        if s.len() > 60 {
-                            format!("{}...", &s[..57])
-                        } else {
-                            s.to_string()
-                        }
-                    }),
-                    "document" => {
-                        let op = args
-                            .get("operation")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("?");
-                        let name = args.get("name").and_then(|v| v.as_str());
-                        match name {
-                            Some(n) => Some(format!("{} '{}'", op, n)),
-                            None => Some(op.to_string()),
-                        }
-                    }
-                    "py_repl" => args.get("code").and_then(|v| v.as_str()).map(|s| {
-                        let line = s.lines().next().unwrap_or(s);
-                        if line.len() > 60 {
-                            format!("{}...", &line[..57])
-                        } else if s.lines().count() > 1 {
-                            format!("{}...", line)
-                        } else {
-                            line.to_string()
-                        }
-                    }),
-                    "log" => args.get("message").and_then(|v| v.as_str()).map(|s| {
-                        if s.len() > 60 {
-                            format!("{}...", &s[..57])
-                        } else {
-                            s.to_string()
-                        }
-                    }),
-                    "from_id" => args.get("alias").and_then(|v| v.as_str()).map(String::from),
-                    _ => None,
-                };
-                match detail {
-                    Some(d) => eprintln!("[tool: {}] {}", tool_name, d),
-                    None => eprintln!("[tool: {}]", tool_name),
+                let detail = summarize_tool_call(tool_name, args);
+                if detail.is_empty() {
+                    eprintln!("[tool: {}]", tool_name);
+                } else {
+                    eprintln!("[tool: {}] {}", tool_name, detail);
                 }
             }
             AgentEvent::ToolExecutionEnd {

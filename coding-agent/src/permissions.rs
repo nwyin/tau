@@ -17,6 +17,8 @@ use agent::types::{AgentTool, AgentToolResult, BoxFuture};
 use ai::types::UserBlock;
 use serde_json::Value;
 
+use crate::tools::registry::{DefaultToolPermission, ToolRegistry};
+
 /// Per-tool permission policy.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Policy {
@@ -38,9 +40,9 @@ impl Policy {
 
 /// Default policies: read-only tools allow, everything else asks.
 fn default_policy(tool_name: &str) -> Policy {
-    match tool_name {
-        "file_read" | "glob" | "grep" | "web_fetch" | "web_search" | "todo" => Policy::Allow,
-        _ => Policy::Ask,
+    match ToolRegistry::new().default_permission(tool_name) {
+        DefaultToolPermission::Allow => Policy::Allow,
+        DefaultToolPermission::Ask => Policy::Ask,
     }
 }
 
@@ -156,60 +158,7 @@ impl PermissionService {
 
 /// Format a short description of a tool call for the permission prompt.
 pub fn describe_tool_call(tool_name: &str, params: &Value) -> String {
-    match tool_name {
-        "bash" => params
-            .get("command")
-            .and_then(|v| v.as_str())
-            .map(|s| {
-                let line = s.lines().next().unwrap_or(s);
-                if line.len() > 80 {
-                    format!("{}…", &line[..79])
-                } else if s.lines().count() > 1 {
-                    format!("{}…", line)
-                } else {
-                    line.to_string()
-                }
-            })
-            .unwrap_or_default(),
-        "file_read" | "file_write" | "file_edit" => params
-            .get("path")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string(),
-        "glob" => params
-            .get("pattern")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string(),
-        "grep" => params
-            .get("pattern")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string(),
-        "web_fetch" => params
-            .get("url")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string(),
-        "web_search" => params
-            .get("query")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string(),
-        "subagent" => params
-            .get("task")
-            .and_then(|v| v.as_str())
-            .map(|s| {
-                let line = s.lines().next().unwrap_or(s);
-                if line.len() > 80 {
-                    format!("{}…", &line[..79])
-                } else {
-                    line.to_string()
-                }
-            })
-            .unwrap_or_default(),
-        _ => String::new(),
-    }
+    ToolRegistry::new().summarize(tool_name, params)
 }
 
 /// The default interactive prompt function that reads from stdin.

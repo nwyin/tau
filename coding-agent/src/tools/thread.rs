@@ -657,26 +657,12 @@ fn build_thread_system_prompt(
 /// Raw tool names pass through unchanged. Duplicates are removed.
 fn expand_capabilities(names: &[String]) -> Vec<String> {
     let mut tools = Vec::new();
+    let registry = tools::ToolRegistry::new();
     for name in names {
-        match name.as_str() {
-            "read" => tools.extend(["file_read", "grep", "glob"].map(String::from)),
-            "write" => tools.extend(["file_read", "file_edit", "file_write"].map(String::from)),
-            "terminal" => tools.push("bash".to_string()),
-            "web" => tools.extend(["web_fetch", "web_search"].map(String::from)),
-            "full" => tools.extend(
-                [
-                    "bash",
-                    "file_read",
-                    "file_edit",
-                    "file_write",
-                    "glob",
-                    "grep",
-                    "web_fetch",
-                    "web_search",
-                ]
-                .map(String::from),
-            ),
-            other => tools.push(other.to_string()),
+        if let Some(expanded) = registry.capability_tools(name.as_str()) {
+            tools.extend(expanded);
+        } else {
+            tools.push(name.to_string());
         }
     }
     tools.sort();

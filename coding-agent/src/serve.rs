@@ -14,7 +14,6 @@ use crate::agent_builder::{build_agent, AgentBuildConfig};
 use crate::rpc::handler::{handle_request, usage_tracking_subscriber, ServerState, SessionStatus};
 use crate::rpc::transport::{spawn_stdin_reader, StdinMessage, StdoutWriter};
 use crate::rpc::types::*;
-use crate::tools::default_tools;
 use crate::trace::{sha256_prefix, TraceConfig, TraceSubscriber};
 
 /// Run the JSON-RPC serve loop.
@@ -52,10 +51,7 @@ pub async fn run_serve(
         .subscribe(usage_tracking_subscriber(Arc::clone(&cumulative_usage)));
 
     // Set up trace output if requested
-    let tool_names: Vec<String> = default_tools()
-        .iter()
-        .map(|t| t.name().to_string())
-        .collect();
+    let tool_names = built.tool_names.clone();
     let system_prompt_hash = sha256_prefix(&built.system_prompt_text);
     let max_turns = std::env::var("TAU_MAX_TURNS")
         .ok()
