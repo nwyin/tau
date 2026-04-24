@@ -8,12 +8,15 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use agent::orchestrator::OrchestratorState;
 use agent::types::{AgentTool, AgentToolResult, BoxFuture};
 use ai::types::UserBlock;
 use serde_json::{json, Value};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 use tokio_util::sync::CancellationToken;
+
+use crate::orchestration::{OrchestrationRpcFacade, OrchestrationRuntime};
 
 const PY_KERNEL_SOURCE: &str = include_str!("../../prompts/py_kernel.py");
 
@@ -25,10 +28,6 @@ const MAX_OUTPUT_LINES: usize = 2000;
 
 /// Max output bytes returned to the LLM.
 const MAX_OUTPUT_BYTES: usize = 30_000;
-
-type RunningThreadHandle = tokio::task::JoinHandle<Result<Value, String>>;
-type RunningThreads = Arc<tokio::sync::Mutex<HashMap<String, RunningThreadHandle>>>;
-type CompletedThreads = Arc<tokio::sync::Mutex<HashMap<String, Value>>>;
 
 struct KernelProcess {
     child: Child,
@@ -44,45 +43,42 @@ impl Drop for KernelProcess {
 }
 
 pub struct PyReplTool {
-    // Pre-built tool instances for reverse RPC dispatch
-    thread_tool: Arc<dyn AgentTool>,
-    query_tool: Arc<dyn AgentTool>,
-    document_tool: Arc<dyn AgentTool>,
-    generic_tools: Arc<HashMap<String, Arc<dyn AgentTool>>>,
+    rpc_facade: OrchestrationRpcFacade,
     // Long-lived kernel subprocess
     kernel: Arc<tokio::sync::Mutex<Option<KernelProcess>>>,
     // Cell counter for IDs
     cell_counter: std::sync::atomic::AtomicU64,
-    // Non-blocking thread orchestration state for tau.launch/poll/wait.
-    running_threads: RunningThreads,
-    completed_threads: CompletedThreads,
 }
 
 impl PyReplTool {
     pub fn new(
+        orchestrator: Arc<OrchestratorState>,
         thread_tool: Arc<dyn AgentTool>,
         query_tool: Arc<dyn AgentTool>,
         document_tool: Arc<dyn AgentTool>,
         generic_tools: HashMap<String, Arc<dyn AgentTool>>,
     ) -> Self {
         Self {
-            thread_tool,
-            query_tool,
-            document_tool,
-            generic_tools: Arc::new(generic_tools),
+            rpc_facade: OrchestrationRpcFacade::new(
+                OrchestrationRuntime::new(orchestrator),
+                thread_tool,
+                query_tool,
+                document_tool,
+                generic_tools,
+            ),
             kernel: Arc::new(tokio::sync::Mutex::new(None)),
             cell_counter: std::sync::atomic::AtomicU64::new(0),
-            running_threads: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
-            completed_threads: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
         }
     }
 
     pub fn arc(
+        orchestrator: Arc<OrchestratorState>,
         thread_tool: Arc<dyn AgentTool>,
         query_tool: Arc<dyn AgentTool>,
         document_tool: Arc<dyn AgentTool>,
     ) -> Arc<dyn AgentTool> {
         Arc::new(Self::new(
+            orchestrator,
             thread_tool,
             query_tool,
             document_tool,
@@ -91,12 +87,14 @@ impl PyReplTool {
     }
 
     pub fn arc_with_tools(
+        orchestrator: Arc<OrchestratorState>,
         thread_tool: Arc<dyn AgentTool>,
         query_tool: Arc<dyn AgentTool>,
         document_tool: Arc<dyn AgentTool>,
         generic_tools: HashMap<String, Arc<dyn AgentTool>>,
     ) -> Arc<dyn AgentTool> {
         Arc::new(Self::new(
+            orchestrator,
             thread_tool,
             query_tool,
             document_tool,
@@ -184,13 +182,7 @@ impl AgentTool for PyReplTool {
             cell_counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         );
 
-        // Clone self references for the async block
-        let this_thread_tool = self.thread_tool.clone();
-        let this_query_tool = self.query_tool.clone();
-        let this_document_tool = self.document_tool.clone();
-        let generic_tools = self.generic_tools.clone();
-        let running_threads = self.running_threads.clone();
-        let completed_threads = self.completed_threads.clone();
+        let rpc_facade = self.rpc_facade.clone();
 
         Box::pin(async move {
             let code = params
@@ -202,16 +194,6 @@ impl AgentTool for PyReplTool {
                 .get("timeout")
                 .and_then(|v| v.as_u64())
                 .unwrap_or(DEFAULT_TIMEOUT_SECS);
-
-            // Build a temporary self-like struct for RPC dispatch
-            let dispatcher = RpcDispatcher {
-                thread_tool: this_thread_tool,
-                query_tool: this_query_tool,
-                document_tool: this_document_tool,
-                generic_tools,
-                running_threads,
-                completed_threads,
-            };
 
             // Lock kernel — held across await points (tokio::sync::Mutex)
             let mut kernel_guard = kernel.lock().await;
@@ -309,7 +291,7 @@ impl AgentTool for PyReplTool {
                                     parsed.get("method").and_then(|v| v.as_str()).unwrap_or("");
                                 let rpc_params = parsed.get("params").cloned().unwrap_or(json!({}));
 
-                                let rpc_result = dispatcher.dispatch(method, &rpc_params).await;
+                                let rpc_result = rpc_facade.dispatch(method, &rpc_params).await;
 
                                 let response = match rpc_result {
                                     Ok(val) => json!({
@@ -375,501 +357,6 @@ impl AgentTool for PyReplTool {
             })
         })
     }
-}
-
-/// Helper struct for dispatching RPCs from inside the execute future.
-struct RpcDispatcher {
-    thread_tool: Arc<dyn AgentTool>,
-    query_tool: Arc<dyn AgentTool>,
-    document_tool: Arc<dyn AgentTool>,
-    generic_tools: Arc<HashMap<String, Arc<dyn AgentTool>>>,
-    running_threads: RunningThreads,
-    completed_threads: CompletedThreads,
-}
-
-impl RpcDispatcher {
-    async fn dispatch(&self, method: &str, params: &Value) -> Result<Value, String> {
-        let result = match method {
-            "tool" => self.dispatch_tool(params).await,
-            "thread" => self.dispatch_thread(params).await,
-            "launch" => self.dispatch_launch(params).await,
-            "poll" => self.dispatch_poll(params).await,
-            "wait" => self.dispatch_wait(params).await,
-            "query" => self.dispatch_to_tool(&self.query_tool, params).await,
-            "document" => self.dispatch_to_tool(&self.document_tool, params).await,
-            "parallel" => self.dispatch_parallel(params).await,
-            "diff" => self.dispatch_diff(params).await,
-            "merge" => self.dispatch_merge(params).await,
-            "branches" => self.dispatch_branches(params).await,
-            "log" => {
-                if let Some(msg) = params.get("message").and_then(|v| v.as_str()) {
-                    eprintln!("[py_repl:log] {}", msg);
-                }
-                Ok(Value::Null)
-            }
-            _ => Err(format!("unknown RPC method: {}", method)),
-        };
-        result
-    }
-
-    async fn dispatch_tool(&self, params: &Value) -> Result<Value, String> {
-        let name = params
-            .get("name")
-            .and_then(|v| v.as_str())
-            .ok_or("missing 'name' in tool RPC")?;
-        let args = params.get("args").cloned().unwrap_or(json!({}));
-
-        let tool = self
-            .generic_tools
-            .get(name)
-            .ok_or_else(|| format!("unknown tool: {}", name))?;
-
-        let result = tool
-            .execute(format!("py-rpc-{}", name), args, None)
-            .await
-            .map_err(|e| e.to_string())?;
-
-        Ok(Value::String(extract_text(&result)))
-    }
-
-    async fn dispatch_thread(&self, params: &Value) -> Result<Value, String> {
-        let result = self
-            .thread_tool
-            .execute(
-                format!("py-rpc-{}", self.thread_tool.name()),
-                params.clone(),
-                None,
-            )
-            .await
-            .map_err(|e| e.to_string())?;
-        Ok(build_thread_result(&result))
-    }
-
-    async fn dispatch_launch(&self, params: &Value) -> Result<Value, String> {
-        let alias = params
-            .get("alias")
-            .and_then(|v| v.as_str())
-            .ok_or("missing 'alias' in launch RPC")?
-            .to_string();
-
-        self.collect_finished_aliases(std::slice::from_ref(&alias))
-            .await?;
-
-        {
-            let running = self.running_threads.lock().await;
-            if running.contains_key(&alias) {
-                return Err(format!("thread '{}' is already running", alias));
-            }
-        }
-
-        self.completed_threads.lock().await.remove(&alias);
-
-        let thread_tool = self.thread_tool.clone();
-        let params = params.clone();
-        let launched_alias = alias.clone();
-        let handle = tokio::spawn(async move {
-            let result = thread_tool
-                .execute(
-                    format!("py-launch-{}-{}", thread_tool.name(), launched_alias),
-                    params,
-                    None,
-                )
-                .await
-                .map_err(|e| e.to_string())?;
-            Ok(build_thread_result(&result))
-        });
-
-        self.running_threads
-            .lock()
-            .await
-            .insert(alias.clone(), handle);
-        Ok(thread_state(&alias, "running", ""))
-    }
-
-    async fn dispatch_poll(&self, params: &Value) -> Result<Value, String> {
-        let alias = params
-            .get("alias")
-            .and_then(|v| v.as_str())
-            .ok_or("missing 'alias' in poll RPC")?
-            .to_string();
-
-        self.collect_finished_aliases(std::slice::from_ref(&alias))
-            .await?;
-        Ok(self.status_for_alias(&alias).await)
-    }
-
-    async fn dispatch_wait(&self, params: &Value) -> Result<Value, String> {
-        let aliases = parse_alias_list(params, "aliases")?;
-        let timeout = params
-            .get("timeout")
-            .and_then(|v| v.as_u64())
-            .map(std::time::Duration::from_secs);
-
-        if aliases.is_empty() {
-            return Ok(Value::Array(Vec::new()));
-        }
-
-        let deadline = timeout.map(|dur| std::time::Instant::now() + dur);
-        loop {
-            self.collect_finished_aliases(&aliases).await?;
-
-            let statuses = self.statuses_for_aliases(&aliases).await;
-            let all_terminal = statuses.iter().all(is_terminal_thread_state);
-            if all_terminal {
-                return Ok(Value::Array(statuses));
-            }
-
-            if let Some(deadline) = deadline {
-                if std::time::Instant::now() >= deadline {
-                    return Ok(Value::Array(statuses));
-                }
-            }
-
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        }
-    }
-
-    async fn dispatch_to_tool(
-        &self,
-        tool: &Arc<dyn AgentTool>,
-        params: &Value,
-    ) -> Result<Value, String> {
-        let result = tool
-            .execute(format!("py-rpc-{}", tool.name()), params.clone(), None)
-            .await
-            .map_err(|e| e.to_string())?;
-
-        Ok(Value::String(extract_text(&result)))
-    }
-
-    async fn dispatch_parallel(&self, params: &Value) -> Result<Value, String> {
-        let specs = params
-            .get("specs")
-            .and_then(|v| v.as_array())
-            .ok_or("missing 'specs' array in parallel RPC")?;
-
-        let mut handles = Vec::with_capacity(specs.len());
-
-        for spec in specs {
-            let method = spec
-                .get("method")
-                .and_then(|v| v.as_str())
-                .unwrap_or("tool")
-                .to_string();
-            let spec = spec.clone();
-            let thread_tool = self.thread_tool.clone();
-            let query_tool = self.query_tool.clone();
-            let document_tool = self.document_tool.clone();
-            let generic_tools = self.generic_tools.clone();
-            handles.push(tokio::spawn(async move {
-                match method.as_str() {
-                    "thread" => dispatch_single_thread(&thread_tool, &spec).await,
-                    "query" => dispatch_single(&query_tool, &spec).await,
-                    "document" => dispatch_single(&document_tool, &spec).await,
-                    "tool" => {
-                        let name = spec
-                            .get("name")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("unknown");
-                        let args = spec.get("args").cloned().unwrap_or(json!({}));
-                        let tool = generic_tools
-                            .get(name)
-                            .ok_or_else(|| format!("unknown tool: {}", name))?;
-                        let result = tool
-                            .execute(format!("py-parallel-{}", name), args, None)
-                            .await
-                            .map_err(|e| e.to_string())?;
-                        Ok(Value::String(extract_text(&result)))
-                    }
-                    _ => Err(format!("unknown parallel method: {}", method)),
-                }
-            }));
-        }
-
-        let results = futures::future::join_all(handles).await;
-        let mut values = Vec::with_capacity(results.len());
-        for result in results {
-            match result {
-                Ok(Ok(val)) => values.push(val),
-                Ok(Err(e)) => values.push(Value::String(format!("error: {}", e))),
-                Err(e) => values.push(Value::String(format!("task error: {}", e))),
-            }
-        }
-
-        Ok(Value::Array(values))
-    }
-
-    async fn dispatch_diff(&self, params: &Value) -> Result<Value, String> {
-        let alias = params
-            .get("alias")
-            .and_then(|v| v.as_str())
-            .ok_or("missing 'alias' in diff RPC")?;
-
-        let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
-        let repo_root = crate::tools::worktree::find_repo_root(&cwd).map_err(|e| e.to_string())?;
-
-        let sanitized = alias
-            .chars()
-            .map(|c| {
-                if c.is_alphanumeric() || c == '-' || c == '_' {
-                    c
-                } else {
-                    '-'
-                }
-            })
-            .collect::<String>();
-        let branch = format!("tau/{}", sanitized);
-
-        let stat =
-            crate::tools::worktree::diff_stat(&repo_root, &branch).map_err(|e| e.to_string())?;
-        let diff = crate::tools::worktree::diff_full(&repo_root, &branch, 50_000)
-            .map_err(|e| e.to_string())?;
-        let (files_changed, insertions, deletions) =
-            crate::tools::worktree::parse_stat_summary(&stat);
-
-        Ok(json!({
-            "branch": branch,
-            "stat": stat,
-            "diff": diff,
-            "files_changed": files_changed,
-            "insertions": insertions,
-            "deletions": deletions,
-        }))
-    }
-
-    async fn dispatch_merge(&self, params: &Value) -> Result<Value, String> {
-        let alias = params
-            .get("alias")
-            .and_then(|v| v.as_str())
-            .ok_or("missing 'alias' in merge RPC")?;
-
-        let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
-        let repo_root = crate::tools::worktree::find_repo_root(&cwd).map_err(|e| e.to_string())?;
-
-        let sanitized = alias
-            .chars()
-            .map(|c| {
-                if c.is_alphanumeric() || c == '-' || c == '_' {
-                    c
-                } else {
-                    '-'
-                }
-            })
-            .collect::<String>();
-        let branch = format!("tau/{}", sanitized);
-
-        let (success, conflicts, message) =
-            crate::tools::worktree::merge_branch(&repo_root, &branch).map_err(|e| e.to_string())?;
-
-        Ok(json!({
-            "success": success,
-            "conflicts": conflicts,
-            "message": message,
-            "branch": branch,
-        }))
-    }
-
-    async fn dispatch_branches(&self, _params: &Value) -> Result<Value, String> {
-        let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
-        let repo_root = crate::tools::worktree::find_repo_root(&cwd).map_err(|e| e.to_string())?;
-        let branches =
-            crate::tools::worktree::list_branches(&repo_root).map_err(|e| e.to_string())?;
-        Ok(json!(branches))
-    }
-
-    async fn collect_finished_aliases(&self, aliases: &[String]) -> Result<(), String> {
-        let ready = {
-            let mut running = self.running_threads.lock().await;
-            let mut ready = Vec::new();
-            for alias in aliases {
-                let is_finished = running
-                    .get(alias)
-                    .map(tokio::task::JoinHandle::is_finished)
-                    .unwrap_or(false);
-                if is_finished {
-                    if let Some(handle) = running.remove(alias) {
-                        ready.push((alias.clone(), handle));
-                    }
-                }
-            }
-            ready
-        };
-
-        if ready.is_empty() {
-            return Ok(());
-        }
-
-        let mut completed = self.completed_threads.lock().await;
-        for (alias, handle) in ready {
-            let value = match handle.await {
-                Ok(Ok(result)) => canonicalize_thread_state(result, Some(alias.as_str())),
-                Ok(Err(err)) => thread_state(&alias, "error", &err),
-                Err(err) => thread_state(&alias, "error", &format!("task error: {}", err)),
-            };
-            completed.insert(alias, value);
-        }
-        Ok(())
-    }
-
-    async fn status_for_alias(&self, alias: &str) -> Value {
-        if let Some(value) = self.completed_threads.lock().await.get(alias).cloned() {
-            return canonicalize_thread_state(value, Some(alias));
-        }
-
-        if self.running_threads.lock().await.contains_key(alias) {
-            return thread_state(alias, "running", "");
-        }
-
-        thread_state(alias, "unknown", "thread not found")
-    }
-
-    async fn statuses_for_aliases(&self, aliases: &[String]) -> Vec<Value> {
-        let completed = self.completed_threads.lock().await.clone();
-        let running = self.running_threads.lock().await;
-
-        aliases
-            .iter()
-            .map(|alias| {
-                if let Some(value) = completed.get(alias).cloned() {
-                    return canonicalize_thread_state(value, Some(alias));
-                }
-                if running.contains_key(alias) {
-                    return thread_state(alias, "running", "");
-                }
-                thread_state(alias, "unknown", "thread not found")
-            })
-            .collect()
-    }
-}
-
-/// Helper: dispatch a single thread spec, returning structured ThreadResult.
-async fn dispatch_single_thread(
-    tool: &Arc<dyn AgentTool>,
-    params: &Value,
-) -> Result<Value, String> {
-    let result = tool
-        .execute(format!("py-parallel-{}", tool.name()), params.clone(), None)
-        .await
-        .map_err(|e| e.to_string())?;
-    Ok(build_thread_result(&result))
-}
-
-/// Helper: dispatch a single spec to a tool.
-async fn dispatch_single(tool: &Arc<dyn AgentTool>, params: &Value) -> Result<Value, String> {
-    let result = tool
-        .execute(format!("py-parallel-{}", tool.name()), params.clone(), None)
-        .await
-        .map_err(|e| e.to_string())?;
-    Ok(Value::String(extract_text(&result)))
-}
-
-/// Build a structured result from a thread's AgentToolResult.
-/// Flattens outcome.kind → status, outcome.text → output, and includes the full trace.
-fn build_thread_result(result: &AgentToolResult) -> Value {
-    let text = extract_text(result);
-    let mut structured = result.details.clone().unwrap_or(json!({}));
-    if let Value::Object(ref mut map) = structured {
-        map.insert("trace".to_string(), Value::String(text));
-        if let Some(outcome) = map.remove("outcome") {
-            if let Some(kind) = outcome.get("kind") {
-                map.insert("status".to_string(), kind.clone());
-            }
-            if let Some(text) = outcome.get("text") {
-                map.insert("output".to_string(), text.clone());
-            }
-        }
-    }
-    canonicalize_thread_state(structured, None)
-}
-
-/// Extract text content from an AgentToolResult.
-fn extract_text(result: &AgentToolResult) -> String {
-    result
-        .content
-        .iter()
-        .filter_map(|b| match b {
-            UserBlock::Text { text } => Some(text.as_str()),
-            _ => None,
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
-fn parse_alias_list(params: &Value, field: &str) -> Result<Vec<String>, String> {
-    let aliases = params
-        .get(field)
-        .and_then(|v| v.as_array())
-        .ok_or_else(|| format!("missing '{}' array in wait RPC", field))?;
-
-    aliases
-        .iter()
-        .map(|value| match value {
-            Value::String(alias) => Ok(alias.clone()),
-            Value::Object(map) => map
-                .get("alias")
-                .and_then(|v| v.as_str())
-                .map(String::from)
-                .ok_or_else(|| {
-                    format!(
-                        "'{}' entries must be strings or objects with 'alias'",
-                        field
-                    )
-                }),
-            _ => Err(format!(
-                "'{}' entries must be strings or objects with 'alias'",
-                field
-            )),
-        })
-        .collect()
-}
-
-fn thread_state(alias: &str, status: &str, output: &str) -> Value {
-    json!({
-        "alias": alias,
-        "status": status,
-        "output": output,
-        "reason": output,
-        "completed": status == "completed",
-    })
-}
-
-fn canonicalize_thread_state(value: Value, fallback_alias: Option<&str>) -> Value {
-    match value {
-        Value::Object(mut map) => {
-            if let Some(alias) = fallback_alias {
-                map.entry("alias".to_string())
-                    .or_insert_with(|| Value::String(alias.to_string()));
-            }
-
-            let status = map
-                .get("status")
-                .and_then(|v| v.as_str())
-                .unwrap_or("completed")
-                .to_string();
-            let output = map
-                .get("output")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-
-            map.entry("status".to_string())
-                .or_insert_with(|| Value::String(status.clone()));
-            map.entry("output".to_string())
-                .or_insert_with(|| Value::String(output.clone()));
-            map.insert("reason".to_string(), Value::String(output));
-            map.insert("completed".to_string(), Value::Bool(status == "completed"));
-            Value::Object(map)
-        }
-        other => thread_state(fallback_alias.unwrap_or(""), "error", &other.to_string()),
-    }
-}
-
-fn is_terminal_thread_state(value: &Value) -> bool {
-    value
-        .get("status")
-        .and_then(|v| v.as_str())
-        .map(|status| status != "running")
-        .unwrap_or(true)
 }
 
 /// Format a cell result JSON into a human-readable string for the LLM.
@@ -1043,18 +530,17 @@ mod tests {
     fn make_dispatcher_with_tools(
         thread_tool: Arc<FakeThreadTool>,
         generic_tools: HashMap<String, Arc<dyn AgentTool>>,
-    ) -> RpcDispatcher {
-        RpcDispatcher {
+    ) -> OrchestrationRpcFacade {
+        OrchestrationRpcFacade::new(
+            OrchestrationRuntime::new(OrchestratorState::new()),
             thread_tool,
-            query_tool: Arc::new(FakeTextTool),
-            document_tool: Arc::new(FakeTextTool),
-            generic_tools: Arc::new(generic_tools),
-            running_threads: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
-            completed_threads: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
-        }
+            Arc::new(FakeTextTool),
+            Arc::new(FakeTextTool),
+            generic_tools,
+        )
     }
 
-    fn make_dispatcher(thread_tool: Arc<FakeThreadTool>) -> RpcDispatcher {
+    fn make_dispatcher(thread_tool: Arc<FakeThreadTool>) -> OrchestrationRpcFacade {
         make_dispatcher_with_tools(
             thread_tool,
             HashMap::from([(

@@ -243,6 +243,7 @@ pub async fn build_agent(build_config: AgentBuildConfig) -> Result<BuiltAgent> {
         .cloned()
         .unwrap_or_else(|| orch.document_tool.clone());
     let py_repl_tool = tools::py_repl::PyReplTool::arc_with_tools(
+        orchestrator.clone(),
         wrapped_thread_tool,
         wrapped_query_tool,
         wrapped_document_tool,

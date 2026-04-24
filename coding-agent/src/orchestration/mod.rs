@@ -4,7 +4,11 @@ use agent::types::AgentEvent;
 
 pub mod runtime;
 
-pub use runtime::{DocumentRequest, OrchestrationRuntime};
+pub use runtime::{
+    BranchDiffResult, BranchMergeResult, DocumentRequest, DocumentResult, EpisodeLookupResult,
+    OrchestrationRpcFacade, OrchestrationRuntime, QueryRequest, QueryResult, ThreadRequest,
+    ThreadRunResult, ThreadState,
+};
 
 /// Shared cell for forwarding agent events once the parent agent exists.
 pub type EventForwarderCell = Arc<Mutex<Option<Arc<dyn Fn(AgentEvent) + Send + Sync>>>>;

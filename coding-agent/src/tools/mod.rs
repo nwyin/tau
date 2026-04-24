@@ -107,8 +107,9 @@ pub fn orchestration_tools(
     model: ai::types::Model,
     model_slots: crate::config::ModelSlots,
 ) -> (Vec<Arc<dyn AgentTool>>, EventForwarderCell) {
-    let core = orchestration_core_tools(orchestrator, get_api_key, model, model_slots);
+    let core = orchestration_core_tools(orchestrator.clone(), get_api_key, model, model_slots);
     let py_repl_tool = py_repl::PyReplTool::arc(
+        orchestrator.clone(),
         core.thread_tool.clone(),
         core.query_tool.clone(),
         core.document_tool.clone(),
