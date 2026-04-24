@@ -126,10 +126,21 @@ pub struct SessionMessageEntry {
     pub metadata: Option<Value>,
 }
 
-#[derive(Debug, Clone, Default, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct UsageReport {
     pub input_tokens: u64,
     pub output_tokens: u64,
+    pub tool_calls: u64,
+}
+
+impl UsageReport {
+    pub fn saturating_delta_since(&self, before: &UsageReport) -> UsageReport {
+        UsageReport {
+            input_tokens: self.input_tokens.saturating_sub(before.input_tokens),
+            output_tokens: self.output_tokens.saturating_sub(before.output_tokens),
+            tool_calls: self.tool_calls.saturating_sub(before.tool_calls),
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -137,4 +148,71 @@ pub struct SessionStatusNotification {
     pub status: SessionStatusResult,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub usage: Option<UsageReport>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use serde_json::json;
+
+    #[test]
+    fn usage_report_delta_is_per_send_and_saturating() {
+        let before = UsageReport {
+            input_tokens: 10,
+            output_tokens: 4,
+            tool_calls: 2,
+        };
+        let after = UsageReport {
+            input_tokens: 17,
+            output_tokens: 9,
+            tool_calls: 5,
+        };
+
+        assert_eq!(
+            after.saturating_delta_since(&before),
+            UsageReport {
+                input_tokens: 7,
+                output_tokens: 5,
+                tool_calls: 3,
+            }
+        );
+        assert_eq!(
+            before.saturating_delta_since(&after),
+            UsageReport::default()
+        );
+    }
+
+    #[test]
+    fn session_status_notification_serializes_output_error_and_tool_calls() {
+        let notification = SessionStatusNotification {
+            status: SessionStatusResult {
+                status_type: "idle".to_string(),
+            },
+            usage: Some(UsageReport {
+                input_tokens: 11,
+                output_tokens: 7,
+                tool_calls: 1,
+            }),
+            output: Some("DONE".to_string()),
+            error: None,
+        };
+
+        assert_eq!(
+            serde_json::to_value(notification).unwrap(),
+            json!({
+                "status": {"type": "idle"},
+                "usage": {
+                    "input_tokens": 11,
+                    "output_tokens": 7,
+                    "tool_calls": 1,
+                },
+                "output": "DONE",
+            })
+        );
+    }
 }

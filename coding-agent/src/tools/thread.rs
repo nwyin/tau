@@ -308,9 +308,11 @@ impl AgentTool for ThreadTool {
             let forward_fn = event_forwarder.lock().ok().and_then(|g| g.clone());
 
             // Inject prior episodes if specified
+            let mut injected_episodes = false;
             if let Some(prior_section) = orchestrator.format_prior_episodes(&episode_aliases) {
                 system_prompt.push_str("\n\n");
                 system_prompt.push_str(&prior_section);
+                injected_episodes = true;
 
                 // Emit EpisodeInject event
                 if let Some(ref fwd) = forward_fn {
@@ -326,9 +328,15 @@ impl AgentTool for ThreadTool {
             let lookup = orchestrator.get_or_create_thread(&alias, &system_prompt);
 
             // On reuse with new episodes, update the stored system prompt
-            if lookup.is_reuse && !episode_aliases.is_empty() {
+            if lookup.is_reuse && injected_episodes {
                 orchestrator.update_system_prompt(&alias, system_prompt.clone());
             }
+            let effective_system_prompt = effective_system_prompt_for_invocation(
+                lookup.is_reuse,
+                lookup.system_prompt.clone(),
+                system_prompt.clone(),
+                injected_episodes,
+            );
 
             // Build tool list: requested tools + completion tools
             // Use cwd-overridden tools when running in a worktree
@@ -364,11 +372,7 @@ impl AgentTool for ThreadTool {
             let agent = Agent::new(AgentOptions {
                 initial_state: Some(AgentStateInit {
                     model: Some(model),
-                    system_prompt: Some(if lookup.is_reuse {
-                        lookup.system_prompt
-                    } else {
-                        system_prompt
-                    }),
+                    system_prompt: Some(effective_system_prompt),
                     tools: Some(thread_tools),
                     thinking_level: Some(agent::types::ThinkingLevel::Off),
                 }),
@@ -680,6 +684,19 @@ fn expand_capabilities(names: &[String]) -> Vec<String> {
     tools
 }
 
+fn effective_system_prompt_for_invocation(
+    is_reuse: bool,
+    stored_prompt: String,
+    new_prompt: String,
+    injected_episodes: bool,
+) -> String {
+    if is_reuse && !injected_episodes {
+        stored_prompt
+    } else {
+        new_prompt
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -748,5 +765,41 @@ mod tests {
                 "grep".to_string(),
             ]
         );
+    }
+
+    #[test]
+    fn effective_prompt_for_new_thread_uses_new_prompt() {
+        let prompt = effective_system_prompt_for_invocation(
+            false,
+            "stored".to_string(),
+            "new".to_string(),
+            false,
+        );
+
+        assert_eq!(prompt, "new");
+    }
+
+    #[test]
+    fn effective_prompt_for_reused_thread_without_episodes_uses_stored_prompt() {
+        let prompt = effective_system_prompt_for_invocation(
+            true,
+            "stored".to_string(),
+            "new".to_string(),
+            false,
+        );
+
+        assert_eq!(prompt, "stored");
+    }
+
+    #[test]
+    fn effective_prompt_for_reused_thread_with_injected_episodes_uses_new_prompt() {
+        let prompt = effective_system_prompt_for_invocation(
+            true,
+            "stored".to_string(),
+            "new with # Prior episodes".to_string(),
+            true,
+        );
+
+        assert_eq!(prompt, "new with # Prior episodes");
     }
 }

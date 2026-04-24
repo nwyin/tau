@@ -178,7 +178,7 @@ pub async fn build_agent(build_config: AgentBuildConfig) -> Result<BuiltAgent> {
     let orchestrator = OrchestratorState::with_max_threads(max_threads);
 
     // Build tools
-    let mut tool_list: Vec<Arc<dyn AgentTool>> = if let Some(ref tool_names) = build_config.tools {
+    let direct_tools: Vec<Arc<dyn AgentTool>> = if let Some(ref tool_names) = build_config.tools {
         startup_messages.push(format!("[tools] enabled: {}", tool_names.join(", ")));
         tools::tools_from_allowlist(tool_names)
     } else if let Some(ref tool_names) = config.tools {
@@ -188,17 +188,17 @@ pub async fn build_agent(build_config: AgentBuildConfig) -> Result<BuiltAgent> {
         tools::default_tools()
     };
 
-    // Add orchestration tools (thread + query)
-    let (orch_tools, event_forwarder_cell) = tools::orchestration_tools(
+    // Build orchestration tools that need runtime state. py_repl is added after
+    // permission wrapping so its reverse-RPC dispatch uses the same surface.
+    let orch = tools::orchestration_core_tools(
         orchestrator.clone(),
         Some(get_api_key.clone()),
         model.clone(),
         config.models.clone(),
     );
-    tool_list.extend(orch_tools);
 
     // Warn about missing optional API keys for included tools
-    let has_web_search = tool_list.iter().any(|t| t.name() == "web_search");
+    let has_web_search = direct_tools.iter().any(|t| t.name() == "web_search");
     if has_web_search
         && std::env::var("EXA_API_KEY")
             .ok()
@@ -218,7 +218,41 @@ pub async fn build_agent(build_config: AgentBuildConfig) -> Result<BuiltAgent> {
         perm_svc.set_prompt_fn(prompt_fn);
     }
     let permission_service = Arc::new(perm_svc);
-    let tool_list = permissions::wrap_tools(tool_list, Arc::clone(&permission_service));
+    let wrapped_direct_tools =
+        permissions::wrap_tools(direct_tools, Arc::clone(&permission_service));
+    let wrapped_orch_tools = permissions::wrap_tools(orch.tools, Arc::clone(&permission_service));
+
+    let generic_tools = wrapped_direct_tools
+        .iter()
+        .map(|tool| (tool.name().to_string(), Arc::clone(tool)))
+        .collect();
+    let wrapped_thread_tool = wrapped_orch_tools
+        .iter()
+        .find(|tool| tool.name() == "thread")
+        .cloned()
+        .unwrap_or_else(|| orch.thread_tool.clone());
+    let wrapped_query_tool = wrapped_orch_tools
+        .iter()
+        .find(|tool| tool.name() == "query")
+        .cloned()
+        .unwrap_or_else(|| orch.query_tool.clone());
+    let wrapped_document_tool = wrapped_orch_tools
+        .iter()
+        .find(|tool| tool.name() == "document")
+        .cloned()
+        .unwrap_or_else(|| orch.document_tool.clone());
+    let py_repl_tool = tools::py_repl::PyReplTool::arc_with_tools(
+        wrapped_thread_tool,
+        wrapped_query_tool,
+        wrapped_document_tool,
+        generic_tools,
+    );
+    let mut wrapped_py_repl =
+        permissions::wrap_tools(vec![py_repl_tool], Arc::clone(&permission_service));
+
+    let mut tool_list = wrapped_direct_tools;
+    tool_list.extend(wrapped_orch_tools);
+    tool_list.append(&mut wrapped_py_repl);
 
     // Load skills
     let no_skills = build_config.no_skills || config.skills.map(|s| !s).unwrap_or(false);
@@ -276,7 +310,7 @@ pub async fn build_agent(build_config: AgentBuildConfig) -> Result<BuiltAgent> {
         }),
         convert_to_llm: None,
         transform_context: {
-            let cell_for_compact = event_forwarder_cell.clone();
+            let cell_for_compact = orch.event_forwarder_cell.clone();
             Some(Arc::new(move |messages, _cancel| {
                 let model = model_for_compact.clone();
                 let cell = cell_for_compact.clone();
@@ -309,7 +343,7 @@ pub async fn build_agent(build_config: AgentBuildConfig) -> Result<BuiltAgent> {
 
     // Populate the event forwarder so thread tools can forward inner events
     // to the parent agent's subscribers.
-    *event_forwarder_cell.lock().unwrap() = Some(agent.event_forwarder());
+    *orch.event_forwarder_cell.lock().unwrap() = Some(agent.event_forwarder());
 
     Ok(BuiltAgent {
         agent,

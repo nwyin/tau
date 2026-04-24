@@ -16,6 +16,8 @@ coding-agent   tau binary: TUI, CLI, serve mode, tools, sessions, traces
 - **agent**: Feature-complete port of pi-mono's agent loop. `stream_fn` injection for testing, tool wiring to LLM context, full event system. Performance instrumentation via `AgentStats` subscriber.
 - **coding-agent**: Full-screen TUI, headless `--prompt` mode, JSON-RPC `serve` mode, sessions, traces, permissions, skills, filesystem/search/web tools, and orchestration tools (`thread`, `query`, `document`, `log`, `from_id`, `py_repl`).
 
+For current implementation status and recently fixed runtime correctness issues, see [`docs/implementation.md`](implementation.md).
+
 ---
 
 ## `ai` — LLM streaming primitives

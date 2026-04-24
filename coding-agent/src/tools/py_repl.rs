@@ -8,7 +8,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::tools;
 use agent::types::{AgentTool, AgentToolResult, BoxFuture};
 use ai::types::UserBlock;
 use serde_json::{json, Value};
@@ -49,6 +48,7 @@ pub struct PyReplTool {
     thread_tool: Arc<dyn AgentTool>,
     query_tool: Arc<dyn AgentTool>,
     document_tool: Arc<dyn AgentTool>,
+    generic_tools: Arc<HashMap<String, Arc<dyn AgentTool>>>,
     // Long-lived kernel subprocess
     kernel: Arc<tokio::sync::Mutex<Option<KernelProcess>>>,
     // Cell counter for IDs
@@ -63,11 +63,13 @@ impl PyReplTool {
         thread_tool: Arc<dyn AgentTool>,
         query_tool: Arc<dyn AgentTool>,
         document_tool: Arc<dyn AgentTool>,
+        generic_tools: HashMap<String, Arc<dyn AgentTool>>,
     ) -> Self {
         Self {
             thread_tool,
             query_tool,
             document_tool,
+            generic_tools: Arc::new(generic_tools),
             kernel: Arc::new(tokio::sync::Mutex::new(None)),
             cell_counter: std::sync::atomic::AtomicU64::new(0),
             running_threads: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
@@ -80,7 +82,26 @@ impl PyReplTool {
         query_tool: Arc<dyn AgentTool>,
         document_tool: Arc<dyn AgentTool>,
     ) -> Arc<dyn AgentTool> {
-        Arc::new(Self::new(thread_tool, query_tool, document_tool))
+        Arc::new(Self::new(
+            thread_tool,
+            query_tool,
+            document_tool,
+            HashMap::new(),
+        ))
+    }
+
+    pub fn arc_with_tools(
+        thread_tool: Arc<dyn AgentTool>,
+        query_tool: Arc<dyn AgentTool>,
+        document_tool: Arc<dyn AgentTool>,
+        generic_tools: HashMap<String, Arc<dyn AgentTool>>,
+    ) -> Arc<dyn AgentTool> {
+        Arc::new(Self::new(
+            thread_tool,
+            query_tool,
+            document_tool,
+            generic_tools,
+        ))
     }
 
     /// Start the Python kernel subprocess. Returns a KernelProcess.
@@ -167,6 +188,7 @@ impl AgentTool for PyReplTool {
         let this_thread_tool = self.thread_tool.clone();
         let this_query_tool = self.query_tool.clone();
         let this_document_tool = self.document_tool.clone();
+        let generic_tools = self.generic_tools.clone();
         let running_threads = self.running_threads.clone();
         let completed_threads = self.completed_threads.clone();
 
@@ -186,6 +208,7 @@ impl AgentTool for PyReplTool {
                 thread_tool: this_thread_tool,
                 query_tool: this_query_tool,
                 document_tool: this_document_tool,
+                generic_tools,
                 running_threads,
                 completed_threads,
             };
@@ -359,6 +382,7 @@ struct RpcDispatcher {
     thread_tool: Arc<dyn AgentTool>,
     query_tool: Arc<dyn AgentTool>,
     document_tool: Arc<dyn AgentTool>,
+    generic_tools: Arc<HashMap<String, Arc<dyn AgentTool>>>,
     running_threads: RunningThreads,
     completed_threads: CompletedThreads,
 }
@@ -395,8 +419,8 @@ impl RpcDispatcher {
             .ok_or("missing 'name' in tool RPC")?;
         let args = params.get("args").cloned().unwrap_or(json!({}));
 
-        let registry = tools::all_known_tools();
-        let tool = registry
+        let tool = self
+            .generic_tools
             .get(name)
             .ok_or_else(|| format!("unknown tool: {}", name))?;
 
@@ -536,6 +560,7 @@ impl RpcDispatcher {
             let thread_tool = self.thread_tool.clone();
             let query_tool = self.query_tool.clone();
             let document_tool = self.document_tool.clone();
+            let generic_tools = self.generic_tools.clone();
             handles.push(tokio::spawn(async move {
                 match method.as_str() {
                     "thread" => dispatch_single_thread(&thread_tool, &spec).await,
@@ -547,8 +572,7 @@ impl RpcDispatcher {
                             .and_then(|v| v.as_str())
                             .unwrap_or("unknown");
                         let args = spec.get("args").cloned().unwrap_or(json!({}));
-                        let registry = tools::all_known_tools();
-                        let tool = registry
+                        let tool = generic_tools
                             .get(name)
                             .ok_or_else(|| format!("unknown tool: {}", name))?;
                         let result = tool
@@ -1016,14 +1040,87 @@ mod tests {
         }
     }
 
-    fn make_dispatcher(thread_tool: Arc<FakeThreadTool>) -> RpcDispatcher {
+    fn make_dispatcher_with_tools(
+        thread_tool: Arc<FakeThreadTool>,
+        generic_tools: HashMap<String, Arc<dyn AgentTool>>,
+    ) -> RpcDispatcher {
         RpcDispatcher {
             thread_tool,
             query_tool: Arc::new(FakeTextTool),
             document_tool: Arc::new(FakeTextTool),
+            generic_tools: Arc::new(generic_tools),
             running_threads: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
             completed_threads: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
         }
+    }
+
+    fn make_dispatcher(thread_tool: Arc<FakeThreadTool>) -> RpcDispatcher {
+        make_dispatcher_with_tools(
+            thread_tool,
+            HashMap::from([(
+                "fake".to_string(),
+                Arc::new(FakeTextTool) as Arc<dyn AgentTool>,
+            )]),
+        )
+    }
+
+    #[tokio::test]
+    async fn dispatch_tool_uses_configured_generic_tools() {
+        let dispatcher = make_dispatcher(Arc::new(FakeThreadTool::new()));
+
+        let result = dispatcher
+            .dispatch_tool(&json!({"name": "fake", "args": {"x": 1}}))
+            .await
+            .unwrap();
+        assert_eq!(result, Value::String("ok".to_string()));
+    }
+
+    #[tokio::test]
+    async fn dispatch_tool_rejects_tools_outside_configured_surface() {
+        let dispatcher =
+            make_dispatcher_with_tools(Arc::new(FakeThreadTool::new()), HashMap::new());
+
+        let err = dispatcher
+            .dispatch_tool(&json!({"name": "bash", "args": {"command": "echo bypass"}}))
+            .await
+            .unwrap_err();
+        assert_eq!(err, "unknown tool: bash");
+    }
+
+    #[tokio::test]
+    async fn dispatch_parallel_tool_uses_configured_generic_tools() {
+        let dispatcher = make_dispatcher(Arc::new(FakeThreadTool::new()));
+
+        let result = dispatcher
+            .dispatch_parallel(
+                &json!({"specs": [ {"method": "tool", "name": "fake", "args": {}} ]}),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result, json!(["ok"]));
+    }
+
+    #[tokio::test]
+    async fn dispatch_tool_preserves_permission_wrappers() {
+        let mut config = HashMap::new();
+        config.insert("fake".to_string(), "deny".to_string());
+        let service = Arc::new(crate::permissions::PermissionService::new(&config, false));
+        let denied_tool =
+            crate::permissions::PermissionWrapper::arc(Arc::new(FakeTextTool), service);
+        let dispatcher = make_dispatcher_with_tools(
+            Arc::new(FakeThreadTool::new()),
+            HashMap::from([("fake".to_string(), denied_tool)]),
+        );
+
+        let result = dispatcher
+            .dispatch_tool(&json!({"name": "fake", "args": {}}))
+            .await
+            .unwrap();
+        assert_eq!(
+            result,
+            Value::String("Tool 'fake' is denied by permission policy.".to_string())
+        );
     }
 
     #[tokio::test]

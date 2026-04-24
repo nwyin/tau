@@ -69,13 +69,21 @@ pub fn all_known_tools() -> HashMap<String, Arc<dyn AgentTool>> {
     map
 }
 
-/// Create orchestration tools (thread + query) that require runtime state.
-pub fn orchestration_tools(
+pub struct OrchestrationToolSet {
+    pub tools: Vec<Arc<dyn AgentTool>>,
+    pub event_forwarder_cell: thread::EventForwarderCell,
+    pub thread_tool: Arc<dyn AgentTool>,
+    pub query_tool: Arc<dyn AgentTool>,
+    pub document_tool: Arc<dyn AgentTool>,
+}
+
+/// Create orchestration tools except py_repl, which needs the final wrapped tool set.
+pub fn orchestration_core_tools(
     orchestrator: Arc<agent::orchestrator::OrchestratorState>,
     get_api_key: Option<agent::types::GetApiKeyFn>,
     model: ai::types::Model,
     model_slots: crate::config::ModelSlots,
-) -> (Vec<Arc<dyn AgentTool>>, thread::EventForwarderCell) {
+) -> OrchestrationToolSet {
     let cell = thread::event_forwarder_cell();
     let thread_tool = ThreadTool::arc(
         orchestrator.clone(),
@@ -94,20 +102,38 @@ pub fn orchestration_tools(
     let document_tool = DocumentTool::arc(orchestrator.clone(), cell.clone());
     let log_tool = LogTool::arc(orchestrator.clone());
     let from_id_tool = FromIdTool::arc(orchestrator);
-    let py_repl_tool = py_repl::PyReplTool::arc(
+    let tools = vec![
         thread_tool.clone(),
         query_tool.clone(),
         document_tool.clone(),
-    );
-    let tools = vec![
+        log_tool,
+        from_id_tool,
+    ];
+    OrchestrationToolSet {
+        tools,
+        event_forwarder_cell: cell,
         thread_tool,
         query_tool,
         document_tool,
-        log_tool,
-        from_id_tool,
-        py_repl_tool,
-    ];
-    (tools, cell)
+    }
+}
+
+/// Create orchestration tools (thread + query) that require runtime state.
+pub fn orchestration_tools(
+    orchestrator: Arc<agent::orchestrator::OrchestratorState>,
+    get_api_key: Option<agent::types::GetApiKeyFn>,
+    model: ai::types::Model,
+    model_slots: crate::config::ModelSlots,
+) -> (Vec<Arc<dyn AgentTool>>, thread::EventForwarderCell) {
+    let core = orchestration_core_tools(orchestrator, get_api_key, model, model_slots);
+    let py_repl_tool = py_repl::PyReplTool::arc(
+        core.thread_tool.clone(),
+        core.query_tool.clone(),
+        core.document_tool.clone(),
+    );
+    let mut tools = core.tools;
+    tools.push(py_repl_tool);
+    (tools, core.event_forwarder_cell)
 }
 
 /// Resolve an allowlist of tool names against the registry.

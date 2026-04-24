@@ -200,6 +200,7 @@ benchmarks/              # eval adapters, microbenchmarks, fixtures
 ## Docs
 
 - [Architecture overview](docs/overview.md)
+- [Implementation status](docs/implementation.md)
 - [Benchmarking strategy](docs/benchmarking.md)
 - [Context management](docs/context-management.md)
 - [Trace analysis](docs/trace-analysis.md)

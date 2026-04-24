@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 
 use agent::types::{AgentEvent, AgentMessage};
 use agent::Agent;
-use ai::types::Message;
+use ai::types::{ContentBlock, Message};
 use serde_json::{json, Value};
 use tokio::task::JoinHandle;
 
@@ -125,32 +125,47 @@ async fn handle_session_send(
     *state.status.lock().unwrap() = SessionStatus::Busy;
 
     // Emit busy notification
-    emit_status_notification(&state.writer, "busy", None);
+    emit_status_notification(&state.writer, "busy", None, None, None);
 
     // Spawn agent loop in background
     let state_clone = Arc::clone(state);
     let prompt = params.prompt;
+    let usage_before = { state.cumulative_usage.lock().unwrap().clone() };
 
     let handle = tokio::spawn(async move {
         let result = state_clone.agent.prompt(prompt).await;
 
-        // Snapshot cumulative usage
-        let usage = { state_clone.cumulative_usage.lock().unwrap().clone() };
+        // Snapshot per-send usage and latest assistant output.
+        let usage = {
+            state_clone
+                .cumulative_usage
+                .lock()
+                .unwrap()
+                .saturating_delta_since(&usage_before)
+        };
+        let output = latest_assistant_output(&state_clone.agent);
 
         // Update status based on result
-        let new_status = match result {
-            Ok(_) => SessionStatus::Idle,
+        let (new_status, error) = match result {
+            Ok(_) => (SessionStatus::Idle, None),
             Err(e) => {
                 eprintln!("[serve] agent error: {}", e);
-                SessionStatus::Error(e.to_string())
+                let message = e.to_string();
+                (SessionStatus::Error(message.clone()), Some(message))
             }
         };
 
         let status_str = new_status.as_str().to_string();
         *state_clone.status.lock().unwrap() = new_status;
 
-        // Emit idle/error notification with usage
-        emit_status_notification(&state_clone.writer, &status_str, Some(usage));
+        // Emit idle/error notification with per-send result data.
+        emit_status_notification(
+            &state_clone.writer,
+            &status_str,
+            Some(usage),
+            Some(output),
+            error,
+        );
     });
 
     *state.agent_task.lock().unwrap() = Some(handle);
@@ -203,7 +218,13 @@ fn handle_shutdown(state: &Arc<ServerState>) -> Result<Value, JsonRpcError> {
 // Helpers
 // ---------------------------------------------------------------------------
 
-fn emit_status_notification(writer: &StdoutWriter, status: &str, usage: Option<UsageReport>) {
+fn emit_status_notification(
+    writer: &StdoutWriter,
+    status: &str,
+    usage: Option<UsageReport>,
+    output: Option<String>,
+    error: Option<String>,
+) {
     let notif = JsonRpcNotification::new(
         "session.status",
         json!(SessionStatusNotification {
@@ -211,9 +232,37 @@ fn emit_status_notification(writer: &StdoutWriter, status: &str, usage: Option<U
                 status_type: status.to_string(),
             },
             usage,
+            output,
+            error,
         }),
     );
     writer.write_notification(&notif);
+}
+
+fn latest_assistant_output(agent: &Agent) -> String {
+    agent.with_state(|state| assistant_output_from_messages(&state.messages))
+}
+
+fn assistant_output_from_messages(messages: &[AgentMessage]) -> String {
+    messages
+        .iter()
+        .rev()
+        .find_map(|msg| match msg {
+            AgentMessage::Llm(Message::Assistant(am)) => {
+                let text = am
+                    .content
+                    .iter()
+                    .filter_map(|block| match block {
+                        ContentBlock::Text { text, .. } => Some(text.as_str()),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+                    .join("");
+                Some(text)
+            }
+            _ => None,
+        })
+        .unwrap_or_default()
 }
 
 fn agent_message_to_entry(msg: &AgentMessage) -> Option<SessionMessageEntry> {
@@ -248,15 +297,122 @@ fn agent_message_to_entry(msg: &AgentMessage) -> Option<SessionMessageEntry> {
 pub fn usage_tracking_subscriber(
     usage: Arc<Mutex<UsageReport>>,
 ) -> impl Fn(&AgentEvent) + Send + Sync + 'static {
-    move |event| {
-        if let AgentEvent::TurnEnd {
+    move |event| match event {
+        AgentEvent::TurnEnd {
             message: AgentMessage::Llm(Message::Assistant(am)),
             ..
-        } = event
-        {
+        } => {
             let mut u = usage.lock().unwrap();
             u.input_tokens += am.usage.input;
             u.output_tokens += am.usage.output;
         }
+        AgentEvent::ToolExecutionEnd { .. } => {
+            usage.lock().unwrap().tool_calls += 1;
+        }
+        _ => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use agent::types::AgentToolResult;
+    use ai::types::{AssistantMessage, StopReason, Usage, UserBlock};
+
+    fn assistant_message(text: &str, input_tokens: u64, output_tokens: u64) -> AgentMessage {
+        let mut message = AssistantMessage::zero_usage(
+            "test-api",
+            "test-provider",
+            "test-model",
+            StopReason::Stop,
+        );
+        message.content = vec![ContentBlock::Text {
+            text: text.to_string(),
+            text_signature: None,
+        }];
+        message.usage = Usage {
+            input: input_tokens,
+            output: output_tokens,
+            ..Usage::default()
+        };
+        AgentMessage::Llm(Message::Assistant(message))
+    }
+
+    #[test]
+    fn assistant_output_uses_latest_assistant_text_blocks() {
+        let mut first = AssistantMessage::zero_usage(
+            "test-api",
+            "test-provider",
+            "test-model",
+            StopReason::Stop,
+        );
+        first.content = vec![ContentBlock::Text {
+            text: "old".to_string(),
+            text_signature: None,
+        }];
+
+        let mut latest = AssistantMessage::zero_usage(
+            "test-api",
+            "test-provider",
+            "test-model",
+            StopReason::Stop,
+        );
+        latest.content = vec![
+            ContentBlock::Text {
+                text: "new".to_string(),
+                text_signature: None,
+            },
+            ContentBlock::ToolCall {
+                id: "call-1".to_string(),
+                name: "fake".to_string(),
+                arguments: Default::default(),
+                thought_signature: None,
+            },
+            ContentBlock::Text {
+                text: " output".to_string(),
+                text_signature: None,
+            },
+        ];
+
+        let messages = vec![
+            AgentMessage::Llm(Message::Assistant(first)),
+            AgentMessage::Llm(Message::Assistant(latest)),
+        ];
+
+        assert_eq!(assistant_output_from_messages(&messages), "new output");
+    }
+
+    #[test]
+    fn usage_tracking_subscriber_tracks_tokens_and_tool_calls() {
+        let usage = Arc::new(Mutex::new(UsageReport::default()));
+        let subscriber = usage_tracking_subscriber(Arc::clone(&usage));
+
+        subscriber(&AgentEvent::TurnEnd {
+            message: assistant_message("done", 11, 7),
+            tool_results: Vec::new(),
+        });
+        subscriber(&AgentEvent::ToolExecutionEnd {
+            tool_call_id: "call-1".to_string(),
+            tool_name: "fake".to_string(),
+            result: AgentToolResult {
+                content: vec![UserBlock::Text {
+                    text: "ok".to_string(),
+                }],
+                details: None,
+            },
+            is_error: false,
+            thread_id: None,
+            thread_alias: None,
+        });
+
+        assert_eq!(
+            *usage.lock().unwrap(),
+            UsageReport {
+                input_tokens: 11,
+                output_tokens: 7,
+                tool_calls: 1,
+            }
+        );
     }
 }
