@@ -94,17 +94,13 @@ impl Pane for ChatPane {
                     self.viewport.goto_top();
                     self.scroll_follow = false;
                 }
-                KeyCode::Char('J') => {
-                    if self.selected_msg + 1 < self.message_count {
-                        self.selected_msg += 1;
-                        self.pending_actions.push(ChatAction::SelectMsg);
-                    }
+                KeyCode::Char('J') if self.selected_msg + 1 < self.message_count => {
+                    self.selected_msg += 1;
+                    self.pending_actions.push(ChatAction::SelectMsg);
                 }
-                KeyCode::Char('K') => {
-                    if self.selected_msg > 0 {
-                        self.selected_msg -= 1;
-                        self.pending_actions.push(ChatAction::SelectMsg);
-                    }
+                KeyCode::Char('K') if self.selected_msg > 0 => {
+                    self.selected_msg -= 1;
+                    self.pending_actions.push(ChatAction::SelectMsg);
                 }
                 KeyCode::Char(' ') => {
                     self.pending_actions

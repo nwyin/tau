@@ -94,20 +94,17 @@ impl Pane for SidebarPane {
     fn update(&mut self, msg: &Msg) -> Cmd {
         if let Msg::KeyPress(key) = msg {
             match key.code {
-                KeyCode::Char('j') | KeyCode::Down => {
-                    if !self.data.threads.is_empty() && self.cursor + 1 < self.data.threads.len() {
-                        self.cursor += 1;
-                    }
+                KeyCode::Char('j') | KeyCode::Down
+                    if !self.data.threads.is_empty()
+                        && self.cursor + 1 < self.data.threads.len() =>
+                {
+                    self.cursor += 1;
                 }
-                KeyCode::Char('k') | KeyCode::Up => {
-                    if self.cursor > 0 {
-                        self.cursor -= 1;
-                    }
+                KeyCode::Char('k') | KeyCode::Up if self.cursor > 0 => {
+                    self.cursor -= 1;
                 }
-                KeyCode::Enter => {
-                    if !self.data.threads.is_empty() {
-                        self.pending_action = Some(SidebarAction::OpenThread(self.cursor));
-                    }
+                KeyCode::Enter if !self.data.threads.is_empty() => {
+                    self.pending_action = Some(SidebarAction::OpenThread(self.cursor));
                 }
                 KeyCode::Escape => {
                     self.pending_action = Some(SidebarAction::Back);

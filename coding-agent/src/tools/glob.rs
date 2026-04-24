@@ -116,7 +116,7 @@ impl AgentTool for GlobTool {
             }
 
             let mut sorted = matches;
-            sorted.sort_by(|a, b| b.1.cmp(&a.1)); // newest first
+            sorted.sort_by_key(|entry| std::cmp::Reverse(entry.1)); // newest first
 
             const MAX_RESULTS: usize = 1000;
             let capped = sorted.len() > MAX_RESULTS;
@@ -157,5 +157,11 @@ impl GlobTool {
 
     pub fn arc_with_cwd(cwd: PathBuf) -> Arc<dyn AgentTool> {
         Arc::new(GlobTool { cwd: Some(cwd) })
+    }
+}
+
+impl Default for GlobTool {
+    fn default() -> Self {
+        Self::new()
     }
 }

@@ -226,3 +226,9 @@ impl BashTool {
         Arc::new(BashTool { cwd: Some(cwd) })
     }
 }
+
+impl Default for BashTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}

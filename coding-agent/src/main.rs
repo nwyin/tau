@@ -280,10 +280,8 @@ async fn main() -> Result<()> {
                 tool_name,
                 is_error,
                 ..
-            } => {
-                if *is_error {
-                    eprintln!("[tool error: {}]", tool_name);
-                }
+            } if *is_error => {
+                eprintln!("[tool error: {}]", tool_name);
             }
             AgentEvent::ThreadStart {
                 alias, task, model, ..

@@ -121,3 +121,9 @@ impl FileWriteTool {
         Arc::new(FileWriteTool { cwd: Some(cwd) })
     }
 }
+
+impl Default for FileWriteTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}

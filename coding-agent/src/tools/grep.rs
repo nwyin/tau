@@ -251,3 +251,9 @@ impl GrepTool {
         Arc::new(GrepTool { cwd: Some(cwd) })
     }
 }
+
+impl Default for GrepTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}

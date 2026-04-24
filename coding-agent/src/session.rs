@@ -209,7 +209,7 @@ impl SessionManager {
             sessions.push((mtime, id, timestamp, msg_count));
         }
 
-        sessions.sort_by(|a, b| b.0.cmp(&a.0));
+        sessions.sort_by_key(|entry| std::cmp::Reverse(entry.0));
         Ok(sessions
             .into_iter()
             .map(|(_, id, ts, count)| (id, ts, count))
@@ -248,7 +248,7 @@ impl SessionManager {
             }
         }
 
-        entries.sort_by(|a, b| b.0.cmp(&a.0));
+        entries.sort_by_key(|entry| std::cmp::Reverse(entry.0));
         Ok(entries.into_iter().next().map(|(_, id)| id))
     }
 }

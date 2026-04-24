@@ -36,7 +36,7 @@ where
                 attempt += 1;
             }
             Ok(resp) => return Ok(resp),
-            Err(e) if attempt < MAX_RETRIES => {
+            Err(_) if attempt < MAX_RETRIES => {
                 tokio::time::sleep(delay(attempt, None)).await;
                 attempt += 1;
             }

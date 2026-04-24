@@ -34,10 +34,7 @@ pub async fn collect_sse_events(response: reqwest::Response, stop: SseStop) -> R
         let chunk = chunk?;
         buffer.push_str(&String::from_utf8_lossy(&chunk));
 
-        loop {
-            let Some(pos) = buffer.find('\n') else {
-                break;
-            };
+        while let Some(pos) = buffer.find('\n') {
             let line = buffer[..pos].trim_end_matches('\r').to_string();
             buffer = buffer[pos + 1..].to_string();
 
