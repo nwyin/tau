@@ -1,6 +1,6 @@
 ## Workflow: Adaptive supervised loop (long-running)
 
-Use py_repl for multi-step tasks with a persistent work queue. The supervisor loop has a **checkpoint** after each phase that evaluates actual project state and adapts the plan — retrying, splitting oversized items, or skipping when appropriate. Independent items run in parallel.
+Use py_repl for multi-step tasks with a persistent work queue. The supervisor loop has a **checkpoint** after each phase that evaluates actual project state and adapts the plan — retrying, splitting oversized items, or skipping when appropriate. Independent items run in parallel; dependent items stay in later phases.
 
 ### Workqueue schema
 

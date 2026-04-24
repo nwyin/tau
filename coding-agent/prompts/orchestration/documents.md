@@ -20,3 +20,7 @@ document(operation="read", name="findings")
 ```
 
 **Important:** Do not create empty documents alongside thread calls. Let threads create documents via `append` or `write` on their own.
+
+**Publish incrementally:** When documents are used for coordination, producers should write or append intermediate findings early and often, not only at the end. A downstream reviewer or critic can only react once the artifacts exist.
+
+**Reactive coordination stays simple:** Documents do not have subscriptions or automatic wakeups. For readiness checks, use `py_repl` to poll `document("read", ...)` or `tau.wait(...)` until the required artifacts appear.

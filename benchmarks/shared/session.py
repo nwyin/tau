@@ -4,7 +4,7 @@ Ported from edit-bench's ``rpc.py`` (TauRpcClient).  The protocol:
 
 1. Spawn ``tau serve --cwd CWD --model MODEL --tools TOOLS``
 2. Send JSON-RPC ``initialize``
-3. Send ``session/send`` with prompt
+3. Send ``session/send`` with prompt, and optional system/model overrides
 4. Wait for ``session.status`` notification with ``type=idle``
 5. Read usage from notification payload
 
@@ -92,7 +92,14 @@ class TauSession:
         if "error" in resp:
             raise RuntimeError(f"tau serve initialize failed: {resp['error']}")
 
-    def send(self, prompt: str, *, timeout: int | None = None) -> SessionResult:
+    def send(
+        self,
+        prompt: str,
+        *,
+        timeout: int | None = None,
+        system: str | None = None,
+        model: str | None = None,
+    ) -> SessionResult:
         """Send *prompt* and block until the session is idle.
 
         Returns a :class:`SessionResult` with the assistant output, token
@@ -100,7 +107,13 @@ class TauSession:
         """
         effective_timeout = timeout if timeout is not None else self._timeout
 
-        self._call("session/send", {"prompt": prompt})
+        params: dict[str, str] = {"prompt": prompt}
+        if system is not None:
+            params["system"] = system
+        if model is not None:
+            params["model"] = model
+
+        self._call("session/send", params)
         self._turns += 1
 
         start = time.monotonic()

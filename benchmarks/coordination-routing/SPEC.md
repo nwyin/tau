@@ -2,71 +2,68 @@
 
 ## Question
 
-When a critic thread depends on upstream thread outputs, does tau actually
-route that context into the critic, or does it synthesize only at the main
-orchestrator layer after the critic already finished?
+When the default agent is asked to choose an orchestration shape, does it
+follow the requested topology, or does it escape into a different coordination
+strategy?
 
-This benchmark is trace-first and targets the failure mode documented in
-`notes/trace-analysis-6a118256.md`.
+This is the autonomy benchmark. It intentionally leaves orchestration choice
+with the model and reports both:
+
+- whether coordination succeeded
+- whether the requested topology was actually followed
 
 ## Design
 
-Single sharp synthetic fixture (`fixtures/adversarial-routing/`) with three
-thread aliases:
+Two synthetic fixtures cover different dependency shapes:
 
-- `position-for`
-- `position-against`
-- `critic`
+- `fixtures/adversarial-routing/`
+- `fixtures/dependent-review/`
 
-Two upstream documents are required:
+Each fixture plants explicit anchors in the upstream artifacts and asks a
+dependent critic/reviewer to synthesize them.
 
-- `pro_case_notes`
-- `con_case_notes`
-
-Two anchor families are planted in task text:
-
-- `PRO_*`
-- `CON_*`
-
-The final answer must include at least one anchor from each family.
+The benchmark prompt requests one of four orchestration variants, but unlike
+`coordination-mechanism/`, the runner does not own the topology. This means
+stronger models may self-correct into a better strategy than the one requested.
 
 ## Variants
 
 1. `naive-parallel`
-   - Launch all three threads in one batch
-   - No episode injection
+   - prompt requests a single parallel batch for all three threads
+   - no episode injection
 2. `prompt-only-parallel`
-   - Same launch shape as naive
-   - Stronger critic instructions to wait/read docs
+   - same requested launch shape
+   - critic task text is strengthened to wait/read docs
 3. `staged-pipeline`
-   - Launch `position-for` + `position-against`
-   - Launch `critic` second with `episodes=[...]`
+   - prompt requests producers first, critic second with `episodes=[...]`
 4. `document-polling`
-   - Launch all three in parallel
-   - Critic must poll/read docs and not complete early
-   - Uses a higher per-variant timeout (`240s`) because polling loops can
-     legitimately run longer than the other variants
+   - prompt requests a parallel launch with doc polling before critic completion
 
 ## Scoring
 
-Primary trace metrics (`score.py`):
+Primary coordination metrics:
 
-- `episode_inject` into critic (and whether both upstream aliases are present)
-- critic-side `document` reads for required docs
-- critic read timing relative to upstream writes
-- critic end timing relative to required artifact availability
-- critic evidence citations
+- `mechanism_success`
+- `timing_success`
+- `coordination_success`
 
-Secondary content metric:
+Autonomy diagnostics:
 
-- final answer contains at least one `PRO_*` marker and one `CON_*` marker
-  - this is diagnostic only (reported), not a hard pass gate
+- `requested_shape_followed`
+- `variant_escape`
+- `self_corrected_to_other_shape`
 
-Variant-aware expected mechanism:
+`variant_escape` makes prompt-following failures visible even when the model
+still coordinates successfully by switching to another topology.
 
-- `staged-pipeline`: episode injection required
-- `document-polling`: document reads-after-write required
-- `naive-parallel` / `prompt-only-parallel`: either mechanism is acceptable
+Secondary diagnostic:
+
+- `synthesis_success`
+  - scored from the final assistant answer
+  - diagnostic only
+
+Session/transport failures are reported separately from coordination success so
+timeouts do not masquerade as pure routing failures.
 
 ## Outputs
 
@@ -75,8 +72,13 @@ Variant-aware expected mechanism:
 - generic reports: `report.md`, `report.json`
 - coordination-specific reports: `coordination.md`, `coordination.json`
 
-These include per-variant pass rates and coordination-specific averages
-(episode counts, document-read counts, marker retention, citation counts).
+These include pass rates for:
+
+- official benchmark success
+- session success
+- coordination success
+- requested-shape fidelity
+- variant escape/self-correction
 
 ## Usage
 

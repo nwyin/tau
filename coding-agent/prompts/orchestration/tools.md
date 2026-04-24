@@ -29,6 +29,16 @@ reasoning = "claude-opus-4-6"
 
 Each thread must call `complete`, `abort`, or `escalate` when done. The thread's result becomes its episode — a compressed trace of what it did and concluded. Pass `evidence` (a list of tool_call_ids) to `complete` to mark which tool results support your conclusion.
 
+## Long-running threads
+
+Use `max_turns` when a thread needs a larger conversation budget than the default:
+```python
+tau.thread("researcher", "Keep iterating until both fixtures are mapped",
+           tools=["read"], max_turns=80)
+```
+
+Increase `max_turns` deliberately for reactive or research threads. Keep short, bounded threads on the default.
+
 ## Worktree isolation
 
 Threads that modify files can use `worktree=True` for git-level isolation:

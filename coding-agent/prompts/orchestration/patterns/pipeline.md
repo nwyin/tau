@@ -15,3 +15,5 @@ thread("implementer", "Refactor based on findings", tools=["write"], episodes=["
 The key insight: **turn boundaries are synchronization points.** All threads
 in a turn complete before the next turn begins. Use this to express "B needs
 A's results" — put A in turn 1, B in turn 2 with `episodes=["A"]`.
+
+If the task language implies `after`, `based on`, `critique`, `review`, or `synthesize both`, assume this pattern first. Do not batch downstream threads with the upstream producers just because the aliases are known ahead of time.

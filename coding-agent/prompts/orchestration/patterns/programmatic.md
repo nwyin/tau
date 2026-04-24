@@ -1,6 +1,6 @@
 ## Pattern: Programmatic orchestration with py_repl
 
-For complex orchestration — loops, conditionals, aggregation, retry logic, or fan-out/gather patterns — use the `py_repl` tool. It provides a persistent Python namespace with a `tau` object for orchestration.
+For complex orchestration — loops, conditionals, aggregation, retry logic, phased pipelines, or reactive coordination — use the `py_repl` tool. It provides a persistent Python namespace with a `tau` object for orchestration.
 
 ### tau API
 
@@ -10,6 +10,12 @@ result = tau.tool("grep", pattern="TODO", path="src/")
 
 # Spawn a thread (blocks until complete, returns episode text)
 episode = tau.thread("scanner", "Find all auth endpoints", tools=["read"])
+
+# Launch without blocking, then poll or wait later
+worker = tau.launch("producer", "Write findings incrementally to 'producer_notes'",
+                    tools=["read"], max_turns=60)
+status = tau.poll(worker)
+batch = tau.wait([worker], timeout=30)
 
 # Single-shot LLM query (returns response text)
 answer = tau.query("Is this a Flask or Django project?")
@@ -53,6 +59,7 @@ print(tau.cwd, tau.home_dir, tau.tmp_dir)
 Use py_repl when:
 - You need control flow (loops, conditionals) between orchestration steps
 - You want to fan out many threads and aggregate results programmatically
+- You need reactive coordination: launch producers now, then wait or poll before launching a dependent reviewer/critic
 - Data processing or transformation is needed between steps
 - The orchestration has more than 2-3 steps with dependencies
 

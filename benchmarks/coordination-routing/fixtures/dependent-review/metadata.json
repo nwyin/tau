@@ -1,0 +1,20 @@
+{
+  "category": "coordination-routing",
+  "pro_alias": "builder-api",
+  "con_alias": "builder-tests",
+  "critic_alias": "reviewer",
+  "pro_doc": "api_build_notes",
+  "con_doc": "test_build_notes",
+  "pro_markers": [
+    "API_ANCHOR_SCHEMA_18",
+    "API_ANCHOR_RATE_27"
+  ],
+  "con_markers": [
+    "TEST_ANCHOR_RETRY_44",
+    "TEST_ANCHOR_AUDIT_52"
+  ],
+  "pro_task": "Draft the API-side artifact and write it to document `api_build_notes` using the document tool.\nRequirements:\n- Preserve both anchors exactly: `API_ANCHOR_SCHEMA_18` and `API_ANCHOR_RATE_27`.\n- `API_ANCHOR_SCHEMA_18`: request schema adds explicit tenant_id.\n- `API_ANCHOR_RATE_27`: POST /jobs rejects bursts above 12 requests per minute.\n- Return a concise summary that repeats both anchors.\n- Do not use web tools.",
+  "con_task": "Draft the test-side artifact and write it to document `test_build_notes` using the document tool.\nRequirements:\n- Preserve both anchors exactly: `TEST_ANCHOR_RETRY_44` and `TEST_ANCHOR_AUDIT_52`.\n- `TEST_ANCHOR_RETRY_44`: flaky retry coverage requires 3 backoff steps.\n- `TEST_ANCHOR_AUDIT_52`: audit log snapshot must include actor_ip.\n- Return a concise summary that repeats both anchors.\n- Do not use web tools.",
+  "critic_task": "Review both upstream artifacts and produce a release recommendation.\nRequirements:\n- Identify one weakness in the API artifact and one weakness in the test artifact.\n- Preserve at least one `API_*` anchor and at least one `TEST_*` anchor in the recommendation.\n- Do not use web tools.",
+  "final_doc": "final_review"
+}

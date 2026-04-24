@@ -8,4 +8,4 @@ thread("schema", "Map the database models", tools=["file_read","grep"])
 // Both run in parallel. Read their episodes, then act on findings.
 ```
 
-Use when subtasks are independent and their results feed a single synthesis step.
+Use only when subtasks are independent and their results feed a later synthesis step. If one thread must react to another thread's output while it is still deciding what to do, this is the wrong pattern.

@@ -5,6 +5,7 @@
 //! queries, parallel execution, and document sharing. Communication is bidirectional
 //! JSON-lines over stdin/stdout.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::tools;
@@ -25,6 +26,10 @@ const MAX_OUTPUT_LINES: usize = 2000;
 
 /// Max output bytes returned to the LLM.
 const MAX_OUTPUT_BYTES: usize = 30_000;
+
+type RunningThreadHandle = tokio::task::JoinHandle<Result<Value, String>>;
+type RunningThreads = Arc<tokio::sync::Mutex<HashMap<String, RunningThreadHandle>>>;
+type CompletedThreads = Arc<tokio::sync::Mutex<HashMap<String, Value>>>;
 
 struct KernelProcess {
     child: Child,
@@ -48,6 +53,9 @@ pub struct PyReplTool {
     kernel: Arc<tokio::sync::Mutex<Option<KernelProcess>>>,
     // Cell counter for IDs
     cell_counter: std::sync::atomic::AtomicU64,
+    // Non-blocking thread orchestration state for tau.launch/poll/wait.
+    running_threads: RunningThreads,
+    completed_threads: CompletedThreads,
 }
 
 impl PyReplTool {
@@ -62,6 +70,8 @@ impl PyReplTool {
             document_tool,
             kernel: Arc::new(tokio::sync::Mutex::new(None)),
             cell_counter: std::sync::atomic::AtomicU64::new(0),
+            running_threads: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
+            completed_threads: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
         }
     }
 
@@ -113,11 +123,11 @@ impl AgentTool for PyReplTool {
     fn description(&self) -> &str {
         "Execute Python code in a persistent REPL with the tau orchestration API. \
          The namespace persists across calls. Use tau.tool(name, **args) to call \
-         any tau tool, tau.thread(alias, task) to spawn threads, tau.query(prompt) \
-         for LLM queries, tau.parallel(...) for concurrent execution, and \
-         tau.document(op, name, content) for shared documents. Use for: \
+         any tau tool, tau.thread(alias, task) for blocking threads, tau.launch()/tau.poll()/tau.wait() \
+         for reactive coordination, tau.query(prompt) for LLM queries, tau.parallel(...) for \
+         concurrent execution, and tau.document(op, name, content) for shared documents. Use for: \
          programmatic orchestration with control flow, loops, data processing, \
-         and parallel fan-out/gather patterns."
+         phased dependencies, and reactive fan-out/gather patterns."
     }
 
     fn parameters(&self) -> &Value {
@@ -157,6 +167,8 @@ impl AgentTool for PyReplTool {
         let this_thread_tool = self.thread_tool.clone();
         let this_query_tool = self.query_tool.clone();
         let this_document_tool = self.document_tool.clone();
+        let running_threads = self.running_threads.clone();
+        let completed_threads = self.completed_threads.clone();
 
         Box::pin(async move {
             let code = params
@@ -174,6 +186,8 @@ impl AgentTool for PyReplTool {
                 thread_tool: this_thread_tool,
                 query_tool: this_query_tool,
                 document_tool: this_document_tool,
+                running_threads,
+                completed_threads,
             };
 
             // Lock kernel — held across await points (tokio::sync::Mutex)
@@ -345,6 +359,8 @@ struct RpcDispatcher {
     thread_tool: Arc<dyn AgentTool>,
     query_tool: Arc<dyn AgentTool>,
     document_tool: Arc<dyn AgentTool>,
+    running_threads: RunningThreads,
+    completed_threads: CompletedThreads,
 }
 
 impl RpcDispatcher {
@@ -352,6 +368,9 @@ impl RpcDispatcher {
         let result = match method {
             "tool" => self.dispatch_tool(params).await,
             "thread" => self.dispatch_thread(params).await,
+            "launch" => self.dispatch_launch(params).await,
+            "poll" => self.dispatch_poll(params).await,
+            "wait" => self.dispatch_wait(params).await,
             "query" => self.dispatch_to_tool(&self.query_tool, params).await,
             "document" => self.dispatch_to_tool(&self.document_tool, params).await,
             "parallel" => self.dispatch_parallel(params).await,
@@ -402,17 +421,97 @@ impl RpcDispatcher {
         Ok(build_thread_result(&result))
     }
 
+    async fn dispatch_launch(&self, params: &Value) -> Result<Value, String> {
+        let alias = params
+            .get("alias")
+            .and_then(|v| v.as_str())
+            .ok_or("missing 'alias' in launch RPC")?
+            .to_string();
+
+        self.collect_finished_aliases(std::slice::from_ref(&alias))
+            .await?;
+
+        {
+            let running = self.running_threads.lock().await;
+            if running.contains_key(&alias) {
+                return Err(format!("thread '{}' is already running", alias));
+            }
+        }
+
+        self.completed_threads.lock().await.remove(&alias);
+
+        let thread_tool = self.thread_tool.clone();
+        let params = params.clone();
+        let launched_alias = alias.clone();
+        let handle = tokio::spawn(async move {
+            let result = thread_tool
+                .execute(
+                    format!("py-launch-{}-{}", thread_tool.name(), launched_alias),
+                    params,
+                    None,
+                )
+                .await
+                .map_err(|e| e.to_string())?;
+            Ok(build_thread_result(&result))
+        });
+
+        self.running_threads
+            .lock()
+            .await
+            .insert(alias.clone(), handle);
+        Ok(thread_state(&alias, "running", ""))
+    }
+
+    async fn dispatch_poll(&self, params: &Value) -> Result<Value, String> {
+        let alias = params
+            .get("alias")
+            .and_then(|v| v.as_str())
+            .ok_or("missing 'alias' in poll RPC")?
+            .to_string();
+
+        self.collect_finished_aliases(std::slice::from_ref(&alias))
+            .await?;
+        Ok(self.status_for_alias(&alias).await)
+    }
+
+    async fn dispatch_wait(&self, params: &Value) -> Result<Value, String> {
+        let aliases = parse_alias_list(params, "aliases")?;
+        let timeout = params
+            .get("timeout")
+            .and_then(|v| v.as_u64())
+            .map(std::time::Duration::from_secs);
+
+        if aliases.is_empty() {
+            return Ok(Value::Array(Vec::new()));
+        }
+
+        let deadline = timeout.map(|dur| std::time::Instant::now() + dur);
+        loop {
+            self.collect_finished_aliases(&aliases).await?;
+
+            let statuses = self.statuses_for_aliases(&aliases).await;
+            let all_terminal = statuses.iter().all(is_terminal_thread_state);
+            if all_terminal {
+                return Ok(Value::Array(statuses));
+            }
+
+            if let Some(deadline) = deadline {
+                if std::time::Instant::now() >= deadline {
+                    return Ok(Value::Array(statuses));
+                }
+            }
+
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+    }
+
     async fn dispatch_to_tool(
         &self,
         tool: &Arc<dyn AgentTool>,
         params: &Value,
     ) -> Result<Value, String> {
         let result = tool
-            .execute(
-                format!("py-rpc-{}", tool.name()),
-                params.clone(),
-                None,
-            )
+            .execute(format!("py-rpc-{}", tool.name()), params.clone(), None)
             .await
             .map_err(|e| e.to_string())?;
 
@@ -483,8 +582,7 @@ impl RpcDispatcher {
             .ok_or("missing 'alias' in diff RPC")?;
 
         let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
-        let repo_root =
-            crate::tools::worktree::find_repo_root(&cwd).map_err(|e| e.to_string())?;
+        let repo_root = crate::tools::worktree::find_repo_root(&cwd).map_err(|e| e.to_string())?;
 
         let sanitized = alias
             .chars()
@@ -498,8 +596,8 @@ impl RpcDispatcher {
             .collect::<String>();
         let branch = format!("tau/{}", sanitized);
 
-        let stat = crate::tools::worktree::diff_stat(&repo_root, &branch)
-            .map_err(|e| e.to_string())?;
+        let stat =
+            crate::tools::worktree::diff_stat(&repo_root, &branch).map_err(|e| e.to_string())?;
         let diff = crate::tools::worktree::diff_full(&repo_root, &branch, 50_000)
             .map_err(|e| e.to_string())?;
         let (files_changed, insertions, deletions) =
@@ -522,8 +620,7 @@ impl RpcDispatcher {
             .ok_or("missing 'alias' in merge RPC")?;
 
         let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
-        let repo_root =
-            crate::tools::worktree::find_repo_root(&cwd).map_err(|e| e.to_string())?;
+        let repo_root = crate::tools::worktree::find_repo_root(&cwd).map_err(|e| e.to_string())?;
 
         let sanitized = alias
             .chars()
@@ -538,8 +635,7 @@ impl RpcDispatcher {
         let branch = format!("tau/{}", sanitized);
 
         let (success, conflicts, message) =
-            crate::tools::worktree::merge_branch(&repo_root, &branch)
-                .map_err(|e| e.to_string())?;
+            crate::tools::worktree::merge_branch(&repo_root, &branch).map_err(|e| e.to_string())?;
 
         Ok(json!({
             "success": success,
@@ -551,11 +647,74 @@ impl RpcDispatcher {
 
     async fn dispatch_branches(&self, _params: &Value) -> Result<Value, String> {
         let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
-        let repo_root =
-            crate::tools::worktree::find_repo_root(&cwd).map_err(|e| e.to_string())?;
-        let branches = crate::tools::worktree::list_branches(&repo_root)
-            .map_err(|e| e.to_string())?;
+        let repo_root = crate::tools::worktree::find_repo_root(&cwd).map_err(|e| e.to_string())?;
+        let branches =
+            crate::tools::worktree::list_branches(&repo_root).map_err(|e| e.to_string())?;
         Ok(json!(branches))
+    }
+
+    async fn collect_finished_aliases(&self, aliases: &[String]) -> Result<(), String> {
+        let ready = {
+            let mut running = self.running_threads.lock().await;
+            let mut ready = Vec::new();
+            for alias in aliases {
+                let is_finished = running
+                    .get(alias)
+                    .map(tokio::task::JoinHandle::is_finished)
+                    .unwrap_or(false);
+                if is_finished {
+                    if let Some(handle) = running.remove(alias) {
+                        ready.push((alias.clone(), handle));
+                    }
+                }
+            }
+            ready
+        };
+
+        if ready.is_empty() {
+            return Ok(());
+        }
+
+        let mut completed = self.completed_threads.lock().await;
+        for (alias, handle) in ready {
+            let value = match handle.await {
+                Ok(Ok(result)) => canonicalize_thread_state(result, Some(alias.as_str())),
+                Ok(Err(err)) => thread_state(&alias, "error", &err),
+                Err(err) => thread_state(&alias, "error", &format!("task error: {}", err)),
+            };
+            completed.insert(alias, value);
+        }
+        Ok(())
+    }
+
+    async fn status_for_alias(&self, alias: &str) -> Value {
+        if let Some(value) = self.completed_threads.lock().await.get(alias).cloned() {
+            return canonicalize_thread_state(value, Some(alias));
+        }
+
+        if self.running_threads.lock().await.contains_key(alias) {
+            return thread_state(alias, "running", "");
+        }
+
+        thread_state(alias, "unknown", "thread not found")
+    }
+
+    async fn statuses_for_aliases(&self, aliases: &[String]) -> Vec<Value> {
+        let completed = self.completed_threads.lock().await.clone();
+        let running = self.running_threads.lock().await;
+
+        aliases
+            .iter()
+            .map(|alias| {
+                if let Some(value) = completed.get(alias).cloned() {
+                    return canonicalize_thread_state(value, Some(alias));
+                }
+                if running.contains_key(alias) {
+                    return thread_state(alias, "running", "");
+                }
+                thread_state(alias, "unknown", "thread not found")
+            })
+            .collect()
     }
 }
 
@@ -565,11 +724,7 @@ async fn dispatch_single_thread(
     params: &Value,
 ) -> Result<Value, String> {
     let result = tool
-        .execute(
-            format!("py-parallel-{}", tool.name()),
-            params.clone(),
-            None,
-        )
+        .execute(format!("py-parallel-{}", tool.name()), params.clone(), None)
         .await
         .map_err(|e| e.to_string())?;
     Ok(build_thread_result(&result))
@@ -578,11 +733,7 @@ async fn dispatch_single_thread(
 /// Helper: dispatch a single spec to a tool.
 async fn dispatch_single(tool: &Arc<dyn AgentTool>, params: &Value) -> Result<Value, String> {
     let result = tool
-        .execute(
-            format!("py-parallel-{}", tool.name()),
-            params.clone(),
-            None,
-        )
+        .execute(format!("py-parallel-{}", tool.name()), params.clone(), None)
         .await
         .map_err(|e| e.to_string())?;
     Ok(Value::String(extract_text(&result)))
@@ -604,7 +755,7 @@ fn build_thread_result(result: &AgentToolResult) -> Value {
             }
         }
     }
-    structured
+    canonicalize_thread_state(structured, None)
 }
 
 /// Extract text content from an AgentToolResult.
@@ -618,6 +769,83 @@ fn extract_text(result: &AgentToolResult) -> String {
         })
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+fn parse_alias_list(params: &Value, field: &str) -> Result<Vec<String>, String> {
+    let aliases = params
+        .get(field)
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| format!("missing '{}' array in wait RPC", field))?;
+
+    aliases
+        .iter()
+        .map(|value| match value {
+            Value::String(alias) => Ok(alias.clone()),
+            Value::Object(map) => map
+                .get("alias")
+                .and_then(|v| v.as_str())
+                .map(String::from)
+                .ok_or_else(|| {
+                    format!(
+                        "'{}' entries must be strings or objects with 'alias'",
+                        field
+                    )
+                }),
+            _ => Err(format!(
+                "'{}' entries must be strings or objects with 'alias'",
+                field
+            )),
+        })
+        .collect()
+}
+
+fn thread_state(alias: &str, status: &str, output: &str) -> Value {
+    json!({
+        "alias": alias,
+        "status": status,
+        "output": output,
+        "reason": output,
+        "completed": status == "completed",
+    })
+}
+
+fn canonicalize_thread_state(value: Value, fallback_alias: Option<&str>) -> Value {
+    match value {
+        Value::Object(mut map) => {
+            if let Some(alias) = fallback_alias {
+                map.entry("alias".to_string())
+                    .or_insert_with(|| Value::String(alias.to_string()));
+            }
+
+            let status = map
+                .get("status")
+                .and_then(|v| v.as_str())
+                .unwrap_or("completed")
+                .to_string();
+            let output = map
+                .get("output")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+
+            map.entry("status".to_string())
+                .or_insert_with(|| Value::String(status.clone()));
+            map.entry("output".to_string())
+                .or_insert_with(|| Value::String(output.clone()));
+            map.insert("reason".to_string(), Value::String(output));
+            map.insert("completed".to_string(), Value::Bool(status == "completed"));
+            Value::Object(map)
+        }
+        other => thread_state(fallback_alias.unwrap_or(""), "error", &other.to_string()),
+    }
+}
+
+fn is_terminal_thread_state(value: &Value) -> bool {
+    value
+        .get("status")
+        .and_then(|v| v.as_str())
+        .map(|status| status != "running")
+        .unwrap_or(true)
 }
 
 /// Format a cell result JSON into a human-readable string for the LLM.
@@ -677,4 +905,210 @@ fn truncate_output(text: &str) -> String {
 
     // Over byte limit but under line limit — truncate bytes
     text[..MAX_OUTPUT_BYTES].to_string() + "\n[... truncated ...]"
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use std::sync::{Arc, Mutex};
+    use std::time::Duration;
+
+    struct FakeThreadTool {
+        calls: Arc<Mutex<Vec<Value>>>,
+    }
+
+    impl FakeThreadTool {
+        fn new() -> Self {
+            Self {
+                calls: Arc::new(Mutex::new(Vec::new())),
+            }
+        }
+    }
+
+    impl AgentTool for FakeThreadTool {
+        fn name(&self) -> &str {
+            "thread"
+        }
+
+        fn label(&self) -> &str {
+            "Thread"
+        }
+
+        fn description(&self) -> &str {
+            "fake thread tool"
+        }
+
+        fn parameters(&self) -> &Value {
+            static SCHEMA: std::sync::OnceLock<Value> = std::sync::OnceLock::new();
+            SCHEMA.get_or_init(|| json!({"type": "object"}))
+        }
+
+        fn execute(
+            &self,
+            _tool_call_id: String,
+            params: Value,
+            _signal: Option<CancellationToken>,
+        ) -> BoxFuture<anyhow::Result<AgentToolResult>> {
+            self.calls.lock().unwrap().push(params.clone());
+            Box::pin(async move {
+                let alias = params
+                    .get("alias")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown")
+                    .to_string();
+                let delay_ms = params.get("delay_ms").and_then(|v| v.as_u64()).unwrap_or(0);
+                if delay_ms > 0 {
+                    tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+                }
+
+                Ok(AgentToolResult {
+                    content: vec![UserBlock::Text {
+                        text: format!("trace:{alias}"),
+                    }],
+                    details: Some(json!({
+                        "alias": alias,
+                        "outcome": {
+                            "kind": "completed",
+                            "text": format!("done:{alias}"),
+                        },
+                        "duration_ms": delay_ms,
+                    })),
+                })
+            })
+        }
+    }
+
+    struct FakeTextTool;
+
+    impl AgentTool for FakeTextTool {
+        fn name(&self) -> &str {
+            "fake"
+        }
+
+        fn label(&self) -> &str {
+            "Fake"
+        }
+
+        fn description(&self) -> &str {
+            "fake text tool"
+        }
+
+        fn parameters(&self) -> &Value {
+            static SCHEMA: std::sync::OnceLock<Value> = std::sync::OnceLock::new();
+            SCHEMA.get_or_init(|| json!({"type": "object"}))
+        }
+
+        fn execute(
+            &self,
+            _tool_call_id: String,
+            _params: Value,
+            _signal: Option<CancellationToken>,
+        ) -> BoxFuture<anyhow::Result<AgentToolResult>> {
+            Box::pin(async move {
+                Ok(AgentToolResult {
+                    content: vec![UserBlock::Text {
+                        text: "ok".to_string(),
+                    }],
+                    details: None,
+                })
+            })
+        }
+    }
+
+    fn make_dispatcher(thread_tool: Arc<FakeThreadTool>) -> RpcDispatcher {
+        RpcDispatcher {
+            thread_tool,
+            query_tool: Arc::new(FakeTextTool),
+            document_tool: Arc::new(FakeTextTool),
+            running_threads: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
+            completed_threads: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
+        }
+    }
+
+    #[tokio::test]
+    async fn launch_poll_wait_supports_partial_collection_and_stable_statuses() {
+        let thread_tool = Arc::new(FakeThreadTool::new());
+        let dispatcher = make_dispatcher(thread_tool);
+
+        let launched = dispatcher
+            .dispatch_launch(&json!({"alias": "fast", "task": "fast", "delay_ms": 50}))
+            .await
+            .unwrap();
+        assert_eq!(
+            launched.get("status").and_then(|v| v.as_str()),
+            Some("running")
+        );
+
+        dispatcher
+            .dispatch_launch(&json!({"alias": "slow", "task": "slow", "delay_ms": 1500}))
+            .await
+            .unwrap();
+
+        let waited = dispatcher
+            .dispatch_wait(&json!({"aliases": ["fast", "slow"], "timeout": 1}))
+            .await
+            .unwrap();
+        let waited = waited.as_array().unwrap();
+        assert_eq!(
+            waited[0].get("status").and_then(|v| v.as_str()),
+            Some("completed")
+        );
+        assert_eq!(
+            waited[1].get("status").and_then(|v| v.as_str()),
+            Some("running")
+        );
+
+        let fast_poll = dispatcher
+            .dispatch_poll(&json!({"alias": "fast"}))
+            .await
+            .unwrap();
+        assert_eq!(
+            fast_poll.get("status").and_then(|v| v.as_str()),
+            Some("completed")
+        );
+        assert_eq!(
+            fast_poll.get("reason").and_then(|v| v.as_str()),
+            Some("done:fast")
+        );
+
+        tokio::time::sleep(Duration::from_millis(650)).await;
+
+        let slow_poll = dispatcher
+            .dispatch_poll(&json!({"alias": "slow"}))
+            .await
+            .unwrap();
+        assert_eq!(
+            slow_poll.get("status").and_then(|v| v.as_str()),
+            Some("completed")
+        );
+        assert_eq!(
+            slow_poll.get("completed").and_then(|v| v.as_bool()),
+            Some(true)
+        );
+        assert_eq!(
+            slow_poll.get("reason").and_then(|v| v.as_str()),
+            Some("done:slow")
+        );
+    }
+
+    #[tokio::test]
+    async fn dispatch_thread_forwards_max_turns() {
+        let thread_tool = Arc::new(FakeThreadTool::new());
+        let dispatcher = make_dispatcher(thread_tool.clone());
+
+        let result = dispatcher
+            .dispatch_thread(&json!({"alias": "researcher", "task": "scan", "max_turns": 77}))
+            .await
+            .unwrap();
+
+        assert_eq!(
+            result.get("status").and_then(|v| v.as_str()),
+            Some("completed")
+        );
+
+        let calls = thread_tool.calls.lock().unwrap();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].get("max_turns").and_then(|v| v.as_u64()), Some(77));
+    }
 }

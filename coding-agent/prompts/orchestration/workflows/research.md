@@ -11,7 +11,7 @@ angles = [
     ("startups", "AI startup ecosystem and new job creation"),
 ]
 
-# Phase 1: parallel research threads (fan-out)
+# Phase 1: parallel research threads (fan-out only because these angles are independent)
 specs = [
     tau.Thread(alias, f"Research: {desc}. Write findings to document '{alias}_notes'.",
                tools=["web"])
@@ -29,3 +29,5 @@ tau.document("write", name="final_report", content=str(synthesis))
 ```
 
 Scale the number of angles to match the complexity. For broad topics, 4-8 parallel threads work well. For narrow questions, 2-3 is sufficient.
+
+If the synthesis or critique must wait for intermediate artifacts before launch, switch to `tau.launch()` + `tau.wait()` and gate on document readiness instead of batching everything with `tau.parallel()`.

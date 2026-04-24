@@ -16,6 +16,9 @@ EXPECTATIONS = CoordinationExpectations(
     con_doc="con_case_notes",
     pro_markers=["PRO_ANCHOR_SOLAR_17"],
     con_markers=["CON_ANCHOR_LEAKAGE_29"],
+    pro_task="pro task",
+    con_task="con task",
+    critic_task="critic task",
 )
 
 
@@ -52,6 +55,8 @@ def test_no_coordination_fails_even_when_docs_exist() -> None:
     output = "Final synthesis with PRO_ANCHOR_SOLAR_17 and CON_ANCHOR_LEAKAGE_29"
     score = score_trace(events, output, "naive-parallel", EXPECTATIONS)
     assert score["coordination_success"] is False
+    assert score["mechanism_success"] is False
+    assert score["timing_success"] is True
     assert score["observed_coordination"] is False
     assert "no coordination mechanism observed" in score["success_reason"]
 
@@ -74,7 +79,12 @@ def test_staged_pipeline_passes_with_episode_injection() -> None:
     output = "Synthesis cites PRO_ANCHOR_SOLAR_17 and CON_ANCHOR_LEAKAGE_29"
     score = score_trace(events, output, "staged-pipeline", EXPECTATIONS)
     assert score["coordination_success"] is True
+    assert score["mechanism_success"] is True
+    assert score["timing_success"] is True
+    assert score["synthesis_success"] is True
     assert score["episode_inject_has_both_sources"] is True
+    assert score["requested_shape_followed"] is True
+    assert score["variant_escape"] is False
 
 
 def test_document_polling_passes_when_critic_reads_after_writes() -> None:
@@ -91,6 +101,8 @@ def test_document_polling_passes_when_critic_reads_after_writes() -> None:
     output = "Synthesis uses PRO_ANCHOR_SOLAR_17 and CON_ANCHOR_LEAKAGE_29"
     score = score_trace(events, output, "document-polling", EXPECTATIONS)
     assert score["coordination_success"] is True
+    assert score["mechanism_success"] is True
+    assert score["timing_success"] is True
     assert score["critic_doc_reads_after_required_writes"] == 2
 
 
@@ -113,6 +125,7 @@ def test_coordination_can_pass_without_exact_anchor_tokens() -> None:
     output = "Final synthesis balances payroll-tax relief against leakage risk."
     score = score_trace(events, output, "staged-pipeline", EXPECTATIONS)
     assert score["coordination_success"] is True
+    assert score["synthesis_success"] is False
     assert score["content_has_both_markers"] is False
 
 
@@ -130,5 +143,30 @@ def test_orchestrator_reads_do_not_count_as_critic_reads() -> None:
     output = "Synthesis uses PRO_ANCHOR_SOLAR_17 and CON_ANCHOR_LEAKAGE_29"
     score = score_trace(events, output, "document-polling", EXPECTATIONS)
     assert score["coordination_success"] is False
+    assert score["mechanism_success"] is False
     assert score["critic_doc_reads_required"] == 0
     assert "critic did not read both required docs after they were written" in score["success_reason"]
+
+
+def test_naive_parallel_escape_to_staged_pipeline_is_reported() -> None:
+    events = [
+        _thread_start("2026-04-05T10:00:00+00:00", "position-for"),
+        _thread_start("2026-04-05T10:00:00+00:00", "position-against"),
+        _doc_tool_start("2026-04-05T10:00:04+00:00", "position-for", "write", "pro_case_notes"),
+        _doc_tool_start("2026-04-05T10:00:05+00:00", "position-against", "write", "con_case_notes"),
+        {
+            "event": "episode_inject",
+            "ts": "2026-04-05T10:00:06+00:00",
+            "source_aliases": ["position-for", "position-against"],
+            "target_alias": "critic",
+        },
+        _thread_start("2026-04-05T10:00:06+00:00", "critic"),
+        _thread_end("2026-04-05T10:00:09+00:00", "critic"),
+    ]
+
+    score = score_trace(events, "Synthesis with PRO_ANCHOR_SOLAR_17 and CON_ANCHOR_LEAKAGE_29", "naive-parallel", EXPECTATIONS)
+
+    assert score["coordination_success"] is True
+    assert score["requested_shape_followed"] is False
+    assert score["variant_escape"] is True
+    assert score["self_corrected_to_other_shape"] == "staged-pipeline"

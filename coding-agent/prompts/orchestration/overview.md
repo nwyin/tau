@@ -1,6 +1,6 @@
 # Orchestration with threads and queries
 
-You have access to `thread` and `query` tools for decomposing work into bounded, parallel subtasks.
+You have access to `thread` and `query` tools for decomposing work into bounded subtasks. Parallelism is useful only when the subtasks are actually independent.
 
 ## When to use threads
 
@@ -23,17 +23,28 @@ Use `query` for quick single-shot LLM calls that don't need tools:
 - Summarization: "Summarize these error logs"
 - Decision: "Which of these approaches is better given X?"
 
+## Classify the coordination graph
+
+Before dispatching, classify the work into one of these shapes:
+
+- `independent fan-out`: subtasks do not need each other's outputs while they run. Same-turn parallel dispatch is correct.
+- `phased dependency`: a downstream thread needs completed upstream results. Use separate turns and pass `episodes=[...]`.
+- `reactive coordination`: downstream work must wait for shared artifacts, readiness signals, or intermediate findings. Use `py_repl` with `tau.launch()`, document polling, and a readiness gate.
+
+Hard rule: if the task says `react to`, `critique`, `after`, `wait for`, `based on another thread`, `read the other side`, or `synthesize both`, do NOT launch all threads in one batch. Use a staged pipeline by default.
+
 ## Before dispatching
 
 Before spawning threads, plan the execution:
 1. What subtasks does this break into?
-2. Which are independent (same turn = parallel)?
-3. Which depend on another's results (separate turn = sequential)?
-4. Log your plan: `log(message="Phase 1: X and Y in parallel. Phase 2: Z with episodes from X,Y.")`
+2. Which classification applies: `independent fan-out`, `phased dependency`, or `reactive coordination`?
+3. Which threads are safe to run in parallel right now?
+4. Which threads must wait for completed episodes or document readiness?
+5. Log your plan: `log(message="Phase 1: X and Y in parallel. Phase 2: Z with episodes from X,Y.")`
 
 Multiple thread calls in the same turn run concurrently. Threads in separate
 turns run sequentially — the second turn's threads can receive the first
-turn's episodes. Use this to express dependencies.
+turn's episodes. Use this to express dependencies. Parallel is not the safe default when the task graph has semantic dependencies.
 
 ## Worktree isolation
 

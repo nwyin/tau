@@ -125,6 +125,11 @@ impl AgentTool for ThreadTool {
                         "type": "integer",
                         "description": "Timeout in seconds (default: 300)."
                     },
+                    "max_turns": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Maximum agent turns before the thread is forced to stop (default: 25). Increase this for long-running reactive or research threads."
+                    },
                     "worktree": {
                         "type": "boolean",
                         "description": "If true, run in an isolated git worktree on its own branch. Use for write-heavy threads to prevent conflicts with other parallel threads. Default: false."
@@ -200,6 +205,11 @@ impl AgentTool for ThreadTool {
                 .get("timeout")
                 .and_then(|v| v.as_u64())
                 .unwrap_or(300);
+            let max_turns = params
+                .get("max_turns")
+                .and_then(|v| v.as_u64())
+                .and_then(|v| u32::try_from(v).ok())
+                .unwrap_or(25);
             let use_worktree = params
                 .get("worktree")
                 .and_then(|v| v.as_bool())
@@ -251,8 +261,7 @@ impl AgentTool for ThreadTool {
             let thread_id = orchestrator.next_thread_id();
 
             // Resolve the main working directory
-            let main_cwd =
-                std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"));
+            let main_cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"));
 
             // Create worktree if requested
             let worktree_info: Option<worktree::WorktreeInfo> = if use_worktree {
@@ -371,7 +380,7 @@ impl AgentTool for ThreadTool {
                 session_id: None,
                 get_api_key,
                 thinking_budgets: None,
-                max_turns: Some(25),
+                max_turns: Some(max_turns),
             });
 
             // Restore conversation history for reused threads
@@ -515,8 +524,7 @@ impl AgentTool for ThreadTool {
                     // Auto-commit any changes made by the thread
                     match worktree::auto_commit(&wt.path, &alias, &thread_id) {
                         Ok(true) => {
-                            worktree_diff_stat =
-                                worktree::diff_stat(&repo_root, &wt.branch).ok();
+                            worktree_diff_stat = worktree::diff_stat(&repo_root, &wt.branch).ok();
                         }
                         Ok(false) => {} // no changes
                         Err(e) => eprintln!("[thread] auto-commit failed: {}", e),
@@ -670,4 +678,75 @@ fn expand_capabilities(names: &[String]) -> Vec<String> {
     tools.sort();
     tools.dedup();
     tools
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use crate::config::ModelSlots;
+    use agent::orchestrator::OrchestratorState;
+
+    fn test_model() -> Model {
+        Model {
+            id: "mock".into(),
+            name: "mock".into(),
+            api: "openai-responses".into(),
+            provider: "openai".into(),
+            base_url: "https://example.invalid".into(),
+            reasoning: false,
+            input: vec!["text".into()],
+            cost: ai::types::ModelCost {
+                input: 0.0,
+                output: 0.0,
+                cache_read: 0.0,
+                cache_write: 0.0,
+            },
+            context_window: 8192,
+            max_tokens: 2048,
+            headers: None,
+        }
+    }
+
+    #[test]
+    fn thread_schema_exposes_max_turns() {
+        let tool = ThreadTool::new(
+            OrchestratorState::new(),
+            None,
+            test_model(),
+            event_forwarder_cell(),
+            ModelSlots::default(),
+        );
+
+        let max_turns = tool
+            .parameters()
+            .get("properties")
+            .and_then(|v| v.get("max_turns"))
+            .expect("thread schema should expose max_turns");
+
+        assert_eq!(
+            max_turns.get("type").and_then(|v| v.as_str()),
+            Some("integer")
+        );
+    }
+
+    #[test]
+    fn expand_capabilities_deduplicates_and_expands() {
+        let expanded = expand_capabilities(&[
+            "read".to_string(),
+            "write".to_string(),
+            "file_read".to_string(),
+        ]);
+
+        assert_eq!(
+            expanded,
+            vec![
+                "file_edit".to_string(),
+                "file_read".to_string(),
+                "file_write".to_string(),
+                "glob".to_string(),
+                "grep".to_string(),
+            ]
+        );
+    }
 }

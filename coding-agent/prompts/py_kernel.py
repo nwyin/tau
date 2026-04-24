@@ -71,6 +71,10 @@ class ThreadResult:
         return self.status == "timed_out"
 
     @property
+    def running(self):
+        return self.status == "running"
+
+    @property
     def reason(self):
         return self.output
 
@@ -160,13 +164,19 @@ class TauProxy:
                     raise RuntimeError(resp["error"])
                 return resp.get("result")
 
-    def tool(self, name, **kwargs):
-        """Call a tau tool by name. Returns the tool result text."""
-        return self._rpc("tool", {"name": name, "args": kwargs})
-
-    def thread(self, alias, task, tools=None, model=None, episodes=None,
-               timeout=None, worktree=None, worktree_base=None, worktree_include=None):
-        """Spawn a thread. Blocks until complete. Returns a ThreadResult."""
+    def _thread_params(
+        self,
+        alias,
+        task,
+        tools=None,
+        model=None,
+        episodes=None,
+        timeout=None,
+        max_turns=None,
+        worktree=None,
+        worktree_base=None,
+        worktree_include=None,
+    ):
         params = {"alias": alias, "task": task}
         if tools is not None:
             params["tools"] = tools
@@ -176,13 +186,72 @@ class TauProxy:
             params["episodes"] = episodes
         if timeout is not None:
             params["timeout"] = timeout
+        if max_turns is not None:
+            params["max_turns"] = max_turns
         if worktree is not None:
             params["worktree"] = worktree
         if worktree_base is not None:
             params["worktree_base"] = worktree_base
         if worktree_include is not None:
             params["worktree_include"] = worktree_include
+        return params
+
+    def _coerce_alias(self, alias_or_result):
+        if isinstance(alias_or_result, ThreadResult):
+            return alias_or_result.alias
+        if isinstance(alias_or_result, dict):
+            return alias_or_result.get("alias")
+        return alias_or_result
+
+    def tool(self, name, **kwargs):
+        """Call a tau tool by name. Returns the tool result text."""
+        return self._rpc("tool", {"name": name, "args": kwargs})
+
+    def thread(self, alias, task, tools=None, model=None, episodes=None,
+               timeout=None, max_turns=None, worktree=None, worktree_base=None, worktree_include=None):
+        """Spawn a thread. Blocks until complete. Returns a ThreadResult."""
+        params = self._thread_params(
+            alias,
+            task,
+            tools=tools,
+            model=model,
+            episodes=episodes,
+            timeout=timeout,
+            max_turns=max_turns,
+            worktree=worktree,
+            worktree_base=worktree_base,
+            worktree_include=worktree_include,
+        )
         return ThreadResult(self._rpc("thread", params))
+
+    def launch(self, alias, task, tools=None, model=None, episodes=None,
+               timeout=None, max_turns=None, worktree=None, worktree_base=None, worktree_include=None):
+        """Launch a thread without blocking. Returns a ThreadResult with status='running'."""
+        params = self._thread_params(
+            alias,
+            task,
+            tools=tools,
+            model=model,
+            episodes=episodes,
+            timeout=timeout,
+            max_turns=max_turns,
+            worktree=worktree,
+            worktree_base=worktree_base,
+            worktree_include=worktree_include,
+        )
+        return ThreadResult(self._rpc("launch", params))
+
+    def poll(self, alias):
+        """Inspect the current status of a launched thread."""
+        return ThreadResult(self._rpc("poll", {"alias": self._coerce_alias(alias)}))
+
+    def wait(self, aliases, timeout=None):
+        """Wait for launched threads to finish, returning partial results on timeout."""
+        normalized = [self._coerce_alias(alias) for alias in aliases]
+        params = {"aliases": normalized}
+        if timeout is not None:
+            params["timeout"] = timeout
+        return [ThreadResult(item) for item in self._rpc("wait", params)]
 
     def query(self, prompt, alias=None, model=None):
         """Single-shot LLM query. Returns response text."""

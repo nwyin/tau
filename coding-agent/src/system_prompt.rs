@@ -19,6 +19,7 @@ const ORCH_PIPELINE: &str = include_str!("../prompts/orchestration/patterns/pipe
 const ORCH_ADVERSARIAL: &str = include_str!("../prompts/orchestration/patterns/adversarial.md");
 const ORCH_REUSE: &str = include_str!("../prompts/orchestration/patterns/reuse.md");
 const ORCH_PROGRAMMATIC: &str = include_str!("../prompts/orchestration/patterns/programmatic.md");
+const ORCH_REACTIVE: &str = include_str!("../prompts/orchestration/patterns/reactive.md");
 const ORCH_WF_FEATURE: &str = include_str!("../prompts/orchestration/workflows/feature.md");
 const ORCH_WF_BUGFIX: &str = include_str!("../prompts/orchestration/workflows/bugfix.md");
 const ORCH_WF_REFACTOR: &str = include_str!("../prompts/orchestration/workflows/refactor.md");
@@ -138,9 +139,10 @@ pub fn build_system_prompt(tools: &[Arc<dyn AgentTool>], skills: &[Skill], cwd: 
     if has("py_repl") {
         guidelines.push(
             "Use py_repl for programmatic orchestration: complex control flow, loops, \
-             data aggregation, and parallel fan-out/gather patterns. The Python namespace \
-             persists across calls. Access tau tools via tau.tool(), threads via tau.thread(), \
-             queries via tau.query(), and concurrent execution via tau.parallel()."
+             data aggregation, phased dependencies, and reactive coordination. The Python namespace \
+             persists across calls. Access tau tools via tau.tool(), blocking threads via tau.thread(), \
+             reactive launches via tau.launch()/tau.poll()/tau.wait(), queries via tau.query(), \
+             and concurrent execution via tau.parallel()."
                 .to_string(),
         );
     }
@@ -181,6 +183,7 @@ pub fn build_system_prompt(tools: &[Arc<dyn AgentTool>], skills: &[Skill], cwd: 
                 ORCH_ADVERSARIAL,
                 ORCH_REUSE,
                 ORCH_PROGRAMMATIC,
+                ORCH_REACTIVE,
                 ORCH_WF_FEATURE,
                 ORCH_WF_BUGFIX,
                 ORCH_WF_REFACTOR,
