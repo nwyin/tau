@@ -5,7 +5,7 @@
 //! conversation history). Episodes are the primary sync mechanism.
 
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use agent::completion_tools::{self, AbortTool, CompleteTool, EscalateTool};
 use agent::episode::{generate_episode, EpisodeWorktreeInfo};
@@ -18,6 +18,7 @@ use serde_json::{json, Value};
 use tokio_util::sync::CancellationToken;
 
 use crate::config::ModelSlots;
+use crate::orchestration::EventForwarderCell;
 use crate::tools;
 use crate::tools::worktree;
 
@@ -25,14 +26,6 @@ const THREAD_IDENTITY: &str = include_str!("../../prompts/thread_identity.md");
 
 /// Default tools for threads when none specified.
 const DEFAULT_THREAD_TOOLS: &[&str] = &["file_read", "grep", "glob"];
-
-/// Shared cell for event forwarding. Populated after agent creation.
-pub type EventForwarderCell = Arc<Mutex<Option<Arc<dyn Fn(AgentEvent) + Send + Sync>>>>;
-
-/// Create an empty event forwarder cell.
-pub fn event_forwarder_cell() -> EventForwarderCell {
-    Arc::new(Mutex::new(None))
-}
 
 pub struct ThreadTool {
     orchestrator: Arc<OrchestratorState>,
@@ -688,6 +681,7 @@ mod tests {
     use super::*;
 
     use crate::config::ModelSlots;
+    use crate::orchestration::event_forwarder_cell;
     use agent::orchestrator::OrchestratorState;
 
     fn test_model() -> Model {

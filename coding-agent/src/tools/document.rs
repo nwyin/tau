@@ -7,25 +7,20 @@
 use std::sync::Arc;
 
 use agent::orchestrator::OrchestratorState;
-use agent::types::{AgentEvent, AgentTool, AgentToolResult, BoxFuture};
-use ai::types::UserBlock;
+use agent::types::{AgentTool, AgentToolResult, BoxFuture};
 use serde_json::{json, Value};
 use tokio_util::sync::CancellationToken;
 
-use super::thread::EventForwarderCell;
+use crate::orchestration::{DocumentRequest, EventForwarderCell, OrchestrationRuntime};
 
 pub struct DocumentTool {
-    orchestrator: Arc<OrchestratorState>,
-    event_forwarder: EventForwarderCell,
-    thread_alias: Option<String>,
+    runtime: OrchestrationRuntime,
 }
 
 impl DocumentTool {
     pub fn new(orchestrator: Arc<OrchestratorState>, event_forwarder: EventForwarderCell) -> Self {
         Self {
-            orchestrator,
-            event_forwarder,
-            thread_alias: None,
+            runtime: OrchestrationRuntime::with_event_forwarder(orchestrator, event_forwarder),
         }
     }
 
@@ -41,11 +36,9 @@ impl DocumentTool {
         event_forwarder: EventForwarderCell,
         alias: String,
     ) -> Arc<dyn AgentTool> {
-        Arc::new(Self {
-            orchestrator,
-            event_forwarder,
-            thread_alias: Some(alias),
-        })
+        let runtime = OrchestrationRuntime::with_event_forwarder(orchestrator, event_forwarder)
+            .for_thread(alias);
+        Arc::new(Self { runtime })
     }
 }
 
@@ -94,113 +87,11 @@ impl AgentTool for DocumentTool {
         params: Value,
         _signal: Option<CancellationToken>,
     ) -> BoxFuture<anyhow::Result<AgentToolResult>> {
-        let orchestrator = self.orchestrator.clone();
-        let event_forwarder = self.event_forwarder.clone();
-        let thread_alias = self.thread_alias.clone();
+        let runtime = self.runtime.clone();
 
         Box::pin(async move {
-            let operation = params
-                .get("operation")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow::anyhow!("missing 'operation' parameter"))?;
-            let name = params.get("name").and_then(|v| v.as_str());
-            let content = params.get("content").and_then(|v| v.as_str());
-
-            // Helper to emit from inside the async block
-            let emit = |op: &str, name: &str, content: &str| {
-                if let Some(fwd) = event_forwarder.lock().ok().and_then(|g| g.clone()) {
-                    fwd(AgentEvent::DocumentOp {
-                        thread_alias: thread_alias.clone(),
-                        op: op.to_string(),
-                        name: name.to_string(),
-                        content: content.to_string(),
-                    });
-                }
-            };
-
-            match operation {
-                "list" => {
-                    let names = orchestrator.list_documents();
-                    let text = if names.is_empty() {
-                        "(no documents)".to_string()
-                    } else {
-                        names.join("\n")
-                    };
-                    emit("list", "", &text);
-                    Ok(AgentToolResult {
-                        content: vec![UserBlock::Text { text }],
-                        details: Some(json!({"operation": "list", "count": names.len()})),
-                    })
-                }
-
-                "read" => {
-                    let name = name
-                        .ok_or_else(|| anyhow::anyhow!("'name' is required for read operation"))?;
-                    match orchestrator.read_document(name) {
-                        Some(text) => {
-                            let bytes = text.len();
-                            emit("read", name, &text);
-                            Ok(AgentToolResult {
-                                content: vec![UserBlock::Text { text }],
-                                details: Some(
-                                    json!({"operation": "read", "name": name, "bytes": bytes}),
-                                ),
-                            })
-                        }
-                        None => {
-                            emit("read", name, "");
-                            Ok(AgentToolResult {
-                                content: vec![UserBlock::Text {
-                                    text: format!("Document '{}' not found.", name),
-                                }],
-                                details: Some(
-                                    json!({"operation": "read", "name": name, "error": true}),
-                                ),
-                            })
-                        }
-                    }
-                }
-
-                "write" => {
-                    let name = name
-                        .ok_or_else(|| anyhow::anyhow!("'name' is required for write operation"))?;
-                    let content = content.ok_or_else(|| {
-                        anyhow::anyhow!("'content' is required for write operation")
-                    })?;
-                    let bytes = content.len();
-                    orchestrator.write_document(name, content.to_string());
-                    emit("write", name, content);
-                    Ok(AgentToolResult {
-                        content: vec![UserBlock::Text {
-                            text: format!("Wrote {} bytes to '{}'.", bytes, name),
-                        }],
-                        details: Some(json!({"operation": "write", "name": name, "bytes": bytes})),
-                    })
-                }
-
-                "append" => {
-                    let name = name.ok_or_else(|| {
-                        anyhow::anyhow!("'name' is required for append operation")
-                    })?;
-                    let content = content.ok_or_else(|| {
-                        anyhow::anyhow!("'content' is required for append operation")
-                    })?;
-                    let bytes = content.len();
-                    orchestrator.append_document(name, content);
-                    emit("append", name, content);
-                    Ok(AgentToolResult {
-                        content: vec![UserBlock::Text {
-                            text: format!("Appended {} bytes to '{}'.", bytes, name),
-                        }],
-                        details: Some(json!({"operation": "append", "name": name, "bytes": bytes})),
-                    })
-                }
-
-                _ => Err(anyhow::anyhow!(
-                    "Unknown operation '{}'. Use: read, write, append, list.",
-                    operation
-                )),
-            }
+            let request = DocumentRequest::from_params(&params)?;
+            Ok(runtime.document_op(request))
         })
     }
 }
@@ -208,8 +99,9 @@ impl AgentTool for DocumentTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tools::thread::event_forwarder_cell;
+    use crate::orchestration::event_forwarder_cell;
     use agent::orchestrator::OrchestratorState;
+    use ai::types::UserBlock;
 
     fn make_tool() -> DocumentTool {
         DocumentTool::new(OrchestratorState::new(), event_forwarder_cell())

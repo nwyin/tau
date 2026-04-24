@@ -4,17 +4,20 @@ use std::sync::Arc;
 
 use agent::orchestrator::OrchestratorState;
 use agent::types::{AgentTool, AgentToolResult, BoxFuture};
-use ai::types::UserBlock;
 use serde_json::{json, Value};
 use tokio_util::sync::CancellationToken;
 
+use crate::orchestration::OrchestrationRuntime;
+
 pub struct FromIdTool {
-    orchestrator: Arc<OrchestratorState>,
+    runtime: OrchestrationRuntime,
 }
 
 impl FromIdTool {
     pub fn new(orchestrator: Arc<OrchestratorState>) -> Self {
-        Self { orchestrator }
+        Self {
+            runtime: OrchestrationRuntime::new(orchestrator),
+        }
     }
 
     pub fn arc(orchestrator: Arc<OrchestratorState>) -> Arc<dyn AgentTool> {
@@ -58,7 +61,7 @@ impl AgentTool for FromIdTool {
         params: Value,
         _signal: Option<CancellationToken>,
     ) -> BoxFuture<anyhow::Result<AgentToolResult>> {
-        let orchestrator = self.orchestrator.clone();
+        let runtime = self.runtime.clone();
 
         Box::pin(async move {
             let alias = params
@@ -66,25 +69,7 @@ impl AgentTool for FromIdTool {
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| anyhow::anyhow!("missing 'alias' parameter"))?;
 
-            match orchestrator.get_episode(alias) {
-                Some(episode) => Ok(AgentToolResult {
-                    content: vec![UserBlock::Text {
-                        text: episode.compact_trace,
-                    }],
-                    details: Some(json!({
-                        "alias": alias,
-                        "outcome": episode.outcome.status_str(),
-                        "duration_ms": episode.duration_ms,
-                        "turn_count": episode.turn_count,
-                    })),
-                }),
-                None => Ok(AgentToolResult {
-                    content: vec![UserBlock::Text {
-                        text: format!("No episode found for alias '{}'.", alias),
-                    }],
-                    details: Some(json!({"alias": alias, "error": true})),
-                }),
-            }
+            Ok(runtime.lookup_episode(alias))
         })
     }
 }

@@ -13,8 +13,8 @@ use futures::StreamExt;
 use serde_json::{json, Value};
 use tokio_util::sync::CancellationToken;
 
-use super::thread::EventForwarderCell;
 use crate::config::ModelSlots;
+use crate::orchestration::EventForwarderCell;
 
 pub struct QueryTool {
     orchestrator: Arc<OrchestratorState>,

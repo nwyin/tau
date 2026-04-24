@@ -22,6 +22,8 @@ use std::sync::Arc;
 
 use agent::types::AgentTool;
 
+use crate::orchestration::{event_forwarder_cell, EventForwarderCell};
+
 pub use bash::BashTool;
 pub use document::DocumentTool;
 pub use file_edit::FileEditTool;
@@ -51,7 +53,7 @@ pub fn all_known_tools() -> HashMap<String, Arc<dyn AgentTool>> {
 
 pub struct OrchestrationToolSet {
     pub tools: Vec<Arc<dyn AgentTool>>,
-    pub event_forwarder_cell: thread::EventForwarderCell,
+    pub event_forwarder_cell: EventForwarderCell,
     pub thread_tool: Arc<dyn AgentTool>,
     pub query_tool: Arc<dyn AgentTool>,
     pub document_tool: Arc<dyn AgentTool>,
@@ -64,7 +66,7 @@ pub fn orchestration_core_tools(
     model: ai::types::Model,
     model_slots: crate::config::ModelSlots,
 ) -> OrchestrationToolSet {
-    let cell = thread::event_forwarder_cell();
+    let cell = event_forwarder_cell();
     let thread_tool = ThreadTool::arc(
         orchestrator.clone(),
         get_api_key.clone(),
@@ -104,7 +106,7 @@ pub fn orchestration_tools(
     get_api_key: Option<agent::types::GetApiKeyFn>,
     model: ai::types::Model,
     model_slots: crate::config::ModelSlots,
-) -> (Vec<Arc<dyn AgentTool>>, thread::EventForwarderCell) {
+) -> (Vec<Arc<dyn AgentTool>>, EventForwarderCell) {
     let core = orchestration_core_tools(orchestrator, get_api_key, model, model_slots);
     let py_repl_tool = py_repl::PyReplTool::arc(
         core.thread_tool.clone(),
