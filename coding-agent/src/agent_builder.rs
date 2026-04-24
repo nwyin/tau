@@ -197,6 +197,7 @@ pub async fn build_agent(build_config: AgentBuildConfig) -> Result<BuiltAgent> {
         model.clone(),
         config.models.clone(),
     );
+    let event_forwarder_cell = orch.event_forwarder_cell.clone();
 
     // Warn about missing optional API keys for included tools
     let has_web_search = direct_tools.iter().any(|t| t.name() == "web_search");
@@ -221,39 +222,24 @@ pub async fn build_agent(build_config: AgentBuildConfig) -> Result<BuiltAgent> {
     let permission_service = Arc::new(perm_svc);
     let wrapped_direct_tools =
         permissions::wrap_tools(direct_tools, Arc::clone(&permission_service));
-    let wrapped_orch_tools = permissions::wrap_tools(orch.tools, Arc::clone(&permission_service));
+    let wrapped_orch = orch.wrap_with_permissions(Arc::clone(&permission_service));
 
     let generic_tools = wrapped_direct_tools
         .iter()
         .map(|tool| (tool.name().to_string(), Arc::clone(tool)))
         .collect();
-    let wrapped_thread_tool = wrapped_orch_tools
-        .iter()
-        .find(|tool| tool.name() == "thread")
-        .cloned()
-        .unwrap_or_else(|| orch.thread_tool.clone());
-    let wrapped_query_tool = wrapped_orch_tools
-        .iter()
-        .find(|tool| tool.name() == "query")
-        .cloned()
-        .unwrap_or_else(|| orch.query_tool.clone());
-    let wrapped_document_tool = wrapped_orch_tools
-        .iter()
-        .find(|tool| tool.name() == "document")
-        .cloned()
-        .unwrap_or_else(|| orch.document_tool.clone());
     let py_repl_tool = tools::py_repl::PyReplTool::arc_with_tools(
         orchestrator.clone(),
-        wrapped_thread_tool,
-        wrapped_query_tool,
-        wrapped_document_tool,
+        wrapped_orch.thread_tool.clone(),
+        wrapped_orch.query_tool.clone(),
+        wrapped_orch.document_tool.clone(),
         generic_tools,
     );
     let mut wrapped_py_repl =
         permissions::wrap_tools(vec![py_repl_tool], Arc::clone(&permission_service));
 
     let mut tool_list = wrapped_direct_tools;
-    tool_list.extend(wrapped_orch_tools);
+    tool_list.extend(wrapped_orch.tools);
     tool_list.append(&mut wrapped_py_repl);
 
     // Load skills
@@ -316,7 +302,7 @@ pub async fn build_agent(build_config: AgentBuildConfig) -> Result<BuiltAgent> {
         }),
         convert_to_llm: None,
         transform_context: {
-            let cell_for_compact = orch.event_forwarder_cell.clone();
+            let cell_for_compact = event_forwarder_cell.clone();
             Some(Arc::new(move |messages, _cancel| {
                 let model = model_for_compact.clone();
                 let cell = cell_for_compact.clone();
@@ -349,7 +335,7 @@ pub async fn build_agent(build_config: AgentBuildConfig) -> Result<BuiltAgent> {
 
     // Populate the event forwarder so thread tools can forward inner events
     // to the parent agent's subscribers.
-    *orch.event_forwarder_cell.lock().unwrap() = Some(agent.event_forwarder());
+    *event_forwarder_cell.lock().unwrap() = Some(agent.event_forwarder());
 
     Ok(BuiltAgent {
         agent,

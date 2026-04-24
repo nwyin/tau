@@ -33,8 +33,8 @@ Each thread must call `complete`, `abort`, or `escalate` when done. The thread's
 
 Use `max_turns` when a thread needs a larger conversation budget than the default:
 ```python
-tau.thread("researcher", "Keep iterating until both fixtures are mapped",
-           tools=["read"], max_turns=80)
+thread("researcher", "Keep iterating until both fixtures are mapped",
+       tools=["read"], max_turns=80)
 ```
 
 Increase `max_turns` deliberately for reactive or research threads. Keep short, bounded threads on the default.
@@ -43,19 +43,14 @@ Increase `max_turns` deliberately for reactive or research threads. Keep short, 
 
 Threads that modify files can use `worktree=True` for git-level isolation:
 ```python
-worker = tau.thread("impl", "Implement feature X", tools=["full"], worktree=True)
-# worker.branch → "tau/impl"
-# worker.diff_stat → "3 files changed, 45 insertions(+), 12 deletions(-)"
+thread("impl", "Implement feature X", tools=["full"], worktree=True)
+# result branch: "tau/impl"
+# result diff_stat: "3 files changed, 45 insertions(+), 12 deletions(-)"
 ```
 
-After a worktree thread completes, use the merge API:
-```python
-diff = tau.diff("impl")          # Inspect changes before merging
-print(diff.stat)                  # "3 files changed, 45(+), 12(-)"
-result = tau.merge("impl")       # Merge tau/impl into current branch
-if not result:
-    tau.log(f"Conflicts: {result.conflicts}")
-```
+After a worktree thread completes, inspect the recorded branch and diff summary
+before integrating. Programmatic diff and merge APIs are documented with the
+Python orchestration addendum when that tool is enabled.
 
 ## Helper tools
 
@@ -70,9 +65,5 @@ from_id(alias="scanner")
 // Returns the compact trace of the scanner thread's last run
 ```
 
-**Worktree management:**
-```python
-tau.diff(alias)       # DiffResult: stat, diff, files_changed
-tau.merge(alias)      # MergeResult: success, conflicts
-tau.branches()        # List active tau/* branches
-```
+**Worktree management:** Worktree threads return branch and diff summary
+metadata. Use that metadata to review changes before merging branches.

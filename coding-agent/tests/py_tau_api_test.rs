@@ -144,8 +144,8 @@ fn manifest_methods_and_results_are_in_generated_kernel() {
 #[test]
 fn manifest_rpc_methods_are_handled_by_runtime_facade() {
     let manifest = manifest();
-    let runtime = std::fs::read_to_string(
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("src/orchestration/runtime.rs"),
+    let rpc_source = std::fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("src/orchestration/rpc.rs"),
     )
     .unwrap();
     let handled = [
@@ -162,7 +162,7 @@ fn manifest_rpc_methods_are_handled_by_runtime_facade() {
             "test fixture missing expected RPC method {rpc}"
         );
         assert!(
-            runtime.contains(&format!("\"{rpc}\"")),
+            rpc_source.contains(&format!("\"{rpc}\"")),
             "OrchestrationRpcFacade missing dispatch arm for RPC method {rpc}"
         );
     }

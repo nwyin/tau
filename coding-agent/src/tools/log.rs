@@ -7,7 +7,7 @@ use agent::types::{AgentTool, AgentToolResult, BoxFuture};
 use serde_json::{json, Value};
 use tokio_util::sync::CancellationToken;
 
-use crate::orchestration::OrchestrationRuntime;
+use crate::orchestration::{LogRequest, OrchestrationRuntime};
 
 pub struct LogTool {
     runtime: OrchestrationRuntime,
@@ -64,12 +64,8 @@ impl AgentTool for LogTool {
         let runtime = self.runtime.clone();
 
         Box::pin(async move {
-            let message = params
-                .get("message")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow::anyhow!("missing 'message' parameter"))?;
-
-            Ok(runtime.log_message(message))
+            let request = LogRequest::from_params(&params)?;
+            Ok(runtime.log_message(request))
         })
     }
 }

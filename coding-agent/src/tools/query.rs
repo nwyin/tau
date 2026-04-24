@@ -12,10 +12,13 @@ use serde_json::{json, Value};
 use tokio_util::sync::CancellationToken;
 
 use crate::config::ModelSlots;
-use crate::orchestration::{EventForwarderCell, OrchestrationRuntime, QueryRequest};
+use crate::orchestration::{
+    AgentRuntimeConfig, EventForwarderCell, OrchestrationRuntime, QueryRequest,
+};
 
 pub struct QueryTool {
     runtime: OrchestrationRuntime,
+    config: AgentRuntimeConfig,
 }
 
 impl QueryTool {
@@ -27,13 +30,8 @@ impl QueryTool {
         event_forwarder: EventForwarderCell,
     ) -> Self {
         Self {
-            runtime: OrchestrationRuntime::with_agent_config(
-                orchestrator,
-                get_api_key,
-                default_model,
-                model_slots,
-                event_forwarder,
-            ),
+            runtime: OrchestrationRuntime::with_event_forwarder(orchestrator, event_forwarder),
+            config: AgentRuntimeConfig::new(get_api_key, default_model, model_slots),
         }
     }
 
@@ -100,10 +98,11 @@ impl AgentTool for QueryTool {
         _signal: Option<CancellationToken>,
     ) -> BoxFuture<anyhow::Result<AgentToolResult>> {
         let runtime = self.runtime.clone();
+        let config = self.config.clone();
 
         Box::pin(async move {
             let request = QueryRequest::from_params(&params)?;
-            let result = runtime.run_query(request).await?;
+            let result = runtime.run_query(&config, request).await?;
             Ok(result.to_agent_tool_result())
         })
     }

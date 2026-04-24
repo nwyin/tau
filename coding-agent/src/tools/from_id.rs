@@ -7,7 +7,7 @@ use agent::types::{AgentTool, AgentToolResult, BoxFuture};
 use serde_json::{json, Value};
 use tokio_util::sync::CancellationToken;
 
-use crate::orchestration::OrchestrationRuntime;
+use crate::orchestration::{EpisodeLookupRequest, OrchestrationRuntime};
 
 pub struct FromIdTool {
     runtime: OrchestrationRuntime,
@@ -64,12 +64,8 @@ impl AgentTool for FromIdTool {
         let runtime = self.runtime.clone();
 
         Box::pin(async move {
-            let alias = params
-                .get("alias")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow::anyhow!("missing 'alias' parameter"))?;
-
-            Ok(runtime.lookup_episode(alias))
+            let request = EpisodeLookupRequest::from_params(&params)?;
+            Ok(runtime.lookup_episode(request))
         })
     }
 }

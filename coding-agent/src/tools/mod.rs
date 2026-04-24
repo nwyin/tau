@@ -46,7 +46,12 @@ pub fn default_tools() -> Vec<Arc<dyn AgentTool>> {
     ToolRegistry::new().default_tools()
 }
 
-/// Returns all known tool implementations keyed by canonical name.
+/// Returns all direct tool implementations keyed by canonical name.
+pub fn all_direct_tools() -> HashMap<String, Arc<dyn AgentTool>> {
+    ToolRegistry::new().all_direct_tools()
+}
+
+/// Returns all direct tool implementations keyed by canonical name.
 pub fn all_known_tools() -> HashMap<String, Arc<dyn AgentTool>> {
     ToolRegistry::new().all_known_tools()
 }
@@ -57,6 +62,58 @@ pub struct OrchestrationToolSet {
     pub thread_tool: Arc<dyn AgentTool>,
     pub query_tool: Arc<dyn AgentTool>,
     pub document_tool: Arc<dyn AgentTool>,
+    pub log_tool: Arc<dyn AgentTool>,
+    pub from_id_tool: Arc<dyn AgentTool>,
+}
+
+pub struct WrappedOrchestrationToolSet {
+    pub tools: Vec<Arc<dyn AgentTool>>,
+    pub thread_tool: Arc<dyn AgentTool>,
+    pub query_tool: Arc<dyn AgentTool>,
+    pub document_tool: Arc<dyn AgentTool>,
+}
+
+impl OrchestrationToolSet {
+    pub fn wrap_with_permissions(
+        self,
+        permission_service: Arc<crate::permissions::PermissionService>,
+    ) -> WrappedOrchestrationToolSet {
+        let thread_tool = crate::permissions::PermissionWrapper::arc(
+            self.thread_tool,
+            Arc::clone(&permission_service),
+        );
+        let query_tool = crate::permissions::PermissionWrapper::arc(
+            self.query_tool,
+            Arc::clone(&permission_service),
+        );
+        let document_tool = crate::permissions::PermissionWrapper::arc(
+            self.document_tool,
+            Arc::clone(&permission_service),
+        );
+        let log_tool = crate::permissions::PermissionWrapper::arc(
+            self.log_tool,
+            Arc::clone(&permission_service),
+        );
+        let from_id_tool = crate::permissions::PermissionWrapper::arc(
+            self.from_id_tool,
+            Arc::clone(&permission_service),
+        );
+
+        let tools = vec![
+            thread_tool.clone(),
+            query_tool.clone(),
+            document_tool.clone(),
+            log_tool,
+            from_id_tool,
+        ];
+
+        WrappedOrchestrationToolSet {
+            tools,
+            thread_tool,
+            query_tool,
+            document_tool,
+        }
+    }
 }
 
 /// Create orchestration tools except py_repl, which needs the final wrapped tool set.
@@ -88,8 +145,8 @@ pub fn orchestration_core_tools(
         thread_tool.clone(),
         query_tool.clone(),
         document_tool.clone(),
-        log_tool,
-        from_id_tool,
+        log_tool.clone(),
+        from_id_tool.clone(),
     ];
     OrchestrationToolSet {
         tools,
@@ -97,6 +154,8 @@ pub fn orchestration_core_tools(
         thread_tool,
         query_tool,
         document_tool,
+        log_tool,
+        from_id_tool,
     }
 }
 
@@ -124,7 +183,12 @@ pub fn tools_from_allowlist(names: &[String]) -> Vec<Arc<dyn AgentTool>> {
     ToolRegistry::new().tools_from_allowlist(names)
 }
 
-/// Returns all known tools with a custom working directory for filesystem tools.
+/// Returns all direct tools with a custom working directory for filesystem tools.
+pub fn all_direct_tools_with_cwd(cwd: std::path::PathBuf) -> HashMap<String, Arc<dyn AgentTool>> {
+    ToolRegistry::new().all_direct_tools_with_cwd(cwd)
+}
+
+/// Returns all direct tools with a custom working directory for filesystem tools.
 pub fn all_known_tools_with_cwd(cwd: std::path::PathBuf) -> HashMap<String, Arc<dyn AgentTool>> {
     ToolRegistry::new().all_known_tools_with_cwd(cwd)
 }
@@ -135,4 +199,54 @@ pub fn tools_from_allowlist_with_cwd(
     cwd: std::path::PathBuf,
 ) -> Vec<Arc<dyn AgentTool>> {
     ToolRegistry::new().tools_from_allowlist_with_cwd(names, cwd)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use super::*;
+
+    fn test_model() -> ai::types::Model {
+        ai::types::Model {
+            id: "mock".into(),
+            name: "mock".into(),
+            api: "openai-responses".into(),
+            provider: "openai".into(),
+            base_url: "https://example.invalid".into(),
+            reasoning: false,
+            input: vec!["text".into()],
+            cost: ai::types::ModelCost {
+                input: 0.0,
+                output: 0.0,
+                cache_read: 0.0,
+                cache_write: 0.0,
+            },
+            context_window: 8192,
+            max_tokens: 2048,
+            headers: None,
+        }
+    }
+
+    #[test]
+    fn orchestration_permission_wrap_preserves_named_handles() {
+        let core = orchestration_core_tools(
+            agent::orchestrator::OrchestratorState::new(),
+            None,
+            test_model(),
+            crate::config::ModelSlots::default(),
+        );
+        let service = Arc::new(crate::permissions::PermissionService::new(
+            &HashMap::new(),
+            false,
+        ));
+
+        let wrapped = core.wrap_with_permissions(service);
+        assert_eq!(wrapped.thread_tool.name(), "thread");
+        assert_eq!(wrapped.query_tool.name(), "query");
+        assert_eq!(wrapped.document_tool.name(), "document");
+
+        let names: Vec<&str> = wrapped.tools.iter().map(|tool| tool.name()).collect();
+        assert_eq!(names, vec!["thread", "query", "document", "log", "from_id"]);
+    }
 }

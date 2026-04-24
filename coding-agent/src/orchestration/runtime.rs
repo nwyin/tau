@@ -1,10 +1,9 @@
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use agent::completion_tools::{self, AbortTool, CompleteTool, EscalateTool};
 use agent::episode::{generate_episode, EpisodeWorktreeInfo};
-use agent::orchestrator::OrchestratorState;
+use agent::orchestrator::{OrchestratorState, ThreadLookup};
 use agent::thread::{Episode, ThreadOutcome};
 use agent::types::{AgentEvent, AgentTool, AgentToolResult, GetApiKeyFn};
 use agent::{Agent, AgentOptions, AgentStateInit};
@@ -22,10 +21,7 @@ const THREAD_IDENTITY: &str = include_str!("../../prompts/thread_identity.md");
 
 /// Default tools for threads when none specified.
 const DEFAULT_THREAD_TOOLS: &[&str] = &["file_read", "grep", "glob"];
-
-type RunningThreadHandle = tokio::task::JoinHandle<Result<Value, String>>;
-type RunningThreads = Arc<tokio::sync::Mutex<HashMap<String, RunningThreadHandle>>>;
-type CompletedThreads = Arc<tokio::sync::Mutex<HashMap<String, Value>>>;
+type EventForwarder = Arc<dyn Fn(AgentEvent) + Send + Sync>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ThreadRequest {
@@ -131,11 +127,6 @@ impl ThreadRunResult {
             details: Some(self.details.clone()),
         }
     }
-
-    pub fn to_thread_state_json(&self) -> Value {
-        let tool_result = self.to_agent_tool_result();
-        build_thread_result_json(&tool_result)
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -193,25 +184,6 @@ pub struct DocumentResult {
 #[derive(Debug, Clone)]
 pub struct EpisodeLookupResult {
     pub result: AgentToolResult,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct ThreadState {
-    pub value: Value,
-}
-
-impl ThreadState {
-    pub fn running(alias: &str) -> Self {
-        Self {
-            value: thread_state_json(alias, "running", ""),
-        }
-    }
-
-    pub fn unknown(alias: &str) -> Self {
-        Self {
-            value: thread_state_json(alias, "unknown", "thread not found"),
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -304,74 +276,62 @@ impl DocumentRequest {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LogRequest {
+    pub message: String,
+}
+
+impl LogRequest {
+    pub fn from_params(params: &Value) -> anyhow::Result<Self> {
+        Ok(Self {
+            message: params
+                .get("message")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| anyhow::anyhow!("missing 'message' parameter"))?
+                .to_string(),
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EpisodeLookupRequest {
+    pub alias: String,
+}
+
+impl EpisodeLookupRequest {
+    pub fn from_params(params: &Value) -> anyhow::Result<Self> {
+        Ok(Self {
+            alias: params
+                .get("alias")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| anyhow::anyhow!("missing 'alias' parameter"))?
+                .to_string(),
+        })
+    }
+}
+
 #[derive(Clone)]
-pub struct OrchestrationRuntime {
-    orchestrator: Arc<OrchestratorState>,
-    event_forwarder: Option<EventForwarderCell>,
-    thread_alias: Option<String>,
+pub struct AgentRuntimeConfig {
     get_api_key: Option<GetApiKeyFn>,
-    default_model: Option<Model>,
+    default_model: Model,
     model_slots: ModelSlots,
 }
 
-impl OrchestrationRuntime {
-    pub fn new(orchestrator: Arc<OrchestratorState>) -> Self {
-        Self {
-            orchestrator,
-            event_forwarder: None,
-            thread_alias: None,
-            get_api_key: None,
-            default_model: None,
-            model_slots: ModelSlots::default(),
-        }
-    }
-
-    pub fn with_event_forwarder(
-        orchestrator: Arc<OrchestratorState>,
-        event_forwarder: EventForwarderCell,
-    ) -> Self {
-        Self {
-            orchestrator,
-            event_forwarder: Some(event_forwarder),
-            thread_alias: None,
-            get_api_key: None,
-            default_model: None,
-            model_slots: ModelSlots::default(),
-        }
-    }
-
-    pub fn with_agent_config(
-        orchestrator: Arc<OrchestratorState>,
+impl AgentRuntimeConfig {
+    pub fn new(
         get_api_key: Option<GetApiKeyFn>,
         default_model: Model,
         model_slots: ModelSlots,
-        event_forwarder: EventForwarderCell,
     ) -> Self {
         Self {
-            orchestrator,
-            event_forwarder: Some(event_forwarder),
-            thread_alias: None,
             get_api_key,
-            default_model: Some(default_model),
+            default_model,
             model_slots,
         }
     }
 
-    pub fn for_thread(&self, alias: String) -> Self {
-        Self {
-            orchestrator: self.orchestrator.clone(),
-            event_forwarder: self.event_forwarder.clone(),
-            thread_alias: Some(alias),
-            get_api_key: self.get_api_key.clone(),
-            default_model: self.default_model.clone(),
-            model_slots: self.model_slots.clone(),
-        }
-    }
-
-    fn default_model(&self) -> anyhow::Result<Model> {
-        self.default_model
-            .clone()
-            .ok_or_else(|| anyhow::anyhow!("orchestration runtime missing model configuration"))
+    fn get_api_key(&self) -> Option<GetApiKeyFn> {
+        self.get_api_key.clone()
     }
 
     fn resolve_model(
@@ -379,7 +339,7 @@ impl OrchestrationRuntime {
         override_or_slot: Option<&str>,
         default_slot: &str,
     ) -> anyhow::Result<Model> {
-        let default_model = self.default_model()?;
+        let default_model = self.default_model.clone();
         let default_model_id = default_model.id.clone();
         let requested = override_or_slot
             .map(|value| {
@@ -405,56 +365,90 @@ impl OrchestrationRuntime {
                 }))
         }
     }
+}
 
-    pub async fn execute_thread(
-        &self,
-        request: ThreadRequest,
-        signal: Option<CancellationToken>,
-    ) -> anyhow::Result<ThreadRunResult> {
-        let model = self.resolve_model(request.model_override.as_deref(), "subagent")?;
+struct PreparedThreadContext {
+    thread_id: String,
+    main_cwd: PathBuf,
+    worktree_info: Option<worktree::WorktreeInfo>,
+    effective_cwd: PathBuf,
+    cwd: String,
+}
+
+struct PreparedThreadInvocation {
+    lookup: ThreadLookup,
+    effective_system_prompt: String,
+}
+
+struct FinalizedWorktree {
+    branch: Option<String>,
+    diff_stat: Option<String>,
+}
+
+#[derive(Clone)]
+pub struct OrchestrationRuntime {
+    orchestrator: Arc<OrchestratorState>,
+    event_forwarder: Option<EventForwarderCell>,
+}
+
+impl OrchestrationRuntime {
+    pub fn new(orchestrator: Arc<OrchestratorState>) -> Self {
+        Self {
+            orchestrator,
+            event_forwarder: None,
+        }
+    }
+
+    pub fn with_event_forwarder(
+        orchestrator: Arc<OrchestratorState>,
+        event_forwarder: EventForwarderCell,
+    ) -> Self {
+        Self {
+            orchestrator,
+            event_forwarder: Some(event_forwarder),
+        }
+    }
+
+    fn current_forwarder(&self) -> Option<EventForwarder> {
+        self.event_forwarder
+            .as_ref()
+            .and_then(|cell| cell.lock().ok().and_then(|g| g.clone()))
+    }
+
+    fn prepare_thread_context(&self, request: &ThreadRequest) -> PreparedThreadContext {
         let thread_id = self.orchestrator.next_thread_id();
         let main_cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"));
-
-        let worktree_info: Option<worktree::WorktreeInfo> = if request.use_worktree {
-            match worktree::find_repo_root(&main_cwd) {
-                Ok(repo_root) => {
-                    match worktree::create_worktree(
-                        &repo_root,
-                        &request.alias,
-                        &thread_id,
-                        request.worktree_base.as_deref(),
-                        &request.worktree_include,
-                    ) {
-                        Ok(info) => Some(info),
-                        Err(e) => {
-                            eprintln!(
-                                "[thread] worktree creation failed: {}, running without isolation",
-                                e
-                            );
-                            None
-                        }
-                    }
-                }
-                Err(_) => {
-                    eprintln!("[thread] not in a git repo, skipping worktree isolation");
-                    None
-                }
-            }
+        let worktree_info = if request.use_worktree {
+            create_thread_worktree(request, &main_cwd, &thread_id)
         } else {
             None
         };
-
         let effective_cwd = worktree_info
             .as_ref()
             .map(|wt| wt.path.clone())
             .unwrap_or_else(|| main_cwd.clone());
         let cwd = effective_cwd.to_string_lossy().to_string();
-        let mut system_prompt =
-            build_thread_system_prompt(&request.tool_names, &cwd, worktree_info.as_ref());
-        let forward_fn = self
-            .event_forwarder
-            .as_ref()
-            .and_then(|cell| cell.lock().ok().and_then(|g| g.clone()));
+
+        PreparedThreadContext {
+            thread_id,
+            main_cwd,
+            worktree_info,
+            effective_cwd,
+            cwd,
+        }
+    }
+
+    fn prepare_thread_invocation(
+        &self,
+        request: &ThreadRequest,
+        context: &PreparedThreadContext,
+        forward_fn: Option<&EventForwarder>,
+    ) -> PreparedThreadInvocation {
+        let mut system_prompt = build_thread_system_prompt(
+            &request.tool_names,
+            &context.cwd,
+            context.worktree_info.as_ref(),
+        );
 
         let mut injected_episodes = false;
         if let Some(prior_section) = self
@@ -465,11 +459,11 @@ impl OrchestrationRuntime {
             system_prompt.push_str(&prior_section);
             injected_episodes = true;
 
-            if let Some(ref fwd) = forward_fn {
+            if let Some(fwd) = forward_fn {
                 fwd(AgentEvent::EpisodeInject {
                     source_aliases: request.episode_aliases.clone(),
                     target_alias: request.alias.clone(),
-                    target_thread_id: thread_id.clone(),
+                    target_thread_id: context.thread_id.clone(),
                 });
             }
         }
@@ -488,9 +482,20 @@ impl OrchestrationRuntime {
             injected_episodes,
         );
 
-        let (outcome_signal, mut outcome_rx) = completion_tools::outcome_channel();
-        let mut thread_tools: Vec<Arc<dyn AgentTool>> = if worktree_info.is_some() {
-            tools::tools_from_allowlist_with_cwd(&request.tool_names, effective_cwd.clone())
+        PreparedThreadInvocation {
+            lookup,
+            effective_system_prompt,
+        }
+    }
+
+    fn build_thread_tools(
+        &self,
+        request: &ThreadRequest,
+        context: &PreparedThreadContext,
+        outcome_signal: completion_tools::OutcomeSignal,
+    ) -> Vec<Arc<dyn AgentTool>> {
+        let mut thread_tools: Vec<Arc<dyn AgentTool>> = if context.worktree_info.is_some() {
+            tools::tools_from_allowlist_with_cwd(&request.tool_names, context.effective_cwd.clone())
         } else {
             tools::tools_from_allowlist(&request.tool_names)
         };
@@ -506,8 +511,17 @@ impl OrchestrationRuntime {
         }
         thread_tools.push(tools::LogTool::arc(self.orchestrator.clone()));
         thread_tools.push(tools::FromIdTool::arc(self.orchestrator.clone()));
+        thread_tools
+    }
 
-        let resolved_model_id = model.id.clone();
+    fn build_thread_agent(
+        &self,
+        config: &AgentRuntimeConfig,
+        model: Model,
+        effective_system_prompt: String,
+        thread_tools: Vec<Arc<dyn AgentTool>>,
+        max_turns: u32,
+    ) -> Agent {
         let model_for_compact = model.clone();
         let transform_context: agent::types::TransformContextFn =
             Arc::new(move |messages, _cancel| {
@@ -515,7 +529,7 @@ impl OrchestrationRuntime {
                 Box::pin(async move { agent::context::compact_messages(messages, &m) })
             });
 
-        let agent = Agent::new(AgentOptions {
+        Agent::new(AgentOptions {
             initial_state: Some(AgentStateInit {
                 model: Some(model),
                 system_prompt: Some(effective_system_prompt),
@@ -528,66 +542,191 @@ impl OrchestrationRuntime {
             steering_mode: None,
             follow_up_mode: None,
             session_id: None,
-            get_api_key: self.get_api_key.clone(),
+            get_api_key: config.get_api_key(),
             thinking_budgets: None,
-            max_turns: Some(request.max_turns),
-        });
+            max_turns: Some(max_turns),
+        })
+    }
 
-        if lookup.is_reuse {
-            agent.replace_messages(lookup.messages);
-        }
-
-        if let Some(ref fwd) = forward_fn {
-            let fwd = fwd.clone();
-            let tid = thread_id.clone();
-            let a = request.alias.clone();
-            let _unsub = agent.subscribe(move |event| {
-                match event {
-                    AgentEvent::ToolExecutionStart {
-                        tool_call_id,
-                        tool_name,
-                        args,
-                        ..
-                    } => {
-                        fwd(AgentEvent::ToolExecutionStart {
-                            tool_call_id: tool_call_id.clone(),
-                            tool_name: tool_name.clone(),
-                            args: args.clone(),
-                            thread_id: Some(tid.clone()),
-                            thread_alias: Some(a.clone()),
-                        });
-                    }
-                    AgentEvent::ToolExecutionEnd {
-                        tool_call_id,
-                        tool_name,
-                        result,
-                        is_error,
-                        ..
-                    } => {
-                        fwd(AgentEvent::ToolExecutionEnd {
-                            tool_call_id: tool_call_id.clone(),
-                            tool_name: tool_name.clone(),
-                            result: result.clone(),
-                            is_error: *is_error,
-                            thread_id: Some(tid.clone()),
-                            thread_alias: Some(a.clone()),
-                        });
-                    }
-                    _ => {}
+    fn subscribe_thread_events(
+        &self,
+        agent: &Agent,
+        forward_fn: Option<&EventForwarder>,
+        thread_id: &str,
+        alias: &str,
+    ) {
+        let Some(fwd) = forward_fn.cloned() else {
+            return;
+        };
+        let tid = thread_id.to_string();
+        let a = alias.to_string();
+        let _unsub = agent.subscribe(move |event| {
+            match event {
+                AgentEvent::ToolExecutionStart {
+                    tool_call_id,
+                    tool_name,
+                    args,
+                    ..
+                } => {
+                    fwd(AgentEvent::ToolExecutionStart {
+                        tool_call_id: tool_call_id.clone(),
+                        tool_name: tool_name.clone(),
+                        args: args.clone(),
+                        thread_id: Some(tid.clone()),
+                        thread_alias: Some(a.clone()),
+                    });
                 }
+                AgentEvent::ToolExecutionEnd {
+                    tool_call_id,
+                    tool_name,
+                    result,
+                    is_error,
+                    ..
+                } => {
+                    fwd(AgentEvent::ToolExecutionEnd {
+                        tool_call_id: tool_call_id.clone(),
+                        tool_name: tool_name.clone(),
+                        result: result.clone(),
+                        is_error: *is_error,
+                        thread_id: Some(tid.clone()),
+                        thread_alias: Some(a.clone()),
+                    });
+                }
+                _ => {}
+            }
 
-                fwd(AgentEvent::ThreadEvent {
-                    thread_id: tid.clone(),
-                    alias: a.clone(),
-                    event: Box::new(event.clone()),
-                });
+            fwd(AgentEvent::ThreadEvent {
+                thread_id: tid.clone(),
+                alias: a.clone(),
+                event: Box::new(event.clone()),
             });
+        });
+    }
+
+    fn finalize_thread_worktree(
+        &self,
+        request: &ThreadRequest,
+        context: &PreparedThreadContext,
+    ) -> FinalizedWorktree {
+        let mut branch = None;
+        let mut diff_stat = None;
+
+        if let Some(ref wt) = context.worktree_info {
+            branch = Some(wt.branch.clone());
+
+            if let Ok(repo_root) = worktree::find_repo_root(&context.main_cwd) {
+                match worktree::auto_commit(&wt.path, &request.alias, &context.thread_id) {
+                    Ok(true) => {
+                        diff_stat = worktree::diff_stat(&repo_root, &wt.branch).ok();
+                    }
+                    Ok(false) => {}
+                    Err(e) => eprintln!("[thread] auto-commit failed: {}", e),
+                }
+                worktree::remove_worktree(&repo_root, &wt.path);
+            }
         }
+
+        FinalizedWorktree { branch, diff_stat }
+    }
+
+    fn record_thread_episode(
+        &self,
+        request: &ThreadRequest,
+        context: &PreparedThreadContext,
+        outcome: &ThreadOutcome,
+        duration_ms: u64,
+        worktree: &FinalizedWorktree,
+        final_messages: Vec<agent::types::AgentMessage>,
+    ) -> Episode {
+        let ep_worktree = worktree.branch.as_ref().map(|branch| EpisodeWorktreeInfo {
+            branch: branch.clone(),
+            diff_summary: worktree.diff_stat.clone(),
+        });
+        let episode = generate_episode(
+            context.thread_id.clone(),
+            &request.alias,
+            &request.task,
+            &final_messages,
+            outcome,
+            duration_ms,
+            ep_worktree,
+        );
+
+        self.orchestrator
+            .record_episode(episode.clone(), final_messages);
+        episode
+    }
+
+    fn record_query_episode(
+        &self,
+        alias: &str,
+        prompt: &str,
+        response_text: &str,
+        duration_ms: u64,
+    ) -> String {
+        let thread_id = self.orchestrator.next_thread_id();
+        self.orchestrator.get_or_create_thread(alias, "");
+        let trace = format!(
+            "--- Query: {} ---\nPROMPT: {}\nOUTPUT: {}\n",
+            alias, prompt, response_text
+        );
+        let episode = Episode {
+            thread_id: thread_id.clone(),
+            alias: alias.to_string(),
+            task: prompt.to_string(),
+            outcome: ThreadOutcome::Completed {
+                result: response_text.to_string(),
+                evidence: vec![],
+            },
+            full_trace: trace.clone(),
+            compact_trace: trace,
+            duration_ms,
+            turn_count: 1,
+            branch: None,
+            diff_summary: None,
+        };
+        self.orchestrator.record_episode(episode, vec![]);
+        thread_id
+    }
+
+    pub async fn execute_thread(
+        &self,
+        config: &AgentRuntimeConfig,
+        request: ThreadRequest,
+        signal: Option<CancellationToken>,
+    ) -> anyhow::Result<ThreadRunResult> {
+        let model = config.resolve_model(request.model_override.as_deref(), "subagent")?;
+        let resolved_model_id = model.id.clone();
+        let context = self.prepare_thread_context(&request);
+        let forward_fn = self.current_forwarder();
+        let invocation = self.prepare_thread_invocation(&request, &context, forward_fn.as_ref());
+        let is_reuse = invocation.lookup.is_reuse;
+
+        let (outcome_signal, mut outcome_rx) = completion_tools::outcome_channel();
+        let thread_tools = self.build_thread_tools(&request, &context, outcome_signal);
+        let agent = self.build_thread_agent(
+            config,
+            model,
+            invocation.effective_system_prompt,
+            thread_tools,
+            request.max_turns,
+        );
+
+        if is_reuse {
+            agent.replace_messages(invocation.lookup.messages);
+        }
+
+        self.subscribe_thread_events(
+            &agent,
+            forward_fn.as_ref(),
+            &context.thread_id,
+            &request.alias,
+        );
 
         if self.orchestrator.thread_semaphore_available() == 0 {
             if let Some(ref fwd) = forward_fn {
                 fwd(AgentEvent::ThreadQueued {
-                    thread_id: thread_id.clone(),
+                    thread_id: context.thread_id.clone(),
                     alias: request.alias.clone(),
                 });
             }
@@ -597,7 +736,7 @@ impl OrchestrationRuntime {
 
         if let Some(ref fwd) = forward_fn {
             fwd(AgentEvent::ThreadStart {
-                thread_id: thread_id.clone(),
+                thread_id: context.thread_id.clone(),
                 alias: request.alias.clone(),
                 task: request.task.clone(),
                 model: resolved_model_id.clone(),
@@ -634,7 +773,7 @@ impl OrchestrationRuntime {
                 if let Some(ref fwd) = forward_fn {
                     fwd(AgentEvent::EvidenceCite {
                         thread_alias: request.alias.clone(),
-                        thread_id: thread_id.clone(),
+                        thread_id: context.thread_id.clone(),
                         tool_call_ids: evidence.clone(),
                     });
                 }
@@ -643,51 +782,26 @@ impl OrchestrationRuntime {
 
         if let Some(ref fwd) = forward_fn {
             fwd(AgentEvent::ThreadEnd {
-                thread_id: thread_id.clone(),
+                thread_id: context.thread_id.clone(),
                 alias: request.alias.clone(),
                 outcome: outcome.clone(),
                 duration_ms,
             });
         }
 
-        let mut worktree_branch: Option<String> = None;
-        let mut worktree_diff_stat: Option<String> = None;
-
-        if let Some(ref wt) = worktree_info {
-            worktree_branch = Some(wt.branch.clone());
-
-            if let Ok(repo_root) = worktree::find_repo_root(&main_cwd) {
-                match worktree::auto_commit(&wt.path, &request.alias, &thread_id) {
-                    Ok(true) => {
-                        worktree_diff_stat = worktree::diff_stat(&repo_root, &wt.branch).ok();
-                    }
-                    Ok(false) => {}
-                    Err(e) => eprintln!("[thread] auto-commit failed: {}", e),
-                }
-                worktree::remove_worktree(&repo_root, &wt.path);
-            }
-        }
-
+        let worktree = self.finalize_thread_worktree(&request, &context);
         let final_messages = agent.with_state(|s| s.messages.clone());
-        let ep_worktree = worktree_branch.as_ref().map(|branch| EpisodeWorktreeInfo {
-            branch: branch.clone(),
-            diff_summary: worktree_diff_stat.clone(),
-        });
-        let episode = generate_episode(
-            thread_id.clone(),
-            &request.alias,
-            &request.task,
-            &final_messages,
+        let episode = self.record_thread_episode(
+            &request,
+            &context,
             &outcome,
             duration_ms,
-            ep_worktree,
+            &worktree,
+            final_messages,
         );
 
-        self.orchestrator
-            .record_episode(episode.clone(), final_messages);
-
         let mut details = json!({
-            "thread_id": thread_id,
+            "thread_id": context.thread_id,
             "alias": request.alias,
             "outcome": {
                 "kind": outcome.status_str(),
@@ -695,11 +809,11 @@ impl OrchestrationRuntime {
             },
             "duration_ms": duration_ms,
             "turns": episode.turn_count,
-            "is_reuse": lookup.is_reuse,
+            "is_reuse": is_reuse,
         });
-        if let Some(ref branch) = worktree_branch {
+        if let Some(ref branch) = worktree.branch {
             details["branch"] = json!(branch);
-            details["diff_stat"] = json!(worktree_diff_stat.as_deref().unwrap_or("(no changes)"));
+            details["diff_stat"] = json!(worktree.diff_stat.as_deref().unwrap_or("(no changes)"));
         }
 
         Ok(ThreadRunResult {
@@ -708,11 +822,15 @@ impl OrchestrationRuntime {
         })
     }
 
-    pub async fn run_query(&self, request: QueryRequest) -> anyhow::Result<QueryResult> {
+    pub async fn run_query(
+        &self,
+        config: &AgentRuntimeConfig,
+        request: QueryRequest,
+    ) -> anyhow::Result<QueryResult> {
         let alias = request
             .alias
             .unwrap_or_else(|| format!("query-{}", self.orchestrator.next_thread_id()));
-        let model = self.resolve_model(request.model_override.as_deref(), "search")?;
+        let model = config.resolve_model(request.model_override.as_deref(), "search")?;
 
         if let Some(fwd) = self
             .event_forwarder
@@ -726,7 +844,7 @@ impl OrchestrationRuntime {
             });
         }
 
-        let api_key = if let Some(ref get_key) = self.get_api_key {
+        let api_key = if let Some(ref get_key) = config.get_api_key {
             (get_key)(model.provider.clone()).await
         } else {
             None
@@ -796,30 +914,8 @@ impl OrchestrationRuntime {
             });
         }
 
-        let thread_id = self.orchestrator.next_thread_id();
-        self.orchestrator.get_or_create_thread(&alias, "");
-        let episode = Episode {
-            thread_id: thread_id.clone(),
-            alias: alias.clone(),
-            task: request.prompt.clone(),
-            outcome: ThreadOutcome::Completed {
-                result: response_text.clone(),
-                evidence: vec![],
-            },
-            full_trace: format!(
-                "--- Query: {} ---\nPROMPT: {}\nOUTPUT: {}\n",
-                alias, request.prompt, response_text
-            ),
-            compact_trace: format!(
-                "--- Query: {} ---\nPROMPT: {}\nOUTPUT: {}\n",
-                alias, request.prompt, response_text
-            ),
-            duration_ms,
-            turn_count: 1,
-            branch: None,
-            diff_summary: None,
-        };
-        self.orchestrator.record_episode(episode, vec![]);
+        let thread_id =
+            self.record_query_episode(&alias, &request.prompt, &response_text, duration_ms);
 
         Ok(QueryResult {
             output: response_text,
@@ -835,6 +931,14 @@ impl OrchestrationRuntime {
     }
 
     pub fn document_op(&self, request: DocumentRequest) -> AgentToolResult {
+        self.document_op_for_thread(None, request)
+    }
+
+    pub fn document_op_for_thread(
+        &self,
+        thread_alias: Option<&str>,
+        request: DocumentRequest,
+    ) -> AgentToolResult {
         match request {
             DocumentRequest::List => {
                 let names = self.orchestrator.list_documents();
@@ -843,7 +947,7 @@ impl OrchestrationRuntime {
                 } else {
                     names.join("\n")
                 };
-                self.emit_document_op("list", "", &text);
+                self.emit_document_op(thread_alias, "list", "", &text);
                 AgentToolResult {
                     content: vec![UserBlock::Text { text }],
                     details: Some(json!({"operation": "list", "count": names.len()})),
@@ -852,14 +956,14 @@ impl OrchestrationRuntime {
             DocumentRequest::Read { name } => match self.orchestrator.read_document(&name) {
                 Some(text) => {
                     let bytes = text.len();
-                    self.emit_document_op("read", &name, &text);
+                    self.emit_document_op(thread_alias, "read", &name, &text);
                     AgentToolResult {
                         content: vec![UserBlock::Text { text }],
                         details: Some(json!({"operation": "read", "name": name, "bytes": bytes})),
                     }
                 }
                 None => {
-                    self.emit_document_op("read", &name, "");
+                    self.emit_document_op(thread_alias, "read", &name, "");
                     AgentToolResult {
                         content: vec![UserBlock::Text {
                             text: format!("Document '{}' not found.", name),
@@ -871,7 +975,7 @@ impl OrchestrationRuntime {
             DocumentRequest::Write { name, content } => {
                 let bytes = content.len();
                 self.orchestrator.write_document(&name, content.clone());
-                self.emit_document_op("write", &name, &content);
+                self.emit_document_op(thread_alias, "write", &name, &content);
                 AgentToolResult {
                     content: vec![UserBlock::Text {
                         text: format!("Wrote {} bytes to '{}'.", bytes, name),
@@ -882,7 +986,7 @@ impl OrchestrationRuntime {
             DocumentRequest::Append { name, content } => {
                 let bytes = content.len();
                 self.orchestrator.append_document(&name, &content);
-                self.emit_document_op("append", &name, &content);
+                self.emit_document_op(thread_alias, "append", &name, &content);
                 AgentToolResult {
                     content: vec![UserBlock::Text {
                         text: format!("Appended {} bytes to '{}'.", bytes, name),
@@ -893,27 +997,27 @@ impl OrchestrationRuntime {
         }
     }
 
-    pub fn log_message(&self, message: &str) -> AgentToolResult {
-        let entry = format!("[log] {}\n", message);
+    pub fn log_message(&self, request: LogRequest) -> AgentToolResult {
+        let entry = format!("[log] {}\n", request.message);
         self.orchestrator
             .append_document("_orchestration_log", &entry);
 
         AgentToolResult {
             content: vec![UserBlock::Text {
-                text: format!("Logged: {}", message),
+                text: format!("Logged: {}", request.message),
             }],
-            details: Some(json!({"message": message})),
+            details: Some(json!({"message": request.message})),
         }
     }
 
-    pub fn lookup_episode(&self, alias: &str) -> AgentToolResult {
-        match self.orchestrator.get_episode(alias) {
+    pub fn lookup_episode(&self, request: EpisodeLookupRequest) -> AgentToolResult {
+        match self.orchestrator.get_episode(&request.alias) {
             Some(episode) => AgentToolResult {
                 content: vec![UserBlock::Text {
                     text: episode.compact_trace,
                 }],
                 details: Some(json!({
-                    "alias": alias,
+                    "alias": request.alias,
                     "outcome": episode.outcome.status_str(),
                     "duration_ms": episode.duration_ms,
                     "turn_count": episode.turn_count,
@@ -921,9 +1025,9 @@ impl OrchestrationRuntime {
             },
             None => AgentToolResult {
                 content: vec![UserBlock::Text {
-                    text: format!("No episode found for alias '{}'.", alias),
+                    text: format!("No episode found for alias '{}'.", request.alias),
                 }],
-                details: Some(json!({"alias": alias, "error": true})),
+                details: Some(json!({"alias": request.alias, "error": true})),
             },
         }
     }
@@ -984,475 +1088,19 @@ impl OrchestrationRuntime {
         worktree::list_branches(repo_root)
     }
 
-    fn emit_document_op(&self, op: &str, name: &str, content: &str) {
+    fn emit_document_op(&self, thread_alias: Option<&str>, op: &str, name: &str, content: &str) {
         let Some(event_forwarder) = &self.event_forwarder else {
             return;
         };
         if let Some(forward) = event_forwarder.lock().ok().and_then(|guard| guard.clone()) {
             forward(AgentEvent::DocumentOp {
-                thread_alias: self.thread_alias.clone(),
+                thread_alias: thread_alias.map(String::from),
                 op: op.to_string(),
                 name: name.to_string(),
                 content: content.to_string(),
             });
         }
     }
-}
-
-#[derive(Clone)]
-pub struct OrchestrationRpcFacade {
-    runtime: OrchestrationRuntime,
-    thread_tool: Arc<dyn AgentTool>,
-    query_tool: Arc<dyn AgentTool>,
-    document_tool: Arc<dyn AgentTool>,
-    generic_tools: Arc<HashMap<String, Arc<dyn AgentTool>>>,
-    running_threads: RunningThreads,
-    completed_threads: CompletedThreads,
-}
-
-impl OrchestrationRpcFacade {
-    pub fn new(
-        runtime: OrchestrationRuntime,
-        thread_tool: Arc<dyn AgentTool>,
-        query_tool: Arc<dyn AgentTool>,
-        document_tool: Arc<dyn AgentTool>,
-        generic_tools: HashMap<String, Arc<dyn AgentTool>>,
-    ) -> Self {
-        Self {
-            runtime,
-            thread_tool,
-            query_tool,
-            document_tool,
-            generic_tools: Arc::new(generic_tools),
-            running_threads: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
-            completed_threads: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
-        }
-    }
-
-    pub async fn dispatch(&self, method: &str, params: &Value) -> Result<Value, String> {
-        match method {
-            "tool" => self.dispatch_tool(params).await,
-            "thread" => self.dispatch_thread(params).await,
-            "launch" => self.dispatch_launch(params).await,
-            "poll" => self.dispatch_poll(params).await,
-            "wait" => self.dispatch_wait(params).await,
-            "query" => self.dispatch_to_tool(&self.query_tool, params).await,
-            "document" => self.dispatch_to_tool(&self.document_tool, params).await,
-            "parallel" => self.dispatch_parallel(params).await,
-            "diff" => self
-                .dispatch_diff(params)
-                .await
-                .map(|result| result.to_json()),
-            "merge" => self
-                .dispatch_merge(params)
-                .await
-                .map(|result| result.to_json()),
-            "branches" => self
-                .runtime
-                .list_branches()
-                .map(|branches| json!(branches))
-                .map_err(|e| e.to_string()),
-            "log" => {
-                if let Some(msg) = params.get("message").and_then(|v| v.as_str()) {
-                    self.runtime.log_message(msg);
-                }
-                Ok(Value::Null)
-            }
-            _ => Err(format!("unknown RPC method: {}", method)),
-        }
-    }
-
-    pub async fn dispatch_tool(&self, params: &Value) -> Result<Value, String> {
-        let name = params
-            .get("name")
-            .and_then(|v| v.as_str())
-            .ok_or("missing 'name' in tool RPC")?;
-        let args = params.get("args").cloned().unwrap_or(json!({}));
-
-        let tool = self
-            .generic_tools
-            .get(name)
-            .ok_or_else(|| format!("unknown tool: {}", name))?;
-
-        let result = tool
-            .execute(format!("py-rpc-{}", name), args, None)
-            .await
-            .map_err(|e| e.to_string())?;
-
-        Ok(Value::String(extract_text(&result)))
-    }
-
-    pub async fn dispatch_thread(&self, params: &Value) -> Result<Value, String> {
-        let result = self
-            .thread_tool
-            .execute(
-                format!("py-rpc-{}", self.thread_tool.name()),
-                params.clone(),
-                None,
-            )
-            .await
-            .map_err(|e| e.to_string())?;
-        Ok(build_thread_result_json(&result))
-    }
-
-    pub async fn dispatch_launch(&self, params: &Value) -> Result<Value, String> {
-        let alias = params
-            .get("alias")
-            .and_then(|v| v.as_str())
-            .ok_or("missing 'alias' in launch RPC")?
-            .to_string();
-
-        self.collect_finished_aliases(std::slice::from_ref(&alias))
-            .await?;
-
-        {
-            let running = self.running_threads.lock().await;
-            if running.contains_key(&alias) {
-                return Err(format!("thread '{}' is already running", alias));
-            }
-        }
-
-        self.completed_threads.lock().await.remove(&alias);
-
-        let thread_tool = self.thread_tool.clone();
-        let params = params.clone();
-        let launched_alias = alias.clone();
-        let handle = tokio::spawn(async move {
-            let result = thread_tool
-                .execute(
-                    format!("py-launch-{}-{}", thread_tool.name(), launched_alias),
-                    params,
-                    None,
-                )
-                .await
-                .map_err(|e| e.to_string())?;
-            Ok(build_thread_result_json(&result))
-        });
-
-        self.running_threads
-            .lock()
-            .await
-            .insert(alias.clone(), handle);
-        Ok(thread_state_json(&alias, "running", ""))
-    }
-
-    pub async fn dispatch_poll(&self, params: &Value) -> Result<Value, String> {
-        let alias = params
-            .get("alias")
-            .and_then(|v| v.as_str())
-            .ok_or("missing 'alias' in poll RPC")?
-            .to_string();
-
-        self.collect_finished_aliases(std::slice::from_ref(&alias))
-            .await?;
-        Ok(self.status_for_alias(&alias).await)
-    }
-
-    pub async fn dispatch_wait(&self, params: &Value) -> Result<Value, String> {
-        let aliases = parse_alias_list(params, "aliases")?;
-        let timeout = params
-            .get("timeout")
-            .and_then(|v| v.as_u64())
-            .map(std::time::Duration::from_secs);
-
-        if aliases.is_empty() {
-            return Ok(Value::Array(Vec::new()));
-        }
-
-        let deadline = timeout.map(|dur| std::time::Instant::now() + dur);
-        loop {
-            self.collect_finished_aliases(&aliases).await?;
-
-            let statuses = self.statuses_for_aliases(&aliases).await;
-            let all_terminal = statuses.iter().all(is_terminal_thread_state_json);
-            if all_terminal {
-                return Ok(Value::Array(statuses));
-            }
-
-            if let Some(deadline) = deadline {
-                if std::time::Instant::now() >= deadline {
-                    return Ok(Value::Array(statuses));
-                }
-            }
-
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        }
-    }
-
-    async fn dispatch_to_tool(
-        &self,
-        tool: &Arc<dyn AgentTool>,
-        params: &Value,
-    ) -> Result<Value, String> {
-        let result = tool
-            .execute(format!("py-rpc-{}", tool.name()), params.clone(), None)
-            .await
-            .map_err(|e| e.to_string())?;
-
-        Ok(Value::String(extract_text(&result)))
-    }
-
-    pub async fn dispatch_parallel(&self, params: &Value) -> Result<Value, String> {
-        let specs = params
-            .get("specs")
-            .and_then(|v| v.as_array())
-            .ok_or("missing 'specs' array in parallel RPC")?;
-
-        let mut handles = Vec::with_capacity(specs.len());
-
-        for spec in specs {
-            let method = spec
-                .get("method")
-                .and_then(|v| v.as_str())
-                .unwrap_or("tool")
-                .to_string();
-            let spec = spec.clone();
-            let thread_tool = self.thread_tool.clone();
-            let query_tool = self.query_tool.clone();
-            let document_tool = self.document_tool.clone();
-            let generic_tools = self.generic_tools.clone();
-            handles.push(tokio::spawn(async move {
-                match method.as_str() {
-                    "thread" => dispatch_single_thread(&thread_tool, &spec).await,
-                    "query" => dispatch_single(&query_tool, &spec).await,
-                    "document" => dispatch_single(&document_tool, &spec).await,
-                    "tool" => {
-                        let name = spec
-                            .get("name")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("unknown");
-                        let args = spec.get("args").cloned().unwrap_or(json!({}));
-                        let tool = generic_tools
-                            .get(name)
-                            .ok_or_else(|| format!("unknown tool: {}", name))?;
-                        let result = tool
-                            .execute(format!("py-parallel-{}", name), args, None)
-                            .await
-                            .map_err(|e| e.to_string())?;
-                        Ok(Value::String(extract_text(&result)))
-                    }
-                    _ => Err(format!("unknown parallel method: {}", method)),
-                }
-            }));
-        }
-
-        let results = futures::future::join_all(handles).await;
-        let mut values = Vec::with_capacity(results.len());
-        for result in results {
-            match result {
-                Ok(Ok(val)) => values.push(val),
-                Ok(Err(e)) => values.push(Value::String(format!("error: {}", e))),
-                Err(e) => values.push(Value::String(format!("task error: {}", e))),
-            }
-        }
-
-        Ok(Value::Array(values))
-    }
-
-    pub async fn dispatch_diff(&self, params: &Value) -> Result<BranchDiffResult, String> {
-        let alias = params
-            .get("alias")
-            .and_then(|v| v.as_str())
-            .ok_or("missing 'alias' in diff RPC")?;
-        self.runtime.diff_branch(alias).map_err(|e| e.to_string())
-    }
-
-    pub async fn dispatch_merge(&self, params: &Value) -> Result<BranchMergeResult, String> {
-        let alias = params
-            .get("alias")
-            .and_then(|v| v.as_str())
-            .ok_or("missing 'alias' in merge RPC")?;
-        self.runtime.merge_branch(alias).map_err(|e| e.to_string())
-    }
-
-    async fn collect_finished_aliases(&self, aliases: &[String]) -> Result<(), String> {
-        let ready = {
-            let mut running = self.running_threads.lock().await;
-            let mut ready = Vec::new();
-            for alias in aliases {
-                let is_finished = running
-                    .get(alias)
-                    .map(tokio::task::JoinHandle::is_finished)
-                    .unwrap_or(false);
-                if is_finished {
-                    if let Some(handle) = running.remove(alias) {
-                        ready.push((alias.clone(), handle));
-                    }
-                }
-            }
-            ready
-        };
-
-        if ready.is_empty() {
-            return Ok(());
-        }
-
-        let mut completed = self.completed_threads.lock().await;
-        for (alias, handle) in ready {
-            let value = match handle.await {
-                Ok(Ok(result)) => canonicalize_thread_state_json(result, Some(alias.as_str())),
-                Ok(Err(err)) => thread_state_json(&alias, "error", &err),
-                Err(err) => thread_state_json(&alias, "error", &format!("task error: {}", err)),
-            };
-            completed.insert(alias, value);
-        }
-        Ok(())
-    }
-
-    async fn status_for_alias(&self, alias: &str) -> Value {
-        if let Some(value) = self.completed_threads.lock().await.get(alias).cloned() {
-            return canonicalize_thread_state_json(value, Some(alias));
-        }
-
-        if self.running_threads.lock().await.contains_key(alias) {
-            return thread_state_json(alias, "running", "");
-        }
-
-        thread_state_json(alias, "unknown", "thread not found")
-    }
-
-    async fn statuses_for_aliases(&self, aliases: &[String]) -> Vec<Value> {
-        let completed = self.completed_threads.lock().await.clone();
-        let running = self.running_threads.lock().await;
-
-        aliases
-            .iter()
-            .map(|alias| {
-                if let Some(value) = completed.get(alias).cloned() {
-                    return canonicalize_thread_state_json(value, Some(alias));
-                }
-                if running.contains_key(alias) {
-                    return thread_state_json(alias, "running", "");
-                }
-                thread_state_json(alias, "unknown", "thread not found")
-            })
-            .collect()
-    }
-}
-
-async fn dispatch_single_thread(
-    tool: &Arc<dyn AgentTool>,
-    params: &Value,
-) -> Result<Value, String> {
-    let result = tool
-        .execute(format!("py-parallel-{}", tool.name()), params.clone(), None)
-        .await
-        .map_err(|e| e.to_string())?;
-    Ok(build_thread_result_json(&result))
-}
-
-async fn dispatch_single(tool: &Arc<dyn AgentTool>, params: &Value) -> Result<Value, String> {
-    let result = tool
-        .execute(format!("py-parallel-{}", tool.name()), params.clone(), None)
-        .await
-        .map_err(|e| e.to_string())?;
-    Ok(Value::String(extract_text(&result)))
-}
-
-pub fn build_thread_result_json(result: &AgentToolResult) -> Value {
-    let text = extract_text(result);
-    let mut structured = result.details.clone().unwrap_or(json!({}));
-    if let Value::Object(ref mut map) = structured {
-        map.insert("trace".to_string(), Value::String(text));
-        if let Some(outcome) = map.remove("outcome") {
-            if let Some(kind) = outcome.get("kind") {
-                map.insert("status".to_string(), kind.clone());
-            }
-            if let Some(text) = outcome.get("text") {
-                map.insert("output".to_string(), text.clone());
-            }
-        }
-    }
-    canonicalize_thread_state_json(structured, None)
-}
-
-pub fn extract_text(result: &AgentToolResult) -> String {
-    result
-        .content
-        .iter()
-        .filter_map(|b| match b {
-            UserBlock::Text { text } => Some(text.as_str()),
-            _ => None,
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
-fn parse_alias_list(params: &Value, field: &str) -> Result<Vec<String>, String> {
-    let aliases = params
-        .get(field)
-        .and_then(|v| v.as_array())
-        .ok_or_else(|| format!("missing '{}' array in wait RPC", field))?;
-
-    aliases
-        .iter()
-        .map(|value| match value {
-            Value::String(alias) => Ok(alias.clone()),
-            Value::Object(map) => map
-                .get("alias")
-                .and_then(|v| v.as_str())
-                .map(String::from)
-                .ok_or_else(|| {
-                    format!(
-                        "'{}' entries must be strings or objects with 'alias'",
-                        field
-                    )
-                }),
-            _ => Err(format!(
-                "'{}' entries must be strings or objects with 'alias'",
-                field
-            )),
-        })
-        .collect()
-}
-
-pub fn thread_state_json(alias: &str, status: &str, output: &str) -> Value {
-    json!({
-        "alias": alias,
-        "status": status,
-        "output": output,
-        "reason": output,
-        "completed": status == "completed",
-    })
-}
-
-pub fn canonicalize_thread_state_json(value: Value, fallback_alias: Option<&str>) -> Value {
-    match value {
-        Value::Object(mut map) => {
-            if let Some(alias) = fallback_alias {
-                map.entry("alias".to_string())
-                    .or_insert_with(|| Value::String(alias.to_string()));
-            }
-
-            let status = map
-                .get("status")
-                .and_then(|v| v.as_str())
-                .unwrap_or("completed")
-                .to_string();
-            let output = map
-                .get("output")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-
-            map.entry("status".to_string())
-                .or_insert_with(|| Value::String(status.clone()));
-            map.entry("output".to_string())
-                .or_insert_with(|| Value::String(output.clone()));
-            map.insert("reason".to_string(), Value::String(output));
-            map.insert("completed".to_string(), Value::Bool(status == "completed"));
-            Value::Object(map)
-        }
-        other => thread_state_json(fallback_alias.unwrap_or(""), "error", &other.to_string()),
-    }
-}
-
-fn is_terminal_thread_state_json(value: &Value) -> bool {
-    value
-        .get("status")
-        .and_then(|v| v.as_str())
-        .map(|status| status != "running")
-        .unwrap_or(true)
 }
 
 async fn run_thread(
@@ -1470,6 +1118,35 @@ async fn run_thread(
         }
     } else {
         agent.prompt(task).await
+    }
+}
+
+fn create_thread_worktree(
+    request: &ThreadRequest,
+    main_cwd: &std::path::Path,
+    thread_id: &str,
+) -> Option<worktree::WorktreeInfo> {
+    match worktree::find_repo_root(main_cwd) {
+        Ok(repo_root) => match worktree::create_worktree(
+            &repo_root,
+            &request.alias,
+            thread_id,
+            request.worktree_base.as_deref(),
+            &request.worktree_include,
+        ) {
+            Ok(info) => Some(info),
+            Err(e) => {
+                eprintln!(
+                    "[thread] worktree creation failed: {}, running without isolation",
+                    e
+                );
+                None
+            }
+        },
+        Err(_) => {
+            eprintln!("[thread] not in a git repo, skipping worktree isolation");
+            None
+        }
     }
 }
 
@@ -1676,20 +1353,35 @@ mod tests {
     }
 
     #[test]
+    fn log_and_lookup_requests_validate_required_fields() {
+        let log = LogRequest::from_params(&json!({"message": "checkpoint"})).unwrap();
+        assert_eq!(log.message, "checkpoint");
+        assert!(LogRequest::from_params(&json!({}))
+            .unwrap_err()
+            .to_string()
+            .contains("missing 'message' parameter"));
+
+        let lookup = EpisodeLookupRequest::from_params(&json!({"alias": "scanner"})).unwrap();
+        assert_eq!(lookup.alias, "scanner");
+        assert!(EpisodeLookupRequest::from_params(&json!({}))
+            .unwrap_err()
+            .to_string()
+            .contains("missing 'alias' parameter"));
+    }
+
+    #[test]
     fn model_slot_resolution_preserves_modified_default_model() {
         let model = test_model();
-        let runtime = OrchestrationRuntime::with_agent_config(
-            OrchestratorState::new(),
+        let config = AgentRuntimeConfig::new(
             None,
             model.clone(),
             ModelSlots {
                 search: Some(model.id.clone()),
                 ..Default::default()
             },
-            event_forwarder_cell(),
         );
 
-        let resolved = runtime.resolve_model(Some("search"), "search").unwrap();
+        let resolved = config.resolve_model(Some("search"), "search").unwrap();
         assert_eq!(resolved.id, model.id);
         assert_eq!(resolved.base_url, "https://oauth.example.invalid");
         assert_eq!(
@@ -1711,7 +1403,7 @@ mod tests {
         };
 
         assert_eq!(
-            result.to_thread_state_json(),
+            crate::orchestration::rpc::build_thread_result_json(&result.to_agent_tool_result()),
             json!({
                 "thread_id": "t-1",
                 "alias": "worker",
@@ -1798,13 +1490,15 @@ mod tests {
         *cell.lock().unwrap() = Some(Arc::new(move |event| {
             captured.lock().unwrap().push(event);
         }));
-        let runtime = OrchestrationRuntime::with_event_forwarder(OrchestratorState::new(), cell)
-            .for_thread("worker".to_string());
+        let runtime = OrchestrationRuntime::with_event_forwarder(OrchestratorState::new(), cell);
 
-        runtime.document_op(DocumentRequest::Append {
-            name: "notes".to_string(),
-            content: "line".to_string(),
-        });
+        runtime.document_op_for_thread(
+            Some("worker"),
+            DocumentRequest::Append {
+                name: "notes".to_string(),
+                content: "line".to_string(),
+            },
+        );
 
         let events = events.lock().unwrap();
         assert_eq!(events.len(), 1);
@@ -1829,7 +1523,9 @@ mod tests {
         let orchestrator = OrchestratorState::new();
         let runtime = OrchestrationRuntime::new(orchestrator.clone());
 
-        let result = runtime.log_message("decided");
+        let result = runtime.log_message(LogRequest {
+            message: "decided".to_string(),
+        });
 
         assert_eq!(text_of(&result), "Logged: decided");
         assert_eq!(
@@ -1845,7 +1541,9 @@ mod tests {
         orchestrator.record_episode(make_episode("scanner"), vec![]);
         let runtime = OrchestrationRuntime::new(orchestrator);
 
-        let result = runtime.lookup_episode("scanner");
+        let result = runtime.lookup_episode(EpisodeLookupRequest {
+            alias: "scanner".to_string(),
+        });
 
         assert_eq!(text_of(&result), "compact");
         assert_eq!(

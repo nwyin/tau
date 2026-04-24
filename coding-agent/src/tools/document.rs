@@ -15,12 +15,14 @@ use crate::orchestration::{DocumentRequest, EventForwarderCell, OrchestrationRun
 
 pub struct DocumentTool {
     runtime: OrchestrationRuntime,
+    thread_alias: Option<String>,
 }
 
 impl DocumentTool {
     pub fn new(orchestrator: Arc<OrchestratorState>, event_forwarder: EventForwarderCell) -> Self {
         Self {
             runtime: OrchestrationRuntime::with_event_forwarder(orchestrator, event_forwarder),
+            thread_alias: None,
         }
     }
 
@@ -36,9 +38,11 @@ impl DocumentTool {
         event_forwarder: EventForwarderCell,
         alias: String,
     ) -> Arc<dyn AgentTool> {
-        let runtime = OrchestrationRuntime::with_event_forwarder(orchestrator, event_forwarder)
-            .for_thread(alias);
-        Arc::new(Self { runtime })
+        let runtime = OrchestrationRuntime::with_event_forwarder(orchestrator, event_forwarder);
+        Arc::new(Self {
+            runtime,
+            thread_alias: Some(alias),
+        })
     }
 }
 
@@ -88,10 +92,11 @@ impl AgentTool for DocumentTool {
         _signal: Option<CancellationToken>,
     ) -> BoxFuture<anyhow::Result<AgentToolResult>> {
         let runtime = self.runtime.clone();
+        let thread_alias = self.thread_alias.clone();
 
         Box::pin(async move {
             let request = DocumentRequest::from_params(&params)?;
-            Ok(runtime.document_op(request))
+            Ok(runtime.document_op_for_thread(thread_alias.as_deref(), request))
         })
     }
 }

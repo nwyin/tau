@@ -5,30 +5,18 @@ use std::sync::Arc;
 use agent::types::AgentTool;
 use serde_json::Value;
 
+use crate::permissions::Policy;
+
 use super::{
     BashTool, FileEditTool, FileReadTool, FileWriteTool, GlobTool, GrepTool, SubagentTool,
     TodoTool, WebFetchTool, WebSearchTool,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ToolFamily {
-    Direct,
-    Orchestration,
-    Completion,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DefaultToolPermission {
-    Allow,
-    Ask,
-}
-
 #[derive(Debug, Clone, Copy)]
 pub struct ToolMetadata {
     pub name: &'static str,
-    pub family: ToolFamily,
     pub default_enabled: bool,
-    pub default_permission: DefaultToolPermission,
+    pub default_policy: Policy,
     summarize: fn(&Value) -> String,
 }
 
@@ -77,8 +65,6 @@ impl ToolRegistry {
         self.direct_specs()
             .iter()
             .map(|spec| &spec.metadata)
-            .chain(ORCHESTRATION_METADATA.iter())
-            .chain(COMPLETION_METADATA.iter())
             .find(|metadata| metadata.name == name)
     }
 
@@ -94,14 +80,18 @@ impl ToolRegistry {
             .collect()
     }
 
-    pub fn all_known_tools(&self) -> HashMap<String, Arc<dyn AgentTool>> {
+    pub fn all_direct_tools(&self) -> HashMap<String, Arc<dyn AgentTool>> {
         self.direct_specs()
             .iter()
             .map(|spec| (spec.metadata.name.to_string(), spec.build()))
             .collect()
     }
 
-    pub fn all_known_tools_with_cwd(&self, cwd: PathBuf) -> HashMap<String, Arc<dyn AgentTool>> {
+    pub fn all_known_tools(&self) -> HashMap<String, Arc<dyn AgentTool>> {
+        self.all_direct_tools()
+    }
+
+    pub fn all_direct_tools_with_cwd(&self, cwd: PathBuf) -> HashMap<String, Arc<dyn AgentTool>> {
         self.direct_specs()
             .iter()
             .map(|spec| {
@@ -111,6 +101,10 @@ impl ToolRegistry {
                 )
             })
             .collect()
+    }
+
+    pub fn all_known_tools_with_cwd(&self, cwd: PathBuf) -> HashMap<String, Arc<dyn AgentTool>> {
+        self.all_direct_tools_with_cwd(cwd)
     }
 
     pub fn tools_from_allowlist(&self, names: &[String]) -> Vec<Arc<dyn AgentTool>> {
@@ -143,10 +137,10 @@ impl ToolRegistry {
             .collect()
     }
 
-    pub fn default_permission(&self, name: &str) -> DefaultToolPermission {
+    pub fn default_policy(&self, name: &str) -> Policy {
         self.metadata(name)
-            .map(|metadata| metadata.default_permission)
-            .unwrap_or(DefaultToolPermission::Ask)
+            .map(|metadata| metadata.default_policy)
+            .unwrap_or(Policy::Ask)
     }
 
     pub fn summarize(&self, name: &str, args: &Value) -> String {
@@ -178,40 +172,49 @@ impl ToolRegistry {
 }
 
 pub fn summarize_tool_call(tool_name: &str, args: &Value) -> String {
-    ToolRegistry::new().summarize(tool_name, args)
+    let registry = ToolRegistry::new();
+    let direct_summary = registry.summarize(tool_name, args);
+    if !direct_summary.is_empty() {
+        return direct_summary;
+    }
+
+    match tool_name {
+        "thread" => summarize_thread(args),
+        "query" => summarize_query_tool(args),
+        "document" => summarize_document(args),
+        "log" => summarize_message(args),
+        "from_id" => summarize_alias(args),
+        "py_repl" => summarize_py_repl(args),
+        "complete" => summarize_result(args),
+        "abort" => summarize_reason(args),
+        "escalate" => summarize_problem(args),
+        _ => String::new(),
+    }
 }
 
 const fn metadata(
     name: &'static str,
-    family: ToolFamily,
     default_enabled: bool,
-    default_permission: DefaultToolPermission,
+    default_policy: Policy,
     summarize: fn(&Value) -> String,
 ) -> ToolMetadata {
     ToolMetadata {
         name,
-        family,
         default_enabled,
-        default_permission,
+        default_policy,
         summarize,
     }
 }
 
 const fn direct_spec(
     name: &'static str,
-    default_permission: DefaultToolPermission,
+    default_policy: Policy,
     build: fn() -> Arc<dyn AgentTool>,
     build_with_cwd: fn(PathBuf) -> Arc<dyn AgentTool>,
     summarize: fn(&Value) -> String,
 ) -> DirectToolSpec {
     DirectToolSpec {
-        metadata: metadata(
-            name,
-            ToolFamily::Direct,
-            true,
-            default_permission,
-            summarize,
-        ),
+        metadata: metadata(name, true, default_policy, summarize),
         build,
         build_with_cwd,
     }
@@ -281,142 +284,73 @@ fn build_todo_with_cwd(_cwd: PathBuf) -> Arc<dyn AgentTool> {
 static DIRECT_TOOL_SPECS: &[DirectToolSpec] = &[
     direct_spec(
         "bash",
-        DefaultToolPermission::Ask,
+        Policy::Ask,
         build_bash,
         build_bash_with_cwd,
         summarize_bash,
     ),
     direct_spec(
         "file_read",
-        DefaultToolPermission::Allow,
+        Policy::Allow,
         build_file_read,
         build_file_read_with_cwd,
         summarize_path,
     ),
     direct_spec(
         "file_edit",
-        DefaultToolPermission::Ask,
+        Policy::Ask,
         build_file_edit,
         build_file_edit_with_cwd,
         summarize_path,
     ),
     direct_spec(
         "file_write",
-        DefaultToolPermission::Ask,
+        Policy::Ask,
         build_file_write,
         build_file_write_with_cwd,
         summarize_path,
     ),
     direct_spec(
         "glob",
-        DefaultToolPermission::Allow,
+        Policy::Allow,
         build_glob,
         build_glob_with_cwd,
         summarize_pattern,
     ),
     direct_spec(
         "grep",
-        DefaultToolPermission::Allow,
+        Policy::Allow,
         build_grep,
         build_grep_with_cwd,
         summarize_pattern,
     ),
     direct_spec(
         "web_fetch",
-        DefaultToolPermission::Allow,
+        Policy::Allow,
         build_web_fetch,
         build_web_fetch_with_cwd,
         summarize_url,
     ),
     direct_spec(
         "web_search",
-        DefaultToolPermission::Allow,
+        Policy::Allow,
         build_web_search,
         build_web_search_with_cwd,
         summarize_query,
     ),
     direct_spec(
         "subagent",
-        DefaultToolPermission::Ask,
+        Policy::Ask,
         build_subagent,
         build_subagent_with_cwd,
         summarize_task,
     ),
     direct_spec(
         "todo",
-        DefaultToolPermission::Allow,
+        Policy::Allow,
         build_todo,
         build_todo_with_cwd,
         summarize_todo,
-    ),
-];
-
-static ORCHESTRATION_METADATA: &[ToolMetadata] = &[
-    metadata(
-        "thread",
-        ToolFamily::Orchestration,
-        true,
-        DefaultToolPermission::Ask,
-        summarize_thread,
-    ),
-    metadata(
-        "query",
-        ToolFamily::Orchestration,
-        true,
-        DefaultToolPermission::Ask,
-        summarize_query_tool,
-    ),
-    metadata(
-        "document",
-        ToolFamily::Orchestration,
-        true,
-        DefaultToolPermission::Ask,
-        summarize_document,
-    ),
-    metadata(
-        "log",
-        ToolFamily::Orchestration,
-        true,
-        DefaultToolPermission::Ask,
-        summarize_message,
-    ),
-    metadata(
-        "from_id",
-        ToolFamily::Orchestration,
-        true,
-        DefaultToolPermission::Ask,
-        summarize_alias,
-    ),
-    metadata(
-        "py_repl",
-        ToolFamily::Orchestration,
-        true,
-        DefaultToolPermission::Ask,
-        summarize_py_repl,
-    ),
-];
-
-static COMPLETION_METADATA: &[ToolMetadata] = &[
-    metadata(
-        "complete",
-        ToolFamily::Completion,
-        false,
-        DefaultToolPermission::Ask,
-        summarize_result,
-    ),
-    metadata(
-        "abort",
-        ToolFamily::Completion,
-        false,
-        DefaultToolPermission::Ask,
-        summarize_reason,
-    ),
-    metadata(
-        "escalate",
-        ToolFamily::Completion,
-        false,
-        DefaultToolPermission::Ask,
-        summarize_problem,
     ),
 ];
 
@@ -626,30 +560,20 @@ mod tests {
     #[test]
     fn default_permissions_match_current_policy() {
         let registry = ToolRegistry::new();
-        assert_eq!(
-            registry.default_permission("file_read"),
-            DefaultToolPermission::Allow
-        );
-        assert_eq!(
-            registry.default_permission("web_search"),
-            DefaultToolPermission::Allow
-        );
-        assert_eq!(
-            registry.default_permission("todo"),
-            DefaultToolPermission::Allow
-        );
-        assert_eq!(
-            registry.default_permission("bash"),
-            DefaultToolPermission::Ask
-        );
-        assert_eq!(
-            registry.default_permission("subagent"),
-            DefaultToolPermission::Ask
-        );
-        assert_eq!(
-            registry.default_permission("unknown"),
-            DefaultToolPermission::Ask
-        );
+        assert_eq!(registry.default_policy("file_read"), Policy::Allow);
+        assert_eq!(registry.default_policy("web_search"), Policy::Allow);
+        assert_eq!(registry.default_policy("todo"), Policy::Allow);
+        assert_eq!(registry.default_policy("bash"), Policy::Ask);
+        assert_eq!(registry.default_policy("subagent"), Policy::Ask);
+        assert_eq!(registry.default_policy("unknown"), Policy::Ask);
+    }
+
+    #[test]
+    fn registry_metadata_is_direct_tools_only() {
+        let registry = ToolRegistry::new();
+        assert!(registry.metadata("file_read").is_some());
+        assert!(registry.metadata("thread").is_none());
+        assert!(registry.metadata("complete").is_none());
     }
 
     #[test]
@@ -664,21 +588,21 @@ mod tests {
             "/tmp/a.rs"
         );
         assert_eq!(
-            registry.summarize(
+            summarize_tool_call(
                 "thread",
                 &serde_json::json!({"alias": "a", "task": "scan files"})
             ),
             "a: scan files"
         );
         assert_eq!(
-            registry.summarize(
+            summarize_tool_call(
                 "document",
                 &serde_json::json!({"operation": "write", "name": "notes", "content": "abc"})
             ),
             "write notes (3 chars)"
         );
         assert_eq!(
-            registry.summarize("py_repl", &serde_json::json!({"code": "a = 1\nb = 2"})),
+            summarize_tool_call("py_repl", &serde_json::json!({"code": "a = 1\nb = 2"})),
             "2 lines"
         );
         assert_eq!(
@@ -692,7 +616,7 @@ mod tests {
             "[1/2]"
         );
         assert_eq!(
-            registry.summarize("log", &serde_json::json!({"message": "작업 ".repeat(40)})),
+            summarize_tool_call("log", &serde_json::json!({"message": "작업 ".repeat(40)})),
             format!(
                 "{}...",
                 "작업 ".repeat(26).chars().take(77).collect::<String>()

@@ -1,8 +1,49 @@
+use agent::types::{AgentTool, AgentToolResult, BoxFuture};
+use ai::types::UserBlock;
 use coding_agent::system_prompt::build_system_prompt;
 use coding_agent::tools::{
     BashTool, FileEditTool, FileReadTool, FileWriteTool, GlobTool, GrepTool,
 };
+use serde_json::{json, Value};
 use std::sync::Arc;
+use tokio_util::sync::CancellationToken;
+
+struct NamedTool(&'static str);
+
+impl AgentTool for NamedTool {
+    fn name(&self) -> &str {
+        self.0
+    }
+
+    fn label(&self) -> &str {
+        self.0
+    }
+
+    fn description(&self) -> &str {
+        "test tool."
+    }
+
+    fn parameters(&self) -> &Value {
+        static SCHEMA: std::sync::OnceLock<Value> = std::sync::OnceLock::new();
+        SCHEMA.get_or_init(|| json!({"type": "object"}))
+    }
+
+    fn execute(
+        &self,
+        _tool_call_id: String,
+        _params: Value,
+        _signal: Option<CancellationToken>,
+    ) -> BoxFuture<anyhow::Result<AgentToolResult>> {
+        Box::pin(async move {
+            Ok(AgentToolResult {
+                content: vec![UserBlock::Text {
+                    text: "ok".to_string(),
+                }],
+                details: None,
+            })
+        })
+    }
+}
 
 fn all_tools() -> Vec<Arc<dyn agent::types::AgentTool>> {
     vec![
@@ -181,4 +222,24 @@ fn system_prompt_prefer_dedicated_tools_over_bash() {
         "prompt should instruct preferring dedicated tools over bash, got:\n{}",
         prompt
     );
+}
+
+#[test]
+fn thread_prompt_does_not_include_py_repl_tau_reference() {
+    let tools: Vec<Arc<dyn agent::types::AgentTool>> = vec![Arc::new(NamedTool("thread"))];
+    let prompt = build_system_prompt(&tools, &[], "/tmp");
+
+    assert!(prompt.contains("# Orchestration with threads and queries"));
+    assert!(!prompt.contains("## Tau Python API"));
+    assert!(!prompt.contains("tau."));
+}
+
+#[test]
+fn py_repl_prompt_includes_tau_reference_without_thread() {
+    let tools: Vec<Arc<dyn agent::types::AgentTool>> = vec![Arc::new(NamedTool("py_repl"))];
+    let prompt = build_system_prompt(&tools, &[], "/tmp");
+
+    assert!(prompt.contains("## Tau Python API"));
+    assert!(prompt.contains("tau.thread"));
+    assert!(prompt.contains("tau.wait"));
 }

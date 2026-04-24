@@ -131,7 +131,7 @@ pub fn build_system_prompt(tools: &[Arc<dyn AgentTool>], skills: &[Skill], cwd: 
                 .to_string(),
         );
     }
-    if has("thread") {
+    if has("thread") || has("query") {
         guidelines.push(
             "Use thread and query for orchestration. See the dedicated orchestration section \
              below for patterns and guidance. Prefer thread over subagent."
@@ -166,8 +166,8 @@ pub fn build_system_prompt(tools: &[Arc<dyn AgentTool>], skills: &[Skill], cwd: 
         parts.push(section);
     }
 
-    // ── 7. Orchestration (conditional on thread tool) ──
-    if has("thread") {
+    // ── 7. Core orchestration (conditional on direct orchestration tools) ──
+    if has("thread") || has("query") {
         parts.push(
             [
                 ORCH_OVERVIEW,
@@ -177,6 +177,15 @@ pub fn build_system_prompt(tools: &[Arc<dyn AgentTool>], skills: &[Skill], cwd: 
                 ORCH_PIPELINE,
                 ORCH_ADVERSARIAL,
                 ORCH_REUSE,
+            ]
+            .join("\n\n"),
+        );
+    }
+
+    // ── 8. py_repl addendum (conditional only on py_repl) ──
+    if has("py_repl") {
+        parts.push(
+            [
                 ORCH_PROGRAMMATIC,
                 PY_TAU_API_REFERENCE,
                 ORCH_REACTIVE,
@@ -191,10 +200,10 @@ pub fn build_system_prompt(tools: &[Arc<dyn AgentTool>], skills: &[Skill], cwd: 
         );
     }
 
-    // ── 8. Tone and output (static) ──
+    // ── 9. Tone and output (static) ──
     parts.push(TONE_AND_OUTPUT.to_string());
 
-    // ── 9. Skills (dynamic — progressive disclosure) ──
+    // ── 10. Skills (dynamic — progressive disclosure) ──
     if !skills.is_empty() && has("file_read") {
         let mut section = "# Available skills\n\
              Skills are invoked with `/skill:<name> [args]`. Do NOT load skills automatically; \
@@ -211,7 +220,7 @@ pub fn build_system_prompt(tools: &[Arc<dyn AgentTool>], skills: &[Skill], cwd: 
         parts.push(section);
     }
 
-    // ── 10. Environment (dynamic) ──
+    // ── 11. Environment (dynamic) ──
     parts.push(format!("# Environment\nCurrent working directory: {}", cwd));
 
     parts.join("\n\n")

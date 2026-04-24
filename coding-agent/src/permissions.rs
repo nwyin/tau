@@ -17,10 +17,10 @@ use agent::types::{AgentTool, AgentToolResult, BoxFuture};
 use ai::types::UserBlock;
 use serde_json::Value;
 
-use crate::tools::registry::{DefaultToolPermission, ToolRegistry};
+use crate::tools::ToolRegistry;
 
 /// Per-tool permission policy.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Policy {
     Allow,
     Deny,
@@ -40,10 +40,7 @@ impl Policy {
 
 /// Default policies: read-only tools allow, everything else asks.
 fn default_policy(tool_name: &str) -> Policy {
-    match ToolRegistry::new().default_permission(tool_name) {
-        DefaultToolPermission::Allow => Policy::Allow,
-        DefaultToolPermission::Ask => Policy::Ask,
-    }
+    ToolRegistry::new().default_policy(tool_name)
 }
 
 /// Prompt function signature: (tool_name, description) -> user choice.
@@ -158,7 +155,7 @@ impl PermissionService {
 
 /// Format a short description of a tool call for the permission prompt.
 pub fn describe_tool_call(tool_name: &str, params: &Value) -> String {
-    ToolRegistry::new().summarize(tool_name, params)
+    crate::tools::summarize_tool_call(tool_name, params)
 }
 
 /// The default interactive prompt function that reads from stdin.

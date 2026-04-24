@@ -29,7 +29,7 @@ Before dispatching, classify the work into one of these shapes:
 
 - `independent fan-out`: subtasks do not need each other's outputs while they run. Same-turn parallel dispatch is correct.
 - `phased dependency`: a downstream thread needs completed upstream results. Use separate turns and pass `episodes=[...]`.
-- `reactive coordination`: downstream work must wait for shared artifacts, readiness signals, or intermediate findings. Use `py_repl` with `tau.launch()`, document polling, and a readiness gate.
+- `reactive coordination`: downstream work must wait for shared artifacts, readiness signals, or intermediate findings. Use document polling, explicit barriers, and a readiness gate.
 
 Hard rule: if the task says `react to`, `critique`, `after`, `wait for`, `based on another thread`, `read the other side`, or `synthesize both`, do NOT launch all threads in one batch. Use a staged pipeline by default.
 
@@ -51,17 +51,17 @@ turn's episodes. Use this to express dependencies. Parallel is not the safe defa
 When spawning multiple threads that write to files in parallel, use `worktree=True`
 to give each thread its own git worktree and branch. This prevents write conflicts.
 
-```python
-worker = tau.thread("impl-auth", "Implement auth module",
-                     tools=["full"], worktree=True)
-# worker.branch → "tau/impl-auth"
-# worker.diff_stat → "3 files changed, 45 insertions(+), 12 deletions(-)"
+```
+thread("impl-auth", "Implement auth module",
+       tools=["full"], worktree=True)
+# result branch: "tau/impl-auth"
+# result diff_stat: "3 files changed, 45 insertions(+), 12 deletions(-)"
 ```
 
 With worktree isolation:
 - Each thread works on branch `tau/{alias}` in its own directory
 - Changes are auto-committed when the thread completes
-- After completion, use `tau.diff(alias)` to inspect and `tau.merge(alias)` to integrate
+- After completion, inspect the recorded branch and diff summary before integrating
 
 Read-only threads (research, scanning) do not need worktrees.
 
@@ -69,7 +69,7 @@ Read-only threads (research, scanning) do not need worktrees.
 
 For long-running multi-phase work, add a **checkpoint** after each phase that evaluates
 actual project state (does it build? how many tests pass?) and decides how to proceed.
-Use `tau.query(prompt, model="reasoning")` to analyze failures and choose between:
+Use `query(prompt=..., model="reasoning")` to analyze failures and choose between:
 
 - **RETRY**: increase timeout and add failure context
 - **SPLIT**: break an oversized item into smaller sub-items with dependencies

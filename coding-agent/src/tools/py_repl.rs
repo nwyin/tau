@@ -16,7 +16,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 use tokio_util::sync::CancellationToken;
 
-use crate::orchestration::{OrchestrationRpcFacade, OrchestrationRuntime};
+use crate::orchestration::{rpc::OrchestrationRpcFacade, OrchestrationRuntime};
 
 const PY_KERNEL_SOURCE: &str = include_str!("../../prompts/py_kernel.py");
 const PY_REPL_DESCRIPTION: &str = include_str!("../../prompts/generated/py_repl_description.txt");
